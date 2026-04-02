@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --primary: #f59e0b;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f9fafb;
+  --muted-foreground: #6b7280;
+  --accent: #fef3c7;
+  --accent-foreground: #92400e;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #f59e0b;
+  --radius: 0.5rem;
+  --step-active: #f59e0b;
+  --step-complete: #10b981;
+  --step-pending: #d1d5db;
+  --selection-highlight: #fef3c7;
+  --selection-border: #f59e0b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideOutLeft {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-20px); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.step-enter { animation: slideInRight 0.3s ease forwards; }
+.step-exit { animation: slideOutLeft 0.3s ease forwards; }
+.fade-in { animation: fadeIn 0.25s ease forwards; }
