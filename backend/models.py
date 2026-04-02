@@ -47,6 +47,27 @@ class CreateLinkResponse(BaseModel):
     expires_at: str
     client_name: str
 
+class ClauseSelection(BaseModel):
+    clause_id: str
+    included: bool = True
+    custom_text: Optional[str] = None
+    ai_generated: bool = False
+    sort_order: int = 0
+
+class SaveClausesRequest(BaseModel):
+    clauses: List[ClauseSelection]
+
+class DocumentConfig(BaseModel):
+    document_type: str
+    enabled: bool = True
+
+class DocumentConfigUpdate(BaseModel):
+    enabled: bool = True
+
+class GenerateDocumentRequest(BaseModel):
+    document_type: str
+    format: str = "docx"  # "docx" or "pdf"
+
 class AgentInvokeRequest(BaseModel):
     capability: str
     payload: dict

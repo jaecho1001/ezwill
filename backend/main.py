@@ -8,6 +8,8 @@ from services.db import init_pool, close_pool
 from routes.drafts import router as drafts_router
 from routes.links import router as links_router
 from routes.agents import router as agents_router
+from routes.clauses import router as clauses_router
+from routes.documents import router as documents_router
 
 load_dotenv()
 
@@ -35,6 +37,8 @@ app.add_middleware(
 app.include_router(drafts_router, prefix="/api/drafts", tags=["drafts"])
 app.include_router(links_router, prefix="/api/links", tags=["links"])
 app.include_router(agents_router, prefix="/agents", tags=["agents"])
+app.include_router(clauses_router, prefix="/api/drafts", tags=["clauses"])
+app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
 
 @app.get("/")
 async def health():

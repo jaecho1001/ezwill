@@ -232,6 +232,88 @@ class EWDbWriter:
               AND l.expires_at > now()
         """, (token,))
 
+    # ── Clause Selections ─────────────────────────────────────────────────────
+
+    def save_clause_selections(self, draft_id: str, document_type: str, clauses: list) -> bool:
+        """Save all clause selections for a draft + document type (delete + insert)."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM ew_clause_selections WHERE draft_id = %s AND document_type = %s",
+                (draft_id, document_type)
+            )
+        for c in clauses:
+            self.execute("""
+                INSERT INTO ew_clause_selections
+                    (draft_id, document_type, clause_id, included, custom_text, ai_generated, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                draft_id, document_type,
+                c['clause_id'], c.get('included', True),
+                c.get('custom_text'), c.get('ai_generated', False),
+                c.get('sort_order', 0)
+            ))
+        return True
+
+    def get_clause_selections(self, draft_id: str, document_type: str) -> list:
+        """Get clause selections for a draft + document type."""
+        return self.fetchall(
+            "SELECT * FROM ew_clause_selections WHERE draft_id = %s AND document_type = %s ORDER BY sort_order",
+            (draft_id, document_type)
+        )
+
+    def get_all_clause_selections(self, draft_id: str) -> dict:
+        """Get all clause selections for a draft, grouped by document_type."""
+        rows = self.fetchall(
+            "SELECT * FROM ew_clause_selections WHERE draft_id = %s ORDER BY document_type, sort_order",
+            (draft_id,)
+        )
+        grouped = {}
+        for row in rows:
+            dt = row['document_type']
+            if dt not in grouped:
+                grouped[dt] = []
+            grouped[dt].append(dict(row))
+        return grouped
+
+    def reset_clause_selections(self, draft_id: str, document_type: str) -> bool:
+        """Delete all clause selections for a draft + document type."""
+        self.execute(
+            "DELETE FROM ew_clause_selections WHERE draft_id = %s AND document_type = %s",
+            (draft_id, document_type)
+        )
+        return True
+
+    # ── Document Configs ──────────────────────────────────────────────────────
+
+    def save_document_config(self, draft_id: str, document_type: str, enabled: bool) -> bool:
+        """Enable/disable a document type for a draft (upsert)."""
+        self.execute("""
+            INSERT INTO ew_document_configs (draft_id, document_type, enabled)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (draft_id, document_type) DO UPDATE SET
+                enabled = EXCLUDED.enabled,
+                updated_at = now()
+        """, (draft_id, document_type, enabled))
+        return True
+
+    def get_document_configs(self, draft_id: str) -> list:
+        """Get all document configs for a draft."""
+        return self.fetchall(
+            "SELECT * FROM ew_document_configs WHERE draft_id = %s ORDER BY document_type",
+            (draft_id,)
+        )
+
+    def update_document_generated(self, draft_id: str, document_type: str, file_path: str) -> bool:
+        """Mark a document as generated with its file path."""
+        self.execute("""
+            UPDATE ew_document_configs
+            SET generated_at = now(), generated_file_path = %s, updated_at = now()
+            WHERE draft_id = %s AND document_type = %s
+        """, (file_path, draft_id, document_type))
+        return True
+
+    # ── Client Links ─────────────────────────────────────────────────────────
+
     def mark_link_opened(self, token: str):
         self.execute("""
             UPDATE ew_client_links SET opened_at = now() WHERE token = %s AND opened_at IS NULL
