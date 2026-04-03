@@ -1,14 +1,17 @@
 'use client'
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useState, use, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { AiFlagsSummary } from '@/components/dashboard/ai-flags-summary'
+import { EstateOverview } from '@/components/dashboard/estate-overview'
 import { getDraft } from '@/lib/api/drafts'
+import { cn } from '@/lib/utils'
 
 const SECTION_LABELS = [
   { key: 'about_you', label: 'About You' },
@@ -105,11 +108,22 @@ interface DraftDetail {
   tier2_clauses?: Record<string, unknown> | null
 }
 
+type TabId = 'overview' | 'answers' | 'documents' | 'tier2'
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'answers', label: 'Questionnaire Answers' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'tier2', label: 'Tier 2 Config' },
+]
+
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const router = useRouter()
   const [draft, setDraft] = useState<DraftDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
 
   useEffect(() => {
     getDraft(id)
@@ -123,6 +137,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [id])
+
+  const handleNavigate = useCallback((section: string) => {
+    if (section === 'documents') {
+      router.push(`/dashboard/clients/${id}/documents`)
+    } else if (section === 'tier2') {
+      router.push(`/dashboard/clients/${id}/tier2`)
+    } else {
+      // Switch to answers tab and scroll to section
+      setActiveTab('answers')
+    }
+  }, [id, router])
 
   if (loading) {
     return (
@@ -264,22 +289,84 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
       <Separator />
 
-      {/* Section Answers */}
-      <div>
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">Client Answers</h3>
-        <div className="space-y-6">
-          {SECTION_LABELS.map((section) => (
-            <Card key={section.key}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{section.label}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SectionData label="" data={sectionData[section.key]} />
-              </CardContent>
-            </Card>
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors',
+                activeTab === tab.id
+                  ? 'border-amber-500 text-amber-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              )}
+            >
+              {tab.label}
+            </button>
           ))}
-        </div>
+        </nav>
       </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <EstateOverview
+          draft={draft as DraftDetail & { assets: Array<Record<string, unknown>>; people: Array<Record<string, unknown>>; ai_flags: Array<{ id: string; severity: string; title: string; description: string; statute?: string; dismissed?: boolean }> }}
+          onNavigate={handleNavigate}
+        />
+      )}
+
+      {activeTab === 'answers' && (
+        <div>
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">Client Answers</h3>
+          <div className="space-y-6">
+            {SECTION_LABELS.map((section) => (
+              <Card key={section.key}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{section.label}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <SectionData label="" data={sectionData[section.key]} />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'documents' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Document generation and management is available on the dedicated documents page.
+          </p>
+          <Link href={`/dashboard/clients/${id}/documents`}>
+            <Button>
+              <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              Go to Documents
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {activeTab === 'tier2' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Tier 2 clause configuration is available on the dedicated configuration page.
+          </p>
+          <Link href={`/dashboard/clients/${id}/tier2`}>
+            <Button variant="outline">
+              <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Go to Tier 2 Config
+            </Button>
+          </Link>
+        </div>
+      )}
     </div>
   )
 }

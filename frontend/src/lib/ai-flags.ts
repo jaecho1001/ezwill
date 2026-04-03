@@ -106,6 +106,32 @@ const FLAG_RULES: FlagRule[] = [
     check: (will) => will.yourFamily.guardians.length > 0
   },
   {
+    id: 'high_debt_to_asset_ratio',
+    severity: 'warning',
+    title: 'High Debt-to-Asset Ratio — Potential Insolvency',
+    titleKo: '높은 부채 비율 — 잠재적 지급 불능',
+    description: 'Total liabilities exceed 50% of total assets. Your estate may face solvency issues, meaning there may not be enough assets to cover debts and bequests. Consider consulting an estate lawyer about priority of payments.',
+    descriptionKo: '총 부채가 총 자산의 50%를 초과합니다. 유산이 지급 불능 상태에 빠질 수 있으며, 부채와 유증을 충당할 자산이 부족할 수 있습니다.',
+    check: (will) => {
+      const totalAssets = will.assets.reduce((s, a) => s + (a.estimatedValue ?? 0), 0)
+      const totalLiabilities = (will.liabilities ?? []).reduce((s, l) => s + (l.outstandingBalance ?? 0), 0)
+      return totalAssets > 0 && totalLiabilities > totalAssets * 0.5
+    }
+  },
+  {
+    id: 'mortgage_without_insurance',
+    severity: 'warning',
+    title: 'Mortgage Without Life Insurance',
+    titleKo: '생명보험 없는 주택담보대출',
+    description: 'You have a mortgage liability but no life insurance asset listed. Consider life insurance to cover the outstanding mortgage so your family can keep the property without financial burden.',
+    descriptionKo: '주택담보대출이 있지만 생명보험 자산이 등록되어 있지 않습니다. 가족이 재정적 부담 없이 재산을 유지할 수 있도록 미상환 대출을 충당할 생명보험을 고려하세요.',
+    check: (will) => {
+      const hasMortgage = (will.liabilities ?? []).some(l => l.liabilityType === 'mortgage')
+      const hasInsurance = will.assets.some(a => a.assetType === 'insurance')
+      return hasMortgage && !hasInsurance
+    }
+  },
+  {
     id: 'pecore_resulting_trust',
     severity: 'warning',
     title: 'Joint Asset May Not Pass as Intended',

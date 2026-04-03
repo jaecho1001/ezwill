@@ -4,6 +4,8 @@ export type Language = 'en' | 'ko'
 export type MaritalStatus = 'single' | 'married' | 'commonlaw' | 'separated' | 'divorced' | 'widowed'
 export type PersonRole = 'spouse' | 'child' | 'beneficiary' | 'executor' | 'guardian' | 'attorney_property' | 'attorney_care' | 'trustee' | 'contingent_beneficiary'
 export type AssetType = 'real_estate' | 'bank' | 'investment' | 'rrsp' | 'tfsa' | 'insurance' | 'vehicle' | 'business' | 'digital' | 'personal_property' | 'resp' | 'pension'
+export type LiabilityType = 'mortgage' | 'home_equity_line' | 'car_loan' | 'student_loan' | 'personal_loan' | 'credit_card' | 'line_of_credit' | 'tax_owing' | 'business_loan' | 'other_debt'
+export type OwnershipType = 'sole' | 'joint_spouse' | 'joint_other' | 'tenants_in_common'
 export type TrustType = 'childrens' | 'spousal' | 'henson' | 'gre'
 export type RestingPlace = 'burial' | 'cremation' | 'donation' | 'not_specified'
 export type AIFlagSeverity = 'critical' | 'warning' | 'info'
@@ -37,6 +39,19 @@ export interface GiftData {
   condition?: string
 }
 
+export interface LiabilityData {
+  id: string
+  liabilityType: LiabilityType
+  description: string
+  creditor?: string
+  outstandingBalance?: number
+  monthlyPayment?: number
+  ownershipType?: OwnershipType
+  jointOwnerName?: string
+  securedByAssetId?: string
+  notes?: string
+}
+
 export interface AssetData {
   id: string
   assetType: AssetType
@@ -49,6 +64,12 @@ export interface AssetData {
   jointOwnerName?: string
   jointOwnerRelationship?: string
   isRESP?: boolean
+  ownershipType?: OwnershipType
+  designatedBeneficiaryName?: string
+  probateClassification?: 'probate' | 'non_probate' | 'unclassified'
+  notes?: string
+  policyNumber?: string
+  maturityDate?: string
 }
 
 export interface TrustData {
@@ -160,6 +181,7 @@ export interface WillDocument {
   poaProperty: POAProperty
   poaPersonalCare: POAPersonalCare
   assets: AssetData[]
+  liabilities: LiabilityData[]
   aiFlags: AIFlag[]
 }
 
@@ -216,5 +238,6 @@ export const INITIAL_WILL: WillDocument = {
     hasAttorney: false,
   },
   assets: [],
+  liabilities: [],
   aiFlags: [],
 }

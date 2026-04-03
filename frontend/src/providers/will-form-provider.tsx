@@ -14,6 +14,10 @@ type WillAction =
   | { type: 'UPDATE_POA_PERSONAL_CARE'; payload: Partial<WillDocument['poaPersonalCare']> }
   | { type: 'ADD_ASSET'; payload: WillDocument['assets'][0] }
   | { type: 'REMOVE_ASSET'; payload: string }
+  | { type: 'UPDATE_ASSET'; payload: WillDocument['assets'][0] }
+  | { type: 'ADD_LIABILITY'; payload: WillDocument['liabilities'][0] }
+  | { type: 'REMOVE_LIABILITY'; payload: string }
+  | { type: 'UPDATE_LIABILITY'; payload: WillDocument['liabilities'][0] }
   | { type: 'SET_STEP'; payload: { step: number; subStep?: number } }
   | { type: 'COMPLETE_STEP'; payload: number }
   | { type: 'SET_LANGUAGE'; payload: WillDocument['language'] }
@@ -48,6 +52,18 @@ function willReducer(state: WillDocument, action: WillAction): WillDocument {
       break
     case 'REMOVE_ASSET':
       next = { ...state, assets: state.assets.filter(a => a.id !== action.payload), updatedAt: new Date().toISOString() }
+      break
+    case 'UPDATE_ASSET':
+      next = { ...state, assets: state.assets.map(a => a.id === action.payload.id ? action.payload : a), updatedAt: new Date().toISOString() }
+      break
+    case 'ADD_LIABILITY':
+      next = { ...state, liabilities: [...(state.liabilities ?? []), action.payload], updatedAt: new Date().toISOString() }
+      break
+    case 'REMOVE_LIABILITY':
+      next = { ...state, liabilities: (state.liabilities ?? []).filter(l => l.id !== action.payload), updatedAt: new Date().toISOString() }
+      break
+    case 'UPDATE_LIABILITY':
+      next = { ...state, liabilities: (state.liabilities ?? []).map(l => l.id === action.payload.id ? action.payload : l), updatedAt: new Date().toISOString() }
       break
     case 'SET_STEP':
       return { ...state, currentStep: action.payload.step, currentSubStep: action.payload.subStep ?? 0 }
