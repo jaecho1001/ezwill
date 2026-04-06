@@ -1,0 +1,419 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+
+// ----- Types -----
+
+interface FirmSettings {
+  firmName: string
+  address1: string
+  address2: string
+  city: string
+  province: string
+  postalCode: string
+  phone: string
+  fax: string
+  email: string
+  lsoNumber: string
+}
+
+interface WillDefaults {
+  trustDistributionAge: number
+  survivalPeriodDays: number
+  defaultTier: '1' | '2'
+  enableDualWill: boolean
+}
+
+interface NotificationSettings {
+  emailOnSubmission: boolean
+  submissionEmail: string
+  emailOnReview: boolean
+  reviewEmail: string
+}
+
+interface BrandingSettings {
+  coverPageStyle: 'standard' | 'minimal' | 'custom'
+  defaultLanguage: 'en' | 'ko'
+}
+
+// ----- Defaults -----
+
+const DEFAULT_FIRM: FirmSettings = {
+  firmName: 'Vaturi & Cho LLP',
+  address1: '',
+  address2: '',
+  city: 'Toronto',
+  province: 'ON',
+  postalCode: '',
+  phone: '',
+  fax: '',
+  email: '',
+  lsoNumber: '',
+}
+
+const DEFAULT_WILL: WillDefaults = {
+  trustDistributionAge: 25,
+  survivalPeriodDays: 30,
+  defaultTier: '1',
+  enableDualWill: false,
+}
+
+const DEFAULT_NOTIFICATIONS: NotificationSettings = {
+  emailOnSubmission: false,
+  submissionEmail: '',
+  emailOnReview: false,
+  reviewEmail: '',
+}
+
+const DEFAULT_BRANDING: BrandingSettings = {
+  coverPageStyle: 'standard',
+  defaultLanguage: 'en',
+}
+
+// ----- Storage helpers -----
+
+const STORAGE_KEY = 'ezwill_settings'
+
+function loadSettings() {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveSettings(data: {
+  firm: FirmSettings
+  will: WillDefaults
+  notifications: NotificationSettings
+  branding: BrandingSettings
+}) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+}
+
+// ----- Components -----
+
+function SectionHeading({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="mb-6">
+      <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+      <p className="mt-1 text-sm text-gray-500">{description}</p>
+    </div>
+  )
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+}: {
+  label: string
+  value: string | number
+  onChange: (v: string) => void
+  type?: string
+  placeholder?: string
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+      />
+    </div>
+  )
+}
+
+// ----- Main Page -----
+
+export default function SettingsPage() {
+  const [firm, setFirm] = useState<FirmSettings>(DEFAULT_FIRM)
+  const [will, setWill] = useState<WillDefaults>(DEFAULT_WILL)
+  const [notifications, setNotifications] = useState<NotificationSettings>(DEFAULT_NOTIFICATIONS)
+  const [branding, setBranding] = useState<BrandingSettings>(DEFAULT_BRANDING)
+  const [toast, setToast] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({ current: '', newPass: '', confirm: '' })
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState(false)
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const saved = loadSettings()
+    if (saved) {
+      setFirm({ ...DEFAULT_FIRM, ...saved.firm })
+      setWill({ ...DEFAULT_WILL, ...saved.will })
+      setNotifications({ ...DEFAULT_NOTIFICATIONS, ...saved.notifications })
+      setBranding({ ...DEFAULT_BRANDING, ...saved.branding })
+    }
+  }, [])
+
+  function handleSave() {
+    saveSettings({ firm, will, notifications, branding })
+    setToast(true)
+    setTimeout(() => setToast(false), 2500)
+  }
+
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault()
+    setPasswordError('')
+    setPasswordSuccess(false)
+
+    if (passwordForm.newPass !== passwordForm.confirm) {
+      setPasswordError('New passwords do not match.')
+      return
+    }
+    if (passwordForm.newPass.length < 6) {
+      setPasswordError('Password must be at least 6 characters.')
+      return
+    }
+
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: passwordForm.current,
+          new_password: passwordForm.newPass,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setPasswordError(data.detail || 'Failed to change password.')
+        return
+      }
+      setPasswordSuccess(true)
+      setPasswordForm({ current: '', newPass: '', confirm: '' })
+      setTimeout(() => setPasswordSuccess(false), 3000)
+    } catch {
+      setPasswordError('Unable to connect. Please try again.')
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-10">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+        <p className="mt-1 text-sm text-gray-500">Manage your firm configuration and preferences.</p>
+      </div>
+
+      {/* Section A: Firm Information */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6">
+        <SectionHeading title="Firm Information" description="Your firm details used on generated documents." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <InputField label="Firm Name" value={firm.firmName} onChange={(v) => setFirm({ ...firm, firmName: v })} />
+          </div>
+          <div className="sm:col-span-2">
+            <InputField label="Address Line 1" value={firm.address1} onChange={(v) => setFirm({ ...firm, address1: v })} placeholder="123 Bay St, Suite 400" />
+          </div>
+          <div className="sm:col-span-2">
+            <InputField label="Address Line 2" value={firm.address2} onChange={(v) => setFirm({ ...firm, address2: v })} placeholder="Optional" />
+          </div>
+          <InputField label="City" value={firm.city} onChange={(v) => setFirm({ ...firm, city: v })} />
+          <div className="grid grid-cols-2 gap-4">
+            <InputField label="Province" value={firm.province} onChange={(v) => setFirm({ ...firm, province: v })} />
+            <InputField label="Postal Code" value={firm.postalCode} onChange={(v) => setFirm({ ...firm, postalCode: v })} placeholder="M5H 2N2" />
+          </div>
+          <InputField label="Phone" value={firm.phone} onChange={(v) => setFirm({ ...firm, phone: v })} placeholder="(416) 555-0100" />
+          <InputField label="Fax" value={firm.fax} onChange={(v) => setFirm({ ...firm, fax: v })} placeholder="(416) 555-0101" />
+          <InputField label="Email" value={firm.email} onChange={(v) => setFirm({ ...firm, email: v })} type="email" placeholder="info@vatcho.com" />
+          <InputField label="LSO Firm Number" value={firm.lsoNumber} onChange={(v) => setFirm({ ...firm, lsoNumber: v })} placeholder="12345" />
+        </div>
+      </section>
+
+      {/* Section B: Default Will Settings */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6">
+        <SectionHeading title="Default Will Settings" description="Defaults applied to new client wills." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <InputField
+            label="Trust Distribution Age"
+            value={will.trustDistributionAge}
+            onChange={(v) => setWill({ ...will, trustDistributionAge: Number(v) || 0 })}
+            type="number"
+          />
+          <InputField
+            label="Survival Period (days)"
+            value={will.survivalPeriodDays}
+            onChange={(v) => setWill({ ...will, survivalPeriodDays: Number(v) || 0 })}
+            type="number"
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Default Document Tier</label>
+            <div className="flex gap-6">
+              {(['1', '2'] as const).map((tier) => (
+                <label key={tier} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tier"
+                    checked={will.defaultTier === tier}
+                    onChange={() => setWill({ ...will, defaultTier: tier })}
+                    className="h-4 w-4 text-amber-500 border-gray-300 focus:ring-amber-500"
+                  />
+                  Tier {tier}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={will.enableDualWill}
+                onChange={(e) => setWill({ ...will, enableDualWill: e.target.checked })}
+                className="h-4 w-4 rounded text-amber-500 border-gray-300 focus:ring-amber-500"
+              />
+              Enable dual will by default
+            </label>
+          </div>
+        </div>
+      </section>
+
+      {/* Section C: Notification Settings */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6">
+        <SectionHeading title="Notification Settings" description="Configure email alerts for client activity." />
+        <div className="space-y-4">
+          <div className="flex items-start gap-4">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer min-w-[220px] pt-2">
+              <input
+                type="checkbox"
+                checked={notifications.emailOnSubmission}
+                onChange={(e) => setNotifications({ ...notifications, emailOnSubmission: e.target.checked })}
+                className="h-4 w-4 rounded text-amber-500 border-gray-300 focus:ring-amber-500"
+              />
+              Email on client submission
+            </label>
+            {notifications.emailOnSubmission && (
+              <div className="flex-1">
+                <input
+                  type="email"
+                  value={notifications.submissionEmail}
+                  onChange={(e) => setNotifications({ ...notifications, submissionEmail: e.target.value })}
+                  placeholder="lawyer@vatcho.com"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+            )}
+          </div>
+          <div className="flex items-start gap-4">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer min-w-[220px] pt-2">
+              <input
+                type="checkbox"
+                checked={notifications.emailOnReview}
+                onChange={(e) => setNotifications({ ...notifications, emailOnReview: e.target.checked })}
+                className="h-4 w-4 rounded text-amber-500 border-gray-300 focus:ring-amber-500"
+              />
+              Email on review completion
+            </label>
+            {notifications.emailOnReview && (
+              <div className="flex-1">
+                <input
+                  type="email"
+                  value={notifications.reviewEmail}
+                  onChange={(e) => setNotifications({ ...notifications, reviewEmail: e.target.value })}
+                  placeholder="lawyer@vatcho.com"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Section D: Branding */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6">
+        <SectionHeading title="Branding" description="Customize document appearance and defaults." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Cover Page Style</label>
+            <select
+              value={branding.coverPageStyle}
+              onChange={(e) => setBranding({ ...branding, coverPageStyle: e.target.value as BrandingSettings['coverPageStyle'] })}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+            >
+              <option value="standard">Standard</option>
+              <option value="minimal">Minimal</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Default Language for New Clients</label>
+            <select
+              value={branding.defaultLanguage}
+              onChange={(e) => setBranding({ ...branding, defaultLanguage: e.target.value as 'en' | 'ko' })}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+            >
+              <option value="en">English</option>
+              <option value="ko">Korean</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {/* Save button */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          className="rounded-lg bg-amber-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+        >
+          Save Settings
+        </button>
+      </div>
+
+      {/* Section E: Security */}
+      <section className="rounded-xl border border-gray-200 bg-white p-6">
+        <SectionHeading title="Security" description="Change the dashboard access password." />
+        <form onSubmit={handlePasswordChange} className="max-w-md space-y-4">
+          <InputField
+            label="Current Password"
+            value={passwordForm.current}
+            onChange={(v) => setPasswordForm({ ...passwordForm, current: v })}
+            type="password"
+          />
+          <InputField
+            label="New Password"
+            value={passwordForm.newPass}
+            onChange={(v) => setPasswordForm({ ...passwordForm, newPass: v })}
+            type="password"
+          />
+          <InputField
+            label="Confirm New Password"
+            value={passwordForm.confirm}
+            onChange={(v) => setPasswordForm({ ...passwordForm, confirm: v })}
+            type="password"
+          />
+          {passwordError && (
+            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 border border-red-100">
+              {passwordError}
+            </div>
+          )}
+          {passwordSuccess && (
+            <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700 border border-green-100">
+              Password changed successfully.
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={!passwordForm.current || !passwordForm.newPass || !passwordForm.confirm}
+            className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Change Password
+          </button>
+        </form>
+      </section>
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 rounded-lg bg-green-600 px-5 py-3 text-sm font-medium text-white shadow-lg animate-[fadeIn_0.2s_ease]">
+          Settings saved successfully.
+        </div>
+      )}
+    </div>
+  )
+}

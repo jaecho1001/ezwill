@@ -20,6 +20,7 @@ class UpdateDraftRequest(BaseModel):
     poa_property: Optional[dict] = None
     poa_personal_care: Optional[dict] = None
     assets: Optional[List[dict]] = None
+    liabilities: Optional[List[dict]] = None
     people: Optional[List[dict]] = None
     ai_flags: Optional[List[dict]] = None
     current_step: Optional[int] = None
@@ -67,6 +68,28 @@ class DocumentConfigUpdate(BaseModel):
 class GenerateDocumentRequest(BaseModel):
     document_type: str
     format: str = "docx"  # "docx" or "pdf"
+
+class LiabilityData(BaseModel):
+    id: Optional[str] = None
+    liability_type: str
+    description: str = ''
+    creditor: Optional[str] = None
+    outstanding_balance: Optional[float] = None
+    monthly_payment: Optional[float] = None
+    ownership_type: str = 'sole'
+    joint_owner_name: Optional[str] = None
+    secured_by_asset_id: Optional[str] = None
+    notes: Optional[str] = None
+
+class ReviewApproval(BaseModel):
+    document_type: str
+    approved_by: Optional[str] = None
+
+class ReviewComment(BaseModel):
+    document_type: str
+    clause_id: Optional[str] = None
+    comment_text: str
+    commenter_name: Optional[str] = None
 
 class AgentInvokeRequest(BaseModel):
     capability: str

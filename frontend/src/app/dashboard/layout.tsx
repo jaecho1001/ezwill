@@ -1,4 +1,9 @@
+'use client'
+
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { AuthGuard } from '@/components/dashboard/auth-guard'
+import { logout } from '@/lib/auth'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: 'home' },
@@ -33,55 +38,82 @@ function NavIcon({ icon }: { icon: string }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+
+  // Login page renders without sidebar/auth
+  if (pathname === '/dashboard/login') {
+    return <>{children}</>
+  }
+
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
-        {/* Logo */}
-        <div className="flex h-16 items-center gap-2.5 border-b border-gray-100 px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white font-bold text-sm">
-            EZ
-          </div>
-          <span className="text-lg font-semibold text-gray-900">EZWill</span>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-amber-50 hover:text-amber-700"
-            >
-              <NavIcon icon={item.icon} />
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Footer */}
-        <div className="border-t border-gray-100 px-6 py-4">
-          <p className="text-xs text-gray-400">EZWill v1.0</p>
-        </div>
-      </aside>
-
-      {/* Main area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-8">
-          <h1 className="text-sm font-semibold text-gray-900">Vaturi &amp; Cho LLP</h1>
-          <div className="flex items-center gap-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-sm font-medium text-amber-700">
-              JC
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        {/* Sidebar */}
+        <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
+          {/* Logo */}
+          <div className="flex h-16 items-center gap-2.5 border-b border-gray-100 px-6">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white font-bold text-sm">
+              EZ
             </div>
+            <span className="text-lg font-semibold text-gray-900">EZWill</span>
           </div>
-        </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-8">
-          {children}
-        </main>
+          {/* Navigation */}
+          <nav className="flex-1 space-y-1 px-3 py-4">
+            {NAV_ITEMS.map((item) => {
+              const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-amber-50 text-amber-700'
+                      : 'text-gray-600 hover:bg-amber-50 hover:text-amber-700'
+                  }`}
+                >
+                  <NavIcon icon={item.icon} />
+                  {item.label}
+                </Link>
+              )
+            })}
+          </nav>
+
+          {/* Sign Out + Footer */}
+          <div className="border-t border-gray-100 px-3 py-3">
+            <button
+              onClick={() => logout()}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign Out
+            </button>
+          </div>
+          <div className="border-t border-gray-100 px-6 py-4">
+            <p className="text-xs text-gray-400">EZWill v1.0</p>
+          </div>
+        </aside>
+
+        {/* Main area */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Top bar */}
+          <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-8">
+            <h1 className="text-sm font-semibold text-gray-900">Vaturi &amp; Cho LLP</h1>
+            <div className="flex items-center gap-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-sm font-medium text-amber-700">
+                JC
+              </div>
+            </div>
+          </header>
+
+          {/* Page content */}
+          <main className="flex-1 overflow-y-auto p-8">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </AuthGuard>
   )
 }

@@ -39,9 +39,11 @@ async def get_draft(draft_id: str):
         if not draft:
             raise HTTPException(404, "Draft not found")
         people = db.get_people(draft_id)
+        liabilities = db.get_liabilities(draft_id)
         return {
             **dict(draft),
             "people": [dict(p) for p in people],
+            "liabilities": liabilities,
         }
 
 @router.put("/{draft_id}")
@@ -92,6 +94,10 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest):
         # Upsert assets
         if body.assets is not None:
             db.upsert_assets(draft_id, body.assets)
+
+        # Save liabilities
+        if body.liabilities is not None:
+            db.save_liabilities(draft_id, body.liabilities)
 
         # Upsert AI flags
         if body.ai_flags is not None:

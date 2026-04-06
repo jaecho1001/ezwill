@@ -11,6 +11,8 @@ from routes.agents import router as agents_router
 from routes.clauses import router as clauses_router
 from routes.documents import router as documents_router
 from routes.review import router as review_router
+from routes.auth import router as auth_router
+from routes.export import router as export_router
 
 load_dotenv()
 
@@ -41,6 +43,8 @@ app.include_router(agents_router, prefix="/agents", tags=["agents"])
 app.include_router(clauses_router, prefix="/api/drafts", tags=["clauses"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
 app.include_router(review_router, prefix="/api/review", tags=["review"])
+app.include_router(auth_router)
+app.include_router(export_router, prefix="/api/export", tags=["export"])
 
 @app.get("/")
 async def health():

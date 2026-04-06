@@ -99,6 +99,7 @@ class EWDbWriter:
             'lawyer_notes', 'design_decisions', 'submitted_at',
             'reviewed_at', 'approved_at',
             'client_first_name', 'client_last_name', 'client_email', 'client_phone',
+            'liabilities',
         }
         safe = {k: v for k, v in updates.items() if k in allowed}
         if not safe:
@@ -311,6 +312,93 @@ class EWDbWriter:
             WHERE draft_id = %s AND document_type = %s
         """, (file_path, draft_id, document_type))
         return True
+
+    # ── Client Links ─────────────────────────────────────────────────────────
+
+    # ── Liabilities ──────────────────────────────────────────────────────────
+
+    def save_liabilities(self, draft_id: str, liabilities: list) -> bool:
+        """Save liabilities to draft JSONB column."""
+        self.execute(
+            "UPDATE ew_will_drafts SET liabilities = %s, updated_at = now() WHERE id = %s",
+            (psycopg2.extras.Json(liabilities), draft_id)
+        )
+        return True
+
+    def get_liabilities(self, draft_id: str) -> list:
+        """Get liabilities from draft."""
+        row = self.fetchone(
+            "SELECT liabilities FROM ew_will_drafts WHERE id = %s",
+            (draft_id,)
+        )
+        if row and row.get('liabilities'):
+            return row['liabilities']
+        return []
+
+    # ── Review ─────────────────────────────────────────────────────────────
+
+    def save_review_approval(self, draft_id: str, document_type: str, approved_by: str) -> bool:
+        """Upsert review approval."""
+        self.execute("""
+            INSERT INTO ew_review_approvals (draft_id, document_type, approved_by, approved_at)
+            VALUES (%s, %s, %s, now())
+            ON CONFLICT (draft_id, document_type) DO UPDATE SET
+                approved_at = now(),
+                approved_by = EXCLUDED.approved_by
+        """, (draft_id, document_type, approved_by))
+        return True
+
+    def get_review_approvals(self, draft_id: str) -> list:
+        """Get all approvals for a draft."""
+        return self.fetchall(
+            "SELECT * FROM ew_review_approvals WHERE draft_id = %s ORDER BY approved_at",
+            (draft_id,)
+        )
+
+    def save_review_comment(self, draft_id: str, document_type: str,
+                            clause_id: str, comment_text: str,
+                            commenter_name: str) -> dict:
+        """Insert a review comment, return the created record."""
+        return self.fetchone("""
+            INSERT INTO ew_review_comments
+                (draft_id, document_type, clause_id, comment_text, commenter_name)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING *
+        """, (draft_id, document_type, clause_id, comment_text, commenter_name))
+
+    def get_review_comments(self, draft_id: str, document_type: str = None) -> list:
+        """Get review comments, optionally filtered by document_type."""
+        if document_type:
+            return self.fetchall(
+                "SELECT * FROM ew_review_comments WHERE draft_id = %s AND document_type = %s ORDER BY created_at",
+                (draft_id, document_type)
+            )
+        return self.fetchall(
+            "SELECT * FROM ew_review_comments WHERE draft_id = %s ORDER BY created_at",
+            (draft_id,)
+        )
+
+    # ── Review Links ───────────────────────────────────────────────────────
+
+    def create_review_link(self, draft_id: str, client_name: str, language: str = 'en') -> dict:
+        """Create a review portal magic link (link_type='review')."""
+        return self.fetchone("""
+            INSERT INTO ew_client_links (draft_id, client_name, link_type)
+            VALUES (%s, %s, 'review')
+            RETURNING *
+        """, (draft_id, client_name))
+
+    def resolve_review_link(self, token: str) -> dict:
+        """Resolve a review link token."""
+        return self.fetchone("""
+            SELECT l.*, d.status as draft_status, d.language, d.current_step, d.completed_steps
+            FROM ew_client_links l
+            JOIN ew_will_drafts d ON d.id = l.draft_id
+            WHERE l.token = %s
+              AND l.link_type = 'review'
+              AND l.revoked = false
+              AND l.expires_at > now()
+        """, (token,))
 
     # ── Client Links ─────────────────────────────────────────────────────────
 

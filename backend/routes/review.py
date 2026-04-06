@@ -40,7 +40,10 @@ class CommentRequest(BaseModel):
 def _validate_review_token(token: str) -> dict:
     """Resolve and validate a review token. Returns link record or raises 401."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        link = db.resolve_link(token)
+        # Try review-specific link first, fall back to generic resolve_link
+        link = db.resolve_review_link(token)
+        if not link:
+            link = db.resolve_link(token)
     if not link:
         raise HTTPException(401, "Review link expired, revoked, or invalid")
     return link
@@ -56,17 +59,15 @@ def _get_review_documents(draft_id: str) -> list[dict]:
 
     # Get approval and comment data
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        approvals = db.fetchall(
-            "SELECT document_type, approved_at FROM ew_review_approvals WHERE draft_id = %s",
-            (draft_id,)
-        ) or []
-        comments = db.fetchall(
-            "SELECT document_type, count(*) as cnt FROM ew_review_comments WHERE draft_id = %s GROUP BY document_type",
-            (draft_id,)
-        ) or []
+        approvals = db.get_review_approvals(draft_id) or []
+        all_comments = db.get_review_comments(draft_id) or []
 
     approval_map = {a["document_type"]: a["approved_at"] for a in approvals}
-    comment_map = {c["document_type"]: c["cnt"] for c in comments}
+    # Build comment count per document_type
+    comment_map = {}
+    for c in all_comments:
+        dt = c["document_type"]
+        comment_map[dt] = comment_map.get(dt, 0) + 1
 
     documents = []
     for doc_type, title in DOCUMENT_TITLES.items():
@@ -277,13 +278,9 @@ async def approve_document(draft_id: str, document_type: str, body: ApproveReque
         raise HTTPException(404, "Draft not found")
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        db.execute("""
-            INSERT INTO ew_review_approvals (draft_id, document_type, approved_by, approved_at)
-            VALUES (%s, %s, %s, now())
-            ON CONFLICT (draft_id, document_type) DO UPDATE SET
-                approved_at = now(),
-                approved_by = EXCLUDED.approved_by
-        """, (draft_id, document_type, link.get("client_name", "client")))
+        db.save_review_approval(
+            draft_id, document_type, link.get("client_name", "client")
+        )
 
     logger.info("Document %s approved for draft %s", document_type, draft_id)
     return {"approved": True, "document_type": document_type}
@@ -302,17 +299,13 @@ async def add_comment(draft_id: str, body: CommentRequest):
         raise HTTPException(404, "Draft not found")
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        db.execute("""
-            INSERT INTO ew_review_comments
-                (draft_id, document_type, clause_id, comment_text, commenter_name)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (
+        db.save_review_comment(
             draft_id,
             body.document_type,
             body.clause_id,
             body.comment,
             link.get("client_name", "client"),
-        ))
+        )
 
     logger.info("Comment added on clause %s for draft %s", body.clause_id, draft_id)
     return {"added": True}
