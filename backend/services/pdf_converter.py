@@ -2,6 +2,7 @@
 PDF Converter -- converts DOCX to PDF.
 Uses LibreOffice in headless mode if available, otherwise returns None.
 """
+from __future__ import annotations
 
 import os
 import shutil

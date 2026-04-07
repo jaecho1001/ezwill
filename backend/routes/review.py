@@ -313,7 +313,7 @@ async def add_comment(draft_id: str, body: CommentRequest):
 
 # ── Clause Metadata Loader ───────────────────────────────────────────────────
 
-_clause_meta_cache: dict | None = None
+_clause_meta_cache = None  # Optional[dict]
 
 def _load_clause_metadata() -> dict:
     """
