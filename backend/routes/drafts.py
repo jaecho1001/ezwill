@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from models import CreateDraftRequest, UpdateDraftRequest
+from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 import os
 import json
@@ -9,7 +10,7 @@ router = APIRouter()
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
 
 @router.post("")
-async def create_draft(body: CreateDraftRequest):
+async def create_draft(body: CreateDraftRequest, _token: str = Depends(verify_dashboard_token)):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.create_draft(
             client_first_name=body.client_first_name,
@@ -27,13 +28,14 @@ async def list_drafts(
     status: str = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    _token: str = Depends(verify_dashboard_token),
 ):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         drafts = db.list_drafts(limit=limit, offset=offset, status=status)
         return {"drafts": [dict(d) for d in drafts], "total": len(drafts)}
 
 @router.get("/{draft_id}")
-async def get_draft(draft_id: str):
+async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
         if not draft:
@@ -47,7 +49,7 @@ async def get_draft(draft_id: str):
         }
 
 @router.put("/{draft_id}")
-async def update_draft(draft_id: str, body: UpdateDraftRequest):
+async def update_draft(draft_id: str, body: UpdateDraftRequest, _token: str = Depends(verify_dashboard_token)):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
         if not draft:
@@ -106,7 +108,7 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest):
         return dict(updated)
 
 @router.post("/{draft_id}/submit")
-async def submit_draft(draft_id: str):
+async def submit_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     from services.notification_service import notify_lawyer_submission
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:

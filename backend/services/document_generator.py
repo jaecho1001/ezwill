@@ -4,6 +4,8 @@ Generates professional DOCX documents from clause selections using python-docx.
 Supports all 8 document types with table-based signing pages.
 """
 
+from __future__ import annotations
+
 import re
 import io
 import logging

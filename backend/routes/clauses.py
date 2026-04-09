@@ -3,8 +3,9 @@ Clause selection routes for EZWill.
 Manages lawyer's clause selections per draft per document type.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from models import SaveClausesRequest, DocumentConfigUpdate
+from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 import os
 
@@ -14,7 +15,7 @@ DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
 
 
 @router.get("/{draft_id}/clauses")
-async def get_all_clause_selections(draft_id: str):
+async def get_all_clause_selections(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """Get all clause selections for a draft, grouped by document type."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
@@ -25,7 +26,7 @@ async def get_all_clause_selections(draft_id: str):
 
 
 @router.get("/{draft_id}/clauses/{document_type}")
-async def get_clause_selections(draft_id: str, document_type: str):
+async def get_clause_selections(draft_id: str, document_type: str, _token: str = Depends(verify_dashboard_token)):
     """Get clause selections for a specific document type."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
@@ -36,7 +37,7 @@ async def get_clause_selections(draft_id: str, document_type: str):
 
 
 @router.put("/{draft_id}/clauses/{document_type}")
-async def save_clause_selections(draft_id: str, document_type: str, body: SaveClausesRequest):
+async def save_clause_selections(draft_id: str, document_type: str, body: SaveClausesRequest, _token: str = Depends(verify_dashboard_token)):
     """Save (upsert) all clause selections for a draft + document type."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
@@ -53,7 +54,7 @@ async def save_clause_selections(draft_id: str, document_type: str, body: SaveCl
 
 
 @router.delete("/{draft_id}/clauses/{document_type}")
-async def reset_clause_selections(draft_id: str, document_type: str):
+async def reset_clause_selections(draft_id: str, document_type: str, _token: str = Depends(verify_dashboard_token)):
     """Delete all saved selections for a draft + document type (frontend reloads defaults)."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
@@ -68,7 +69,7 @@ async def reset_clause_selections(draft_id: str, document_type: str):
 
 
 @router.get("/{draft_id}/documents")
-async def get_document_configs(draft_id: str):
+async def get_document_configs(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """List document configs for a draft with generation status."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
@@ -80,7 +81,7 @@ async def get_document_configs(draft_id: str):
 
 
 @router.put("/{draft_id}/documents/{document_type}")
-async def update_document_config(draft_id: str, document_type: str, body: DocumentConfigUpdate):
+async def update_document_config(draft_id: str, document_type: str, body: DocumentConfigUpdate, _token: str = Depends(verify_dashboard_token)):
     """Enable or disable a document type for a draft."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)

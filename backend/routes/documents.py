@@ -9,7 +9,7 @@ import zipfile
 import logging
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 
 from models import GenerateDocumentRequest
@@ -21,6 +21,7 @@ from services.document_generator import (
     resolve_variables,
 )
 from services.pdf_converter import convert_to_pdf
+from routes.auth import verify_dashboard_token
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ def _clause_to_html(clause: dict, variables: dict) -> str:
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @router.post("/{draft_id}/generate")
-async def generate_document(draft_id: str, body: GenerateDocumentRequest):
+async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token: str = Depends(verify_dashboard_token)):
     """
     Generate a single document for a draft.
     Returns the generated file as a download (DOCX or PDF).
@@ -203,7 +204,7 @@ async def generate_document(draft_id: str, body: GenerateDocumentRequest):
 
 
 @router.post("/{draft_id}/generate-all")
-async def generate_all_documents(draft_id: str):
+async def generate_all_documents(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """
     Generate all enabled documents for a draft.
     Returns a ZIP file containing all DOCX files.
@@ -339,7 +340,7 @@ async def preview_document(draft_id: str, document_type: str):
 
 
 @router.get("/{draft_id}/list")
-async def list_documents(draft_id: str):
+async def list_documents(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """
     List available documents for a draft with generation status.
     """

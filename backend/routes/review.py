@@ -8,9 +8,10 @@ import os
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 
+from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 from services.draft_service import get_full_draft
 from services.document_generator import DOCUMENT_TITLES, resolve_variables
@@ -145,6 +146,33 @@ def _build_variables(draft: dict) -> dict:
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
+
+BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
+
+
+@router.post("/link/{draft_id}")
+async def create_review_link(draft_id: str, _token: str = Depends(verify_dashboard_token)):
+    """Create a review portal magic link for a client (lawyer action)."""
+    draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
+    if not draft:
+        raise HTTPException(404, "Draft not found")
+
+    client_name = f"{draft.get('client_first_name', '')} {draft.get('client_last_name', '')}".strip()
+    language = draft.get("language", "en")
+
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        link = db.create_review_link(draft_id, client_name, language)
+
+    token = str(link["token"])
+    link_url = f"{BASE_URL}/review?t={token}"
+
+    return {
+        "token": token,
+        "link_url": link_url,
+        "draft_id": draft_id,
+        "client_name": client_name,
+    }
+
 
 @router.post("/token/{token}/resolve")
 async def resolve_review_token(token: str):

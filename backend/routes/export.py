@@ -9,9 +9,10 @@ import os
 import logging
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 
+from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 from services.draft_service import get_full_draft
 
@@ -90,7 +91,7 @@ def _get_ownership(asset: dict) -> str:
 
 
 @router.get("/{draft_id}/assets")
-async def export_assets_csv(draft_id: str):
+async def export_assets_csv(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """Export client assets as CSV (Excel-compatible)."""
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
@@ -129,7 +130,7 @@ async def export_assets_csv(draft_id: str):
 
 
 @router.get("/{draft_id}/liabilities")
-async def export_liabilities_csv(draft_id: str):
+async def export_liabilities_csv(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """Export client liabilities as CSV (Excel-compatible)."""
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
@@ -168,7 +169,7 @@ async def export_liabilities_csv(draft_id: str):
 
 
 @router.get("/{draft_id}/estate-summary")
-async def export_estate_summary_csv(draft_id: str):
+async def export_estate_summary_csv(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """Export complete estate summary (assets + liabilities + net worth) as CSV."""
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:

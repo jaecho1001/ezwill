@@ -1,5 +1,7 @@
 // API client for EZWill backend at :8003 (proxied via /api/*)
 
+import { getAuthHeaders } from '@/lib/auth'
+
 export interface DraftSyncPayload {
   aboutYou?: Record<string, unknown>
   yourFamily?: Record<string, unknown>
@@ -67,7 +69,7 @@ export async function saveDraftToServer(
   try {
     const res = await fetch(`/api/drafts/${draftId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({
         about_you: payload.aboutYou,
         your_family: payload.yourFamily,
@@ -92,7 +94,10 @@ export async function saveDraftToServer(
 // Submit final draft
 export async function submitDraft(draftId: string): Promise<{ submitted_at: string } | null> {
   try {
-    const res = await fetch(`/api/drafts/${draftId}/submit`, { method: 'POST' })
+    const res = await fetch(`/api/drafts/${draftId}/submit`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders() },
+    })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -110,7 +115,9 @@ export async function listDrafts(params?: {
   if (params?.status) qs.set('status', params.status)
   if (params?.limit) qs.set('limit', String(params.limit))
   if (params?.offset) qs.set('offset', String(params.offset))
-  const res = await fetch(`/api/drafts?${qs}`)
+  const res = await fetch(`/api/drafts?${qs}`, {
+    headers: { ...getAuthHeaders() },
+  })
   if (!res.ok) throw new Error('Failed to fetch drafts')
   return res.json()
 }
@@ -118,7 +125,9 @@ export async function listDrafts(params?: {
 // Get single draft (for lawyer dashboard detail)
 export async function getDraft(draftId: string): Promise<DraftListItem & { people: unknown[]; ai_flags: unknown[] } | null> {
   try {
-    const res = await fetch(`/api/drafts/${draftId}`)
+    const res = await fetch(`/api/drafts/${draftId}`, {
+      headers: { ...getAuthHeaders() },
+    })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -138,8 +147,22 @@ export async function createMagicLink(params: {
   try {
     const res = await fetch('/api/links/create', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ ...params, firm_id: 'firm_demo' }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
+// Create a review portal magic link for a client
+export async function createReviewLink(draftId: string): Promise<{ token: string; link_url: string } | null> {
+  try {
+    const res = await fetch(`/api/review/link/${draftId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     })
     if (!res.ok) return null
     return res.json()

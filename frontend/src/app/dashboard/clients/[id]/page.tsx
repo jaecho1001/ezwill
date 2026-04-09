@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { AiFlagsSummary } from '@/components/dashboard/ai-flags-summary'
 import { EstateOverview } from '@/components/dashboard/estate-overview'
-import { getDraft } from '@/lib/api/drafts'
+import { getDraft, createReviewLink } from '@/lib/api/drafts'
 import { cn } from '@/lib/utils'
 
 const SECTION_LABELS = [
@@ -124,6 +124,30 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const [reviewLink, setReviewLink] = useState<string | null>(null)
+  const [reviewLinkLoading, setReviewLinkLoading] = useState(false)
+  const [reviewLinkCopied, setReviewLinkCopied] = useState(false)
+
+  const handleSendReviewLink = useCallback(async () => {
+    setReviewLinkLoading(true)
+    try {
+      const result = await createReviewLink(id)
+      if (result) {
+        const url = `${window.location.origin}/review?t=${result.token}`
+        setReviewLink(url)
+      }
+    } finally {
+      setReviewLinkLoading(false)
+    }
+  }, [id])
+
+  const handleCopyReviewLink = useCallback(() => {
+    if (reviewLink) {
+      navigator.clipboard.writeText(reviewLink)
+      setReviewLinkCopied(true)
+      setTimeout(() => setReviewLinkCopied(false), 2000)
+    }
+  }, [reviewLink])
 
   useEffect(() => {
     getDraft(id)
@@ -275,7 +299,39 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             Generate Documents
           </Button>
         </Link>
+        <Button
+          variant="outline"
+          onClick={handleSendReviewLink}
+          disabled={reviewLinkLoading}
+        >
+          <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          {reviewLinkLoading ? 'Generating...' : 'Send Review Link'}
+        </Button>
       </div>
+
+      {/* Review Link Display */}
+      {reviewLink && (
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-gray-500 mb-1">Client Review Link</p>
+              <code className="block truncate rounded bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                {reviewLink}
+              </code>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyReviewLink}
+              className="shrink-0"
+            >
+              {reviewLinkCopied ? 'Copied!' : 'Copy'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* AI Flags */}
       <AiFlagsSummary flags={flags} />
