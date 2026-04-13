@@ -17,6 +17,8 @@ export default function NewClientPage() {
   const [phone, setPhone] = useState('')
   const [language, setLanguage] = useState('en')
   const [note, setNote] = useState('')
+  const [sendEmail, setSendEmail] = useState(true)
+  const [sendSms, setSendSms] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<CreateLinkResponse | null>(null)
@@ -39,6 +41,8 @@ export default function NewClientPage() {
       client_phone: phone.trim() || undefined,
       language,
       note_for_client: note.trim() || undefined,
+      send_email: sendEmail && !!email.trim(),
+      send_sms: sendSms && !!phone.trim(),
     })
 
     setSubmitting(false)
@@ -216,6 +220,37 @@ export default function NewClientPage() {
                 placeholder="Any special instructions or notes for the client..."
                 rows={3}
               />
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-sm font-medium text-gray-700">Deliver link via:</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={sendEmail}
+                  onChange={(e) => setSendEmail(e.target.checked)}
+                  disabled={!email.trim()}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className={email.trim() ? 'text-gray-900' : 'text-gray-400'}>
+                  Email{!email.trim() && ' (enter email above)'}
+                </span>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={sendSms}
+                  onChange={(e) => setSendSms(e.target.checked)}
+                  disabled={!phone.trim()}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className={phone.trim() ? 'text-gray-900' : 'text-gray-400'}>
+                  SMS{!phone.trim() && ' (enter phone above)'}
+                </span>
+              </label>
+              <p className="text-xs text-gray-500">
+                Messages sent via GoHighLevel (GHL) from {process.env.NEXT_PUBLIC_FIRM_NAME || 'Vaturi & Cho LLP'}.
+              </p>
             </div>
 
             {error && (

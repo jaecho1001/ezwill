@@ -127,19 +127,30 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [reviewLink, setReviewLink] = useState<string | null>(null)
   const [reviewLinkLoading, setReviewLinkLoading] = useState(false)
   const [reviewLinkCopied, setReviewLinkCopied] = useState(false)
+  const [reviewDeliveryStatus, setReviewDeliveryStatus] = useState<{ email: boolean; sms: boolean } | null>(null)
+  const [reviewSendEmail, setReviewSendEmail] = useState(true)
+  const [reviewSendSms, setReviewSendSms] = useState(true)
 
   const handleSendReviewLink = useCallback(async () => {
     setReviewLinkLoading(true)
+    setReviewDeliveryStatus(null)
     try {
-      const result = await createReviewLink(id)
+      const result = await createReviewLink(id, {
+        send_email: reviewSendEmail,
+        send_sms: reviewSendSms,
+      })
       if (result) {
         const url = `${window.location.origin}/review?t=${result.token}`
         setReviewLink(url)
+        setReviewDeliveryStatus({
+          email: result.email_sent ?? false,
+          sms: result.sms_sent ?? false,
+        })
       }
     } finally {
       setReviewLinkLoading(false)
     }
-  }, [id])
+  }, [id, reviewSendEmail, reviewSendSms])
 
   const handleCopyReviewLink = useCallback(() => {
     if (reviewLink) {
@@ -311,27 +322,62 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         </Button>
       </div>
 
-      {/* Review Link Display */}
-      {reviewLink && (
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-500 mb-1">Client Review Link</p>
-              <code className="block truncate rounded bg-gray-100 px-3 py-2 text-sm text-gray-700">
-                {reviewLink}
-              </code>
+      {/* Review Link Delivery Options */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-gray-700">Review Link Delivery</p>
+            <div className="flex gap-3 text-xs">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={reviewSendEmail}
+                  onChange={(e) => setReviewSendEmail(e.target.checked)}
+                  disabled={!draft.client_email}
+                  className="h-3.5 w-3.5 rounded border-gray-300"
+                />
+                <span className={draft.client_email ? 'text-gray-700' : 'text-gray-400'}>
+                  Email {draft.client_email ? `(${draft.client_email})` : '(not set)'}
+                </span>
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={reviewSendSms}
+                  onChange={(e) => setReviewSendSms(e.target.checked)}
+                  disabled={!draft.client_phone}
+                  className="h-3.5 w-3.5 rounded border-gray-300"
+                />
+                <span className={draft.client_phone ? 'text-gray-700' : 'text-gray-400'}>
+                  SMS {draft.client_phone ? `(${draft.client_phone})` : '(not set)'}
+                </span>
+              </label>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCopyReviewLink}
-              className="shrink-0"
-            >
-              {reviewLinkCopied ? 'Copied!' : 'Copy'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+          {reviewLink && (
+            <>
+              <div className="flex items-center gap-3">
+                <code className="block flex-1 truncate rounded bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                  {reviewLink}
+                </code>
+                <Button variant="outline" size="sm" onClick={handleCopyReviewLink} className="shrink-0">
+                  {reviewLinkCopied ? 'Copied!' : 'Copy'}
+                </Button>
+              </div>
+              {reviewDeliveryStatus && (
+                <p className="text-xs text-gray-500">
+                  Delivered via GHL:
+                  {reviewDeliveryStatus.email && <span className="ml-1 text-green-600">✓ Email sent</span>}
+                  {reviewDeliveryStatus.sms && <span className="ml-1 text-green-600">✓ SMS sent</span>}
+                  {!reviewDeliveryStatus.email && !reviewDeliveryStatus.sms && (
+                    <span className="ml-1 text-amber-600">⚠ Copy link manually (no channels sent)</span>
+                  )}
+                </p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* AI Flags */}
       <AiFlagsSummary flags={flags} />

@@ -151,14 +151,30 @@ BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 
 
 @router.post("/link/{draft_id}")
-async def create_review_link(draft_id: str, _token: str = Depends(verify_dashboard_token)):
-    """Create a review portal magic link for a client (lawyer action)."""
+async def create_review_link(
+    draft_id: str,
+    send_email: bool = True,
+    send_sms: bool = True,
+    _token: str = Depends(verify_dashboard_token),
+):
+    """
+    Create a review portal magic link and deliver it to the client via GHL.
+    Query params send_email and send_sms control delivery channels.
+    """
+    from services.notification_service import send_review_link_to_client
+    import logging
+    logger = logging.getLogger(__name__)
+
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
         raise HTTPException(404, "Draft not found")
 
-    client_name = f"{draft.get('client_first_name', '')} {draft.get('client_last_name', '')}".strip()
+    client_first_name = draft.get("client_first_name", "")
+    client_last_name = draft.get("client_last_name", "")
+    client_name = f"{client_first_name} {client_last_name}".strip()
     language = draft.get("language", "en")
+    client_email = draft.get("client_email")
+    client_phone = draft.get("client_phone")
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         link = db.create_review_link(draft_id, client_name, language)
@@ -166,11 +182,32 @@ async def create_review_link(draft_id: str, _token: str = Depends(verify_dashboa
     token = str(link["token"])
     link_url = f"{BASE_URL}/review?t={token}"
 
+    # Deliver via GHL
+    delivery = {"email_sent": False, "sms_sent": False}
+    try:
+        delivery = await send_review_link_to_client(
+            client_email=client_email,
+            client_phone=client_phone,
+            client_first_name=client_first_name,
+            client_last_name=client_last_name,
+            review_link_url=link_url,
+            language=language,
+            send_email=send_email,
+            send_sms=send_sms,
+        )
+        logger.info(
+            f"Review link delivery: email_sent={delivery['email_sent']} sms_sent={delivery['sms_sent']}"
+        )
+    except Exception as e:
+        logger.error(f"Review link delivery failed: {e}")
+
     return {
         "token": token,
         "link_url": link_url,
         "draft_id": draft_id,
         "client_name": client_name,
+        "email_sent": delivery["email_sent"],
+        "sms_sent": delivery["sms_sent"],
     }
 
 

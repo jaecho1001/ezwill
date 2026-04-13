@@ -40,6 +40,12 @@ class CreateLinkRequest(BaseModel):
     language: str = 'en'
     firm_id: str = 'firm_demo'
     note_for_client: Optional[str] = None
+    send_email: bool = True   # send questionnaire link via email
+    send_sms: bool = True     # send questionnaire link via SMS (requires phone)
+
+class SendReviewLinkRequest(BaseModel):
+    send_email: bool = True
+    send_sms: bool = True
 
 class CreateLinkResponse(BaseModel):
     token: str

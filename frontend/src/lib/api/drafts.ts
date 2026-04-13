@@ -136,6 +136,7 @@ export async function getDraft(draftId: string): Promise<DraftListItem & { peopl
 }
 
 // Create magic link for new client (lawyer action)
+// Delivers the questionnaire link via GHL email + SMS
 export async function createMagicLink(params: {
   client_first_name: string
   client_last_name: string
@@ -143,12 +144,19 @@ export async function createMagicLink(params: {
   client_phone?: string
   language?: string
   note_for_client?: string
+  send_email?: boolean
+  send_sms?: boolean
 }): Promise<CreateLinkResponse | null> {
   try {
     const res = await fetch('/api/links/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ ...params, firm_id: 'firm_demo' }),
+      body: JSON.stringify({
+        ...params,
+        firm_id: 'firm_demo',
+        send_email: params.send_email ?? true,
+        send_sms: params.send_sms ?? true,
+      }),
     })
     if (!res.ok) return null
     return res.json()
@@ -158,9 +166,22 @@ export async function createMagicLink(params: {
 }
 
 // Create a review portal magic link for a client
-export async function createReviewLink(draftId: string): Promise<{ token: string; link_url: string } | null> {
+// Delivers via GHL email + SMS (use options to disable channels)
+export async function createReviewLink(
+  draftId: string,
+  options: { send_email?: boolean; send_sms?: boolean } = {}
+): Promise<{
+  token: string
+  link_url: string
+  email_sent?: boolean
+  sms_sent?: boolean
+} | null> {
   try {
-    const res = await fetch(`/api/review/link/${draftId}`, {
+    const qs = new URLSearchParams()
+    if (options.send_email !== undefined) qs.set('send_email', String(options.send_email))
+    if (options.send_sms !== undefined) qs.set('send_sms', String(options.send_sms))
+    const url = `/api/review/link/${draftId}${qs.toString() ? '?' + qs.toString() : ''}`
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     })
