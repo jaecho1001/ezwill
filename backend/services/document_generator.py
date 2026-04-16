@@ -30,21 +30,21 @@ FIRM_ADDRESS_LINE1 = "1110 Finch Avenue West, Suite 310"
 FIRM_ADDRESS_LINE2 = "Toronto, ON  M3J 2T2"
 
 DOCUMENT_TITLES: dict[str, str] = {
-    "probate_will": "LAST WILL AND TESTAMENT",
-    "non_probate_will": "LAST WILL AND TESTAMENT (NON-PROBATE)",
+    "single_will": "LAST WILL AND TESTAMENT",
+    "probate_will": "LAST WILL AND TESTAMENT (PROBATE WILL)",
+    "non_probate_will": "LAST WILL AND TESTAMENT (NON-PROBATE WILL)",
     "poa_property": "CONTINUING POWER OF ATTORNEY FOR PROPERTY",
     "poa_personal_care": "POWER OF ATTORNEY FOR PERSONAL CARE",
     "affidavit_execution": "AFFIDAVIT OF EXECUTION",
-    "affidavit_execution_np": "AFFIDAVIT OF EXECUTION (NON-PROBATE WILL)",
-    "affidavit_execution_poa_prop": "AFFIDAVIT OF EXECUTION (POWER OF ATTORNEY FOR PROPERTY)",
-    "affidavit_execution_poa_pc": "AFFIDAVIT OF EXECUTION (POWER OF ATTORNEY FOR PERSONAL CARE)",
+    "affidavit_execution_probate": "AFFIDAVIT OF EXECUTION (PROBATE WILL)",
+    "affidavit_execution_non_probate": "AFFIDAVIT OF EXECUTION (NON-PROBATE WILL)",
 }
 
-WILL_TYPES = {"probate_will", "non_probate_will"}
+WILL_TYPES = {"single_will", "probate_will", "non_probate_will"}
 POA_TYPES = {"poa_property", "poa_personal_care"}
 AFFIDAVIT_TYPES = {
-    "affidavit_execution", "affidavit_execution_np",
-    "affidavit_execution_poa_prop", "affidavit_execution_poa_pc",
+    "affidavit_execution", "affidavit_execution_probate",
+    "affidavit_execution_non_probate",
 }
 
 VARIABLE_PATTERN = re.compile(r"\{\{(\w+)\}\}")
@@ -383,7 +383,12 @@ class DocumentGenerator:
             or "[TESTATOR NAME]"
         )
         pronoun = variables.get("pronoun", "his/her")
-        will_type_label = "Primary" if document_type == "probate_will" else "Non-Probate"
+        if document_type == "probate_will":
+            will_type_label = "Primary"
+        elif document_type == "non_probate_will":
+            will_type_label = "Non-Probate"
+        else:
+            will_type_label = ""  # single_will — no qualifier
         num_pages = signing_data.get("numberOfPages", variables.get("numberOfPages", "[__]"))
 
         # Testimonium heading
@@ -407,7 +412,7 @@ class DocumentGenerator:
         left_lines = [
             f"SIGNED, PUBLISHED AND DECLARED  )",
             f"by the said Testator, {testator_name.upper()}  )",
-            f"as {pronoun} {will_type_label}  )",
+            f"as {pronoun} {(will_type_label + ' ') if will_type_label else ''}  )",
             f"Will, consisting of {num_pages} pages  )",
             f"including this page, in the  )",
             f"presence of us, both present  )",

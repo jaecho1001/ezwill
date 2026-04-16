@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { Check } from 'lucide-react'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
+import { useDraftSync } from '@/hooks/use-draft-sync'
 import { WILL_STEPS } from '@/lib/constants/steps'
 import { Progress } from '@/components/ui/progress'
 import { LanguageToggle } from './language-toggle'
@@ -12,6 +13,9 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   const { will } = useWillForm()
   const { t } = useTranslation()
   const pathname = usePathname()
+
+  // Auto-sync draft to server (debounced 1.5s). No-op if no draftId in context.
+  useDraftSync()
 
   const currentStepConfig = WILL_STEPS.find(s => pathname.includes(s.key))
   const currentStepIndex = currentStepConfig ? WILL_STEPS.indexOf(currentStepConfig) : 0

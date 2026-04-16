@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { getDraft } from '@/lib/api/drafts'
+import { getAuthHeaders } from '@/lib/auth'
 import {
   willDocumentTypes,
   determineRequiredDocuments,
@@ -92,9 +93,9 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
 
     // Call the generation API
     try {
-      const res = await fetch(`/api/drafts/${id}/generate`, {
+      const res = await fetch(`/api/documents/${id}/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ document_type: docType }),
       })
 
@@ -138,6 +139,28 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
       }
     }
     setGeneratingAll(false)
+  }
+
+  async function handleDownload(documentType: string, format: 'docx' | 'pdf') {
+    try {
+      const res = await fetch(`/api/documents/${id}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ document_type: documentType, format }),
+      })
+      if (!res.ok) throw new Error('Download failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${documentType}.${format}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   if (loading) {
@@ -256,13 +279,13 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
                           >
                             {previewDoc === doc.docType ? 'Hide Preview' : 'Preview'}
                           </Button>
-                          <Button size="sm" variant="ghost" title="Download Word">
+                          <Button size="sm" variant="ghost" title="Download Word" onClick={() => handleDownload(doc.docType, 'docx')}>
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
                             .docx
                           </Button>
-                          <Button size="sm" variant="ghost" title="Download PDF">
+                          <Button size="sm" variant="ghost" title="Download PDF" onClick={() => handleDownload(doc.docType, 'pdf')}>
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
@@ -308,7 +331,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
                   </p>
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-center">
                     <p className="text-sm text-amber-700">
-                      Connect the <code className="rounded bg-amber-100 px-1">/api/drafts/:id/generate</code> endpoint to enable full document preview.
+                      Connect the <code className="rounded bg-amber-100 px-1">/api/documents/:id/generate</code> endpoint to enable full document preview.
                     </p>
                   </div>
                 </div>

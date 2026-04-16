@@ -4,7 +4,8 @@ import { useEffect, useState, use, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { getDraft, saveDraftToServer } from '@/lib/api/drafts'
+import { getDraft } from '@/lib/api/drafts'
+import { getAuthHeaders } from '@/lib/auth'
 import {
   willDocumentTypes,
   buildDefaultSelections,
@@ -23,40 +24,48 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
   const [draftData, setDraftData] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
-    getDraft(id)
-      .then((res) => {
+    async function loadData() {
+      try {
+        const res = await getDraft(id)
         if (!res) {
           setError('Draft not found')
           return
         }
         setDraftData(res as unknown as Record<string, unknown>)
 
-        // Initialize clause selections from draft or defaults
-        const stored = (res as unknown as { tier2_clauses?: Record<string, SelectedWillClause[]> }).tier2_clauses
+        // Load clauses from dedicated clause API
         const initial: Record<string, SelectedWillClause[]> = {}
-        for (const docType of willDocumentTypes) {
-          if (stored && stored[docType.id] && Array.isArray(stored[docType.id])) {
-            initial[docType.id] = stored[docType.id]
-          } else if (stored && stored[docType.id]) {
-            // Legacy format: array of clause IDs
-            const ids = stored[docType.id] as unknown as string[]
-            if (Array.isArray(ids)) {
-              const defaults = buildDefaultSelections(docType.id)
-              initial[docType.id] = defaults.map((sc) => ({
-                ...sc,
-                included: ids.includes(sc.clauseId),
-              }))
-            } else {
-              initial[docType.id] = buildDefaultSelections(docType.id)
+        try {
+          const clauseRes = await fetch(`/api/drafts/${id}/clauses`, {
+            headers: { ...getAuthHeaders() },
+          })
+          if (clauseRes.ok) {
+            const stored = await clauseRes.json() as Record<string, SelectedWillClause[]>
+            for (const docType of willDocumentTypes) {
+              if (stored[docType.id] && Array.isArray(stored[docType.id])) {
+                initial[docType.id] = stored[docType.id]
+              } else {
+                initial[docType.id] = buildDefaultSelections(docType.id)
+              }
             }
           } else {
+            for (const docType of willDocumentTypes) {
+              initial[docType.id] = buildDefaultSelections(docType.id)
+            }
+          }
+        } catch {
+          for (const docType of willDocumentTypes) {
             initial[docType.id] = buildDefaultSelections(docType.id)
           }
         }
         setClausesByDocType(initial)
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
+      } catch (err) {
+        setError((err as Error).message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
   }, [id])
 
   // Build variables from draft data for placeholder resolution
@@ -90,19 +99,24 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
   async function handleSave() {
     setSaving(true)
     setSaveSuccess(false)
-
     try {
-      await fetch(`/api/drafts/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier2_clauses: clausesByDocType }),
-      })
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
+      const promises = Object.entries(clausesByDocType).map(([docType, clauses]) =>
+        fetch(`/api/drafts/${id}/clauses/${docType}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ clauses }),
+        })
+      )
+      const results = await Promise.all(promises)
+      if (results.every(r => r.ok)) {
+        setSaveSuccess(true)
+        setTimeout(() => setSaveSuccess(false), 3000)
+      } else {
+        setError('Some clause selections failed to save')
+      }
     } catch {
       setError('Failed to save clause selections')
     }
-
     setSaving(false)
   }
 

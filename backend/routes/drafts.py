@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from models import CreateDraftRequest, UpdateDraftRequest
-from routes.auth import verify_dashboard_token
+from routes.auth import verify_dashboard_token, verify_client_or_dashboard_token
 from services.db import EWDbWriter
 import os
 import json
@@ -49,7 +49,7 @@ async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)
         }
 
 @router.put("/{draft_id}")
-async def update_draft(draft_id: str, body: UpdateDraftRequest, _token: str = Depends(verify_dashboard_token)):
+async def update_draft(draft_id: str, body: UpdateDraftRequest, _token: str = Depends(verify_client_or_dashboard_token)):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
         if not draft:
@@ -57,24 +57,21 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _token: str = De
 
         updates = {}
 
-        # Merge section data into tier2_clauses JSONB
-        existing_t2 = dict(draft).get('tier2_clauses') or {}
-
+        # Save questionnaire section data to their own JSONB columns.
+        # NOTE: tier2_clauses is NOT written here — clause selections go
+        # through the dedicated /clauses routes to avoid overwrites.
         if body.about_you is not None:
-            existing_t2['about_you'] = body.about_you
+            updates['about_you'] = json.dumps(body.about_you)
         if body.your_family is not None:
-            existing_t2['your_family'] = body.your_family
+            updates['your_family'] = json.dumps(body.your_family)
         if body.your_estate is not None:
-            existing_t2['your_estate'] = body.your_estate
+            updates['your_estate'] = json.dumps(body.your_estate)
         if body.your_arrangements is not None:
-            existing_t2['your_arrangements'] = body.your_arrangements
+            updates['your_arrangements'] = json.dumps(body.your_arrangements)
         if body.poa_property is not None:
-            existing_t2['poa_property'] = body.poa_property
+            updates['poa_property'] = json.dumps(body.poa_property)
         if body.poa_personal_care is not None:
-            existing_t2['poa_personal_care'] = body.poa_personal_care
-
-        if existing_t2:
-            updates['tier2_clauses'] = json.dumps(existing_t2)
+            updates['poa_personal_care'] = json.dumps(body.poa_personal_care)
 
         if body.current_step is not None:
             updates['current_step'] = body.current_step
@@ -108,7 +105,7 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _token: str = De
         return dict(updated)
 
 @router.post("/{draft_id}/submit")
-async def submit_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)):
+async def submit_draft(draft_id: str, _token: str = Depends(verify_client_or_dashboard_token)):
     from services.notification_service import notify_lawyer_submission
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:

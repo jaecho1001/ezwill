@@ -10,6 +10,7 @@ export interface DraftSyncPayload {
   poaProperty?: Record<string, unknown>
   poaPersonalCare?: Record<string, unknown>
   assets?: unknown[]
+  liabilities?: unknown[]
   people?: unknown[]
   aiFlags?: unknown[]
   currentStep?: number
@@ -64,12 +65,17 @@ export async function resolveLink(token: string): Promise<ResolvedLink | null> {
 // Save draft progress to server (debounced by caller)
 export async function saveDraftToServer(
   draftId: string,
-  payload: DraftSyncPayload
+  payload: DraftSyncPayload,
+  magicToken?: string,
 ): Promise<boolean> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...getAuthHeaders() }
+    if (magicToken) {
+      headers['X-Magic-Token'] = magicToken
+    }
     const res = await fetch(`/api/drafts/${draftId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers,
       body: JSON.stringify({
         about_you: payload.aboutYou,
         your_family: payload.yourFamily,
@@ -78,6 +84,7 @@ export async function saveDraftToServer(
         poa_property: payload.poaProperty,
         poa_personal_care: payload.poaPersonalCare,
         assets: payload.assets,
+        liabilities: payload.liabilities,
         people: payload.people,
         ai_flags: payload.aiFlags,
         current_step: payload.currentStep,
@@ -92,11 +99,15 @@ export async function saveDraftToServer(
 }
 
 // Submit final draft
-export async function submitDraft(draftId: string): Promise<{ submitted_at: string } | null> {
+export async function submitDraft(draftId: string, magicToken?: string): Promise<{ submitted_at: string } | null> {
   try {
+    const headers: Record<string, string> = { ...getAuthHeaders() }
+    if (magicToken) {
+      headers['X-Magic-Token'] = magicToken
+    }
     const res = await fetch(`/api/drafts/${draftId}/submit`, {
       method: 'POST',
-      headers: { ...getAuthHeaders() },
+      headers,
     })
     if (!res.ok) return null
     return res.json()

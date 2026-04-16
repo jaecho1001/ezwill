@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useCallback } from 'react'
 import { useWillForm } from '@/providers/will-form-provider'
+import { useDraft } from '@/providers/draft-provider'
 import { saveDraftToServer } from '@/lib/api/drafts'
 import type { WillDocument } from '@/lib/types/will'
 
@@ -23,8 +24,9 @@ function extractPeople(will: WillDocument): unknown[] {
   return people
 }
 
-export function useDraftSync(draftId: string | null) {
+export function useDraftSync() {
   const { will } = useWillForm()
+  const { draftId, token } = useDraft()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSyncedRef = useRef<string>('')
 
@@ -46,13 +48,14 @@ export function useDraftSync(draftId: string | null) {
       poaProperty: w.poaProperty as unknown as Record<string, unknown>,
       poaPersonalCare: w.poaPersonalCare as unknown as Record<string, unknown>,
       assets: w.assets,
+      liabilities: w.liabilities,
       people: extractPeople(w),
       aiFlags: w.aiFlags,
       currentStep: w.currentStep,
       completedSteps: w.completedSteps,
       language: w.language,
-    })
-  }, [draftId])
+    }, token ?? undefined)
+  }, [draftId, token])
 
   useEffect(() => {
     if (!draftId) return

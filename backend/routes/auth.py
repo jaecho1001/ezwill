@@ -1,7 +1,8 @@
 """Simple password-based auth for the EZWill lawyer dashboard."""
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel
+from typing import Optional
 import os
 import secrets
 import time
@@ -34,6 +35,37 @@ def verify_dashboard_token(authorization: str = Header(None)) -> str:
         _active_tokens.pop(token, None)
         raise HTTPException(status_code=401, detail="Token expired or invalid")
     return token
+
+
+def verify_client_or_dashboard_token(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_magic_token: Optional[str] = Header(None),
+) -> str:
+    """
+    Accepts either a dashboard Bearer token (lawyer) OR a magic link token (client).
+    Returns the token that was used.
+    """
+    # Try dashboard token first (Bearer)
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        if token in _active_tokens and time.time() < _active_tokens[token]:
+            return token
+
+    # Try magic link token (X-Magic-Token header or query param)
+    magic_token = x_magic_token or request.query_params.get("t")
+    if magic_token:
+        from services.db import EWDbWriter
+        schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+        try:
+            with EWDbWriter(schema) as db:
+                link = db.resolve_link(magic_token)
+                if link:
+                    return magic_token
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=401, detail="Missing or invalid authorization")
 
 
 @router.post("/login")
