@@ -168,7 +168,8 @@ class TestRoutePrefixes:
             assert r['path'].startswith('/api/drafts'), f"Route {r['path']} missing /api/drafts prefix"
 
     def test_all_link_routes_have_api_prefix(self):
-        link_routes = [r for r in get_routes() if 'token' in r['path']]
+        link_routes = [r for r in get_routes() if r['path'].startswith('/api/links')]
+        assert len(link_routes) > 0, "No routes under /api/links"
         for r in link_routes:
             assert r['path'].startswith('/api/links'), f"Route {r['path']} missing /api/links prefix"
 
