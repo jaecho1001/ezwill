@@ -13,6 +13,7 @@ from routes.documents import router as documents_router
 from routes.review import router as review_router
 from routes.auth import router as auth_router
 from routes.export import router as export_router
+from routes.ai_intake import router as ai_intake_router
 
 load_dotenv()
 
@@ -45,6 +46,7 @@ app.include_router(documents_router, prefix="/api/documents", tags=["documents"]
 app.include_router(review_router, prefix="/api/review", tags=["review"])
 app.include_router(auth_router)
 app.include_router(export_router, prefix="/api/export", tags=["export"])
+app.include_router(ai_intake_router, prefix="/api/ai/intake", tags=["ai-intake"])
 
 @app.get("/")
 async def health():

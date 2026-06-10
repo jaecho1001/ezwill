@@ -12,9 +12,13 @@ import {
 } from '@/lib/will-documents/index'
 import type { WillDocumentType, SelectedWillClause } from '@/types/will-document'
 import { ClauseEditor } from '@/components/editor/clause-editor'
+import { useWillVault } from '@/stores/will-vault-store'
+import { vaultToVariables } from '@/lib/will-documents/vault-to-variables'
 
 export default function Tier2Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const vaultStore = useWillVault(id)
+  const vault = vaultStore((s) => s.vault)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,12 +72,15 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
     loadData()
   }, [id])
 
-  // Build variables from draft data for placeholder resolution
+  // Build variables from the vault first (canonical source once intake is
+  // complete), falling back to legacy draft fields for any keys the vault
+  // doesn't cover. Empty vault values are skipped so legacy data can fill
+  // the gap without being overwritten by blanks.
   const variables = useMemo(() => {
     const d = draftData as Record<string, unknown>
     const aboutYou = (d.about_you ?? d.aboutYou ?? {}) as Record<string, string>
     const yourFamily = (d.your_family ?? d.yourFamily ?? {}) as Record<string, string>
-    return {
+    const legacy: Record<string, string> = {
       testatorFullName: [aboutYou.firstName, aboutYou.lastName].filter(Boolean).join(' ') || '[Full Name]',
       city: aboutYou.city || 'City',
       cityName: aboutYou.cityName || aboutYou.city || '[City]',
@@ -84,7 +91,13 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
       guardianFullName: '[Guardian Name]',
       date: new Date().toLocaleDateString('en-CA'),
     }
-  }, [draftData])
+    const fromVault = vaultToVariables(vault)
+    const merged: Record<string, string> = { ...legacy }
+    for (const [k, v] of Object.entries(fromVault)) {
+      if (v) merged[k] = v
+    }
+    return merged
+  }, [draftData, vault])
 
   const handleClausesChange = useCallback(
     (clauses: SelectedWillClause[]) => {
@@ -205,6 +218,8 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
         selectedClauses={currentClauses}
         onClausesChange={handleClausesChange}
         variables={variables}
+        willId={id}
+        vault={vault}
       />
     </div>
   )

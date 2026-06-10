@@ -25,6 +25,10 @@ services:
       DATABASE_URL: postgresql://ezwill:ezwill_dev@db:5432/caselawvision
       DEFAULT_SCHEMA: firm_demo
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_INTAKE_MODEL: ${ANTHROPIC_INTAKE_MODEL:-claude-sonnet-4-5}
+      AI_INTAKE_RATE_WINDOW_SECS: ${AI_INTAKE_RATE_WINDOW_SECS:-60}
+      AI_INTAKE_RATE_MAX_REQS: ${AI_INTAKE_RATE_MAX_REQS:-20}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-vaturi2026}
     depends_on:
       db:

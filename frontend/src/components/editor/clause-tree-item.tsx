@@ -12,6 +12,13 @@ interface ClauseTreeItemProps {
   onToggleInclude: () => void
   depth: number
   hasCustomText?: boolean
+  draggable?: boolean
+  isDragTarget?: boolean
+  applicability?: 'yes' | 'no' | 'unknown'
+  onDragStart?: (id: string) => void
+  onDragOver?: (id: string, e: React.DragEvent) => void
+  onDrop?: (id: string) => void
+  onDragEnd?: () => void
 }
 
 export function ClauseTreeItem({
@@ -22,13 +29,44 @@ export function ClauseTreeItem({
   onToggleInclude,
   depth,
   hasCustomText,
+  draggable,
+  isDragTarget,
+  applicability,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: ClauseTreeItemProps) {
   return (
     <div
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!onDragStart) return
+        e.dataTransfer.effectAllowed = 'move'
+        e.dataTransfer.setData('text/plain', clause.id)
+        onDragStart(clause.id)
+      }}
+      onDragOver={(e) => {
+        if (!onDragOver) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        onDragOver(clause.id, e)
+      }}
+      onDrop={(e) => {
+        if (!onDrop) return
+        e.preventDefault()
+        onDrop(clause.id)
+      }}
+      onDragEnd={() => onDragEnd?.()}
       className={cn(
-        'group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors cursor-pointer',
-        isSelected && 'bg-amber-50 border-l-2 border-amber-500',
-        !isSelected && 'hover:bg-gray-50 border-l-2 border-transparent'
+        'group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors cursor-pointer border-l-2',
+        isSelected
+          ? 'bg-amber-50 border-amber-500'
+          : isIncluded
+            ? 'border-green-500 hover:bg-gray-50'
+            : 'border-transparent hover:bg-gray-50',
+        !isIncluded && !clause.isFolder && 'opacity-60 hover:opacity-100',
+        isDragTarget && 'ring-2 ring-amber-400 ring-inset'
       )}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
       onClick={onSelect}
@@ -88,6 +126,14 @@ export function ClauseTreeItem({
 
       {/* Badges */}
       <div className="flex shrink-0 items-center gap-1">
+        {applicability === 'unknown' && (
+          <span
+            className="rounded bg-amber-100 px-1.5 py-0 text-[10px] font-medium text-amber-800"
+            title="Needs intake answers to know if this applies"
+          >
+            ?
+          </span>
+        )}
         <Badge
           variant={clause.tier === 1 ? 'secondary' : 'warning'}
           className="text-[10px] px-1.5 py-0"

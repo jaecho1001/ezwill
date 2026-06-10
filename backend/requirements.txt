@@ -10,4 +10,5 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-docx==1.1.2
 uuid==1.30
+anthropic==0.44.0
 # Notifications use GoHighLevel (GHL) Conversations API via httpx — no SendGrid

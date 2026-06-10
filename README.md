@@ -219,6 +219,23 @@ Based on Law Society of Ontario Annotated Will 2026 (199 pages) + firm precedent
 - `frontend/Dockerfile` — Node 22-alpine + Next.js build
 - `.env.example` — all required environment variables
 
+### AI Intake (conversational mode)
+
+Conversational intake at `/intake/{willId}?mode=chat` streams from `POST /api/ai/intake/chat` (SSE, Claude tool-use loop, max 5 iterations per turn).
+
+Environment variables (see `backend/.env.example`):
+
+| Var | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | *(empty)* | If set, route uses Claude. If empty or the SDK call fails, route falls back to a regex extractor automatically — UX stays intact. |
+| `ANTHROPIC_INTAKE_MODEL` | `claude-sonnet-4-5` | Override for cost/quality trade-off. Use `claude-haiku-4-5-20251001` for cheaper intake. |
+| `AI_INTAKE_RATE_WINDOW_SECS` | `60` | Sliding-window seconds. |
+| `AI_INTAKE_RATE_MAX_REQS` | `20` | Max requests per window per `draft_id`. Returns HTTP 429 with `Retry-After`. |
+
+Token usage per turn is logged structured (`ai_intake.claude.usage model=… input=N output=N …`) and surfaced to the client on the `done` SSE frame — the chat header shows `N in / M out` in real time.
+
+> **Multi-worker deployments:** the rate limiter is in-process. Move to Redis (or a sticky-session proxy) if you run >1 uvicorn worker.
+
 ---
 
 ## Pending — What's Not Done Yet
