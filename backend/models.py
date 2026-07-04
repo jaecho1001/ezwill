@@ -27,6 +27,8 @@ class UpdateDraftRequest(BaseModel):
     completed_steps: Optional[List[int]] = None
     language: Optional[str] = None
     status: Optional[str] = None
+    lawyer_notes: Optional[str] = None
+    design_decisions: Optional[dict] = None
 
 class SubmitDraftRequest(BaseModel):
     draft_id: str

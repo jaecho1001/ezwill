@@ -79,6 +79,11 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(ve
             updates['completed_steps'] = body.completed_steps
         if body.language is not None:
             updates['language'] = body.language
+        # Lawyer-only fields set from the dashboard.
+        if body.lawyer_notes is not None:
+            updates['lawyer_notes'] = body.lawyer_notes
+        if body.design_decisions is not None:
+            updates['design_decisions'] = json.dumps(body.design_decisions)
 
         # Update status to in_progress if still link_sent/opened
         if dict(draft)['status'] in ('link_sent', 'opened'):
