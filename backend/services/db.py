@@ -293,6 +293,31 @@ class EWDbWriter:
         )
         return True
 
+    # ── Firm Settings ─────────────────────────────────────────────────────────
+
+    def get_firm_settings(self) -> dict:
+        """Return the firm's settings blob (single row per schema), or {}."""
+        row = self.fetchone(
+            "SELECT settings FROM ew_firm_settings ORDER BY updated_at DESC LIMIT 1"
+        )
+        return dict(row).get("settings") or {} if row else {}
+
+    def upsert_firm_settings(self, settings: dict) -> dict:
+        """Persist the firm settings blob (single row per schema)."""
+        existing = self.fetchone("SELECT id FROM ew_firm_settings LIMIT 1")
+        if existing:
+            row = self.fetchone(
+                "UPDATE ew_firm_settings SET settings = %s, updated_at = now() "
+                "WHERE id = %s RETURNING settings",
+                (psycopg2.extras.Json(settings), existing["id"]),
+            )
+        else:
+            row = self.fetchone(
+                "INSERT INTO ew_firm_settings (settings) VALUES (%s) RETURNING settings",
+                (psycopg2.extras.Json(settings),),
+            )
+        return dict(row).get("settings") or {}
+
     # ── Document Configs ──────────────────────────────────────────────────────
 
     def save_document_config(self, draft_id: str, document_type: str, enabled: bool) -> bool:

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { getAuthHeaders } from '@/lib/auth'
 
 // ----- Types -----
 
@@ -143,19 +144,47 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError] = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState(false)
 
-  // Load from localStorage on mount
+  // Load from the server (source of truth), falling back to the local cache.
   useEffect(() => {
-    const saved = loadSettings()
-    if (saved) {
-      setFirm({ ...DEFAULT_FIRM, ...saved.firm })
-      setWill({ ...DEFAULT_WILL, ...saved.will })
-      setNotifications({ ...DEFAULT_NOTIFICATIONS, ...saved.notifications })
-      setBranding({ ...DEFAULT_BRANDING, ...saved.branding })
+    let cancelled = false
+    const apply = (s: { firm?: unknown; will?: unknown; notifications?: unknown; branding?: unknown }) => {
+      setFirm({ ...DEFAULT_FIRM, ...(s.firm as object) })
+      setWill({ ...DEFAULT_WILL, ...(s.will as object) })
+      setNotifications({ ...DEFAULT_NOTIFICATIONS, ...(s.notifications as object) })
+      setBranding({ ...DEFAULT_BRANDING, ...(s.branding as object) })
     }
+    async function load() {
+      try {
+        const res = await fetch('/api/settings', { headers: { ...getAuthHeaders() } })
+        if (res.ok) {
+          const { settings } = await res.json()
+          if (!cancelled && settings && Object.keys(settings).length > 0) {
+            apply(settings)
+            return
+          }
+        }
+      } catch {
+        // fall through to the local cache
+      }
+      const saved = loadSettings()
+      if (!cancelled && saved) apply(saved)
+    }
+    load()
+    return () => { cancelled = true }
   }, [])
 
-  function handleSave() {
-    saveSettings({ firm, will, notifications, branding })
+  async function handleSave() {
+    const payload = { firm, will, notifications, branding }
+    saveSettings(payload) // keep a local cache for offline / instant reload
+    try {
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ settings: payload }),
+      })
+    } catch {
+      // Local cache still holds the values; server sync will retry on next save.
+    }
     setToast(true)
     setTimeout(() => setToast(false), 2500)
   }

@@ -22,6 +22,7 @@ from services.document_generator import (
     DocumentGenerator,
     map_people_to_variables,
     vault_to_variables,
+    firm_variables,
 )
 
 
@@ -284,6 +285,39 @@ def test_clause_body_html_preserves_blocks_and_inline_italic():
     assert [b["indent"] for b in blocks] == [1, 2]
     assert blocks[1]["marker"] == "(a)"
     assert any(r[2] for r in blocks[0]["runs"])  # an italic run survived
+
+
+def test_firm_variables_project_settings_onto_documents():
+    """Settings wiring: saved firm identity must reach the document variables
+    (cover page) instead of the hardcoded default."""
+    settings = {
+        "firm": {
+            "firmName": "Kim & Park LLP",
+            "address1": "200 Bay Street, Suite 900",
+            "city": "Toronto",
+            "province": "ON",
+            "postalCode": "M5J 2J2",
+            "lsoNumber": "12345A",
+        }
+    }
+    v = firm_variables(settings)
+    assert v["firmName"] == "Kim & Park LLP"
+    assert v["firmAddressLine1"] == "200 Bay Street, Suite 900"
+    assert v["firmAddressLine2"] == "Toronto, ON  M5J 2J2"
+    assert v["lsoNumber"] == "12345A"
+    assert firm_variables({}) == {}
+
+
+def test_cover_page_uses_firm_name_from_variables():
+    docx_bytes = DocumentGenerator().generate_document(
+        "single_will",
+        [{"clause_id": "c", "title": "T", "template_text": "Body.",
+          "is_folder": False, "included": True, "sort_order": 1}],
+        {"firmName": "Kim & Park LLP", "firmAddressLine1": "200 Bay Street"},
+    )
+    text = _docx_text(docx_bytes)
+    assert "Kim & Park LLP" in text
+    assert "VATURI & CHO LLP" not in text
 
 
 def test_clause_selection_model_accepts_template_fields():

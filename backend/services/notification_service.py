@@ -43,6 +43,21 @@ FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@ezwill.app")
 NOTIFICATION_MODE = os.getenv("NOTIFICATION_MODE", "ghl")
 
 
+def _resolve_firm_name() -> str:
+    """Firm name from saved dashboard settings, falling back to the env/default,
+    so email + SMS branding reflects what the lawyer configured."""
+    try:
+        from services.db import EWDbWriter
+        schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+        with EWDbWriter(schema) as db:
+            name = (db.get_firm_settings().get("firm") or {}).get("firmName")
+            if name:
+                return name
+    except Exception:
+        pass
+    return FIRM_NAME
+
+
 # ──────────────────────────────────────────────────────────────────
 # GHL API Wrapper
 # ──────────────────────────────────────────────────────────────────
@@ -197,6 +212,7 @@ async def notify_lawyer_submission(draft: dict, flags: list) -> bool:
     Notify the firm when a client submits their will questionnaire.
     Sent via GHL email to FIRM_EMAIL.
     """
+    FIRM_NAME = _resolve_firm_name()
     client_name = (
         f"{draft.get('client_first_name', '')} {draft.get('client_last_name', '')}".strip()
     )
@@ -250,6 +266,7 @@ async def send_magic_link_to_client(
     Delivered via GHL as both Email and SMS (if phone provided).
     Returns: {'email_sent': bool, 'sms_sent': bool, 'contact_id': str | None}
     """
+    FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False, "contact_id": None}
 
     if NOTIFICATION_MODE == "disabled":
@@ -342,6 +359,7 @@ async def send_review_link_to_client(
     Send the client their document review portal link.
     Delivered via GHL as both Email and SMS (if phone provided).
     """
+    FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False, "contact_id": None}
 
     if NOTIFICATION_MODE == "disabled":
@@ -428,6 +446,7 @@ async def send_signing_reminder(
     Send a signing appointment reminder to the client.
     Delivered via GHL.
     """
+    FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False}
     if NOTIFICATION_MODE == "disabled":
         return result

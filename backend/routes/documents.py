@@ -21,6 +21,7 @@ from services.document_generator import (
     resolve_variables,
     map_people_to_variables,
     vault_to_variables,
+    firm_variables,
 )
 from services.pdf_converter import convert_to_pdf
 from routes.auth import verify_dashboard_token
@@ -99,6 +100,13 @@ def _build_variables(draft: dict) -> dict:
     for k, val in vault_to_variables(draft.get("vault") or {}).items():
         if val:
             variables[k] = val
+
+    # Firm identity from saved settings (cover page falls back to defaults).
+    try:
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            variables.update(firm_variables(db.get_firm_settings()))
+    except Exception:
+        logger.exception("failed to load firm settings for document variables")
 
     return variables
 

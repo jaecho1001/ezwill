@@ -19,6 +19,7 @@ from services.document_generator import (
     resolve_variables,
     map_people_to_variables,
     vault_to_variables,
+    firm_variables,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,18 @@ router = APIRouter()
 
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
 FIRM_NAME = os.getenv("FIRM_NAME", "Vaturi & Cho LLP")
+
+
+def _firm_display_name() -> str:
+    """Firm name from saved settings, falling back to the env/default."""
+    try:
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            name = (db.get_firm_settings().get("firm") or {}).get("firmName")
+            if name:
+                return name
+    except Exception:
+        pass
+    return FIRM_NAME
 
 
 # ── Models ───────────────────────────────────────────────────────────────────
@@ -148,6 +161,12 @@ def _build_variables(draft: dict) -> dict:
         if val:
             variables[k] = val
 
+    try:
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            variables.update(firm_variables(db.get_firm_settings()))
+    except Exception:
+        pass
+
     return variables
 
 
@@ -239,7 +258,7 @@ async def resolve_review_token(token: str):
         "client_first_name": draft.get("client_first_name", ""),
         "client_last_name": draft.get("client_last_name", ""),
         "language": link.get("language", "en"),
-        "firm_name": FIRM_NAME,
+        "firm_name": _firm_display_name(),
         "documents": documents,
         "all_approved": all_approved,
     }

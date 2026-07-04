@@ -211,6 +211,29 @@ def vault_to_variables(vault: dict) -> dict:
     return v
 
 
+def firm_variables(settings: dict) -> dict:
+    """Project saved firm settings into document variables (firm identity that
+    the cover page + review portal render). Keys the frontend settings page
+    wrote in camelCase (firmName, address1, lsoNumber, ...)."""
+    if not settings:
+        return {}
+    firm = settings.get("firm") or {}
+    v: dict = {}
+    if firm.get("firmName"):
+        v["firmName"] = firm["firmName"]
+    line1 = ", ".join(p for p in (firm.get("address1"), firm.get("address2")) if p)
+    if line1:
+        v["firmAddressLine1"] = line1
+    line2 = ", ".join(p for p in (firm.get("city"), firm.get("province")) if p)
+    if firm.get("postalCode"):
+        line2 = (line2 + "  " + firm["postalCode"]).strip()
+    if line2:
+        v["firmAddressLine2"] = line2
+    if firm.get("lsoNumber"):
+        v["lsoNumber"] = firm["lsoNumber"]
+    return v
+
+
 def resolve_variables(text: str, variables: dict) -> str:
     """
     Replace {{variableName}} placeholders with values from variables dict.
@@ -538,10 +561,15 @@ class DocumentGenerator:
         self, doc: Document, document_type: str, variables: dict
     ) -> None:
         """Add a firm-branded cover page."""
+        # Firm identity from saved settings, falling back to the built-in default.
+        firm_name = variables.get("firmName") or FIRM_NAME
+        addr1 = variables.get("firmAddressLine1") or FIRM_ADDRESS_LINE1
+        addr2 = variables.get("firmAddressLine2") or FIRM_ADDRESS_LINE2
+
         # Firm name
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(FIRM_NAME)
+        run = p.add_run(firm_name)
         run.bold = True
         run.font.size = Pt(16)
         run.font.name = "Times New Roman"
@@ -549,13 +577,13 @@ class DocumentGenerator:
         # Address
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(FIRM_ADDRESS_LINE1)
+        run = p.add_run(addr1)
         run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(FIRM_ADDRESS_LINE2)
+        run = p.add_run(addr2)
         run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
