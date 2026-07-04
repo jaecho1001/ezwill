@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 from services.draft_service import get_full_draft
-from services.document_generator import DOCUMENT_TITLES, resolve_variables
+from services.document_generator import DOCUMENT_TITLES, resolve_variables, map_people_to_variables
 
 logger = logging.getLogger(__name__)
 
@@ -136,19 +136,7 @@ def _build_variables(draft: dict) -> dict:
     variables["survivalDays"] = str(estate.get("survivalDays", 30))
     variables["trustDistributionAge"] = str(estate.get("trustDistributionAge", 21))
 
-    for person in draft.get("people", []):
-        role = person.get("role", "")
-        full_name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
-        if role == "primary_executor":
-            variables["primaryExecutorFullName"] = full_name
-        elif role == "backup_executor":
-            variables["backupExecutorFullName"] = full_name
-        elif role == "poa_property_attorney":
-            variables["poaPropertyAttorneyFullName"] = full_name
-        elif role == "poa_personal_care_attorney":
-            variables["poaPersonalCareAttorneyFullName"] = full_name
-        elif role == "guardian":
-            variables["guardianFullName"] = full_name
+    variables.update(map_people_to_variables(draft.get("people", [])))
 
     return variables
 

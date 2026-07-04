@@ -100,6 +100,9 @@ class EWDbWriter:
             'reviewed_at', 'approved_at',
             'client_first_name', 'client_last_name', 'client_email', 'client_phone',
             'liabilities',
+            # Questionnaire section answers (JSONB) — feed the document generator.
+            'about_you', 'your_family', 'your_estate', 'your_arrangements',
+            'poa_property', 'poa_personal_care',
         }
         safe = {k: v for k, v in updates.items() if k in allowed}
         if not safe:
@@ -245,12 +248,16 @@ class EWDbWriter:
         for c in clauses:
             self.execute("""
                 INSERT INTO ew_clause_selections
-                    (draft_id, document_type, clause_id, included, custom_text, ai_generated, sort_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (draft_id, document_type, clause_id, included, custom_text,
+                     template_text, title, is_folder, ai_generated, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 draft_id, document_type,
                 c['clause_id'], c.get('included', True),
-                c.get('custom_text'), c.get('ai_generated', False),
+                c.get('custom_text'),
+                c.get('template_text'), c.get('title'),
+                c.get('is_folder', False),
+                c.get('ai_generated', False),
                 c.get('sort_order', 0)
             ))
         return True

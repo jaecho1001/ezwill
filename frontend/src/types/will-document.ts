@@ -39,6 +39,7 @@ export interface SelectedWillClause {
 }
 
 export type WillDocumentType =
+  | 'simple_will_short'      // Short-form Tier 1 simple will
   | 'single_will'            // Tier 1 simple will
   | 'probate_will'           // Dual will — primary/probate
   | 'non_probate_will'       // Dual will — secondary/private

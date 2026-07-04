@@ -1,7 +1,7 @@
 """
 EZWill Document Generation Service
 Generates professional DOCX documents from clause selections using python-docx.
-Supports all 8 document types with table-based signing pages.
+Supports all built-in document types with table-based signing pages.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ FIRM_ADDRESS_LINE1 = "1110 Finch Avenue West, Suite 310"
 FIRM_ADDRESS_LINE2 = "Toronto, ON  M3J 2T2"
 
 DOCUMENT_TITLES: dict[str, str] = {
+    "simple_will_short": "SHORT FORM LAST WILL AND TESTAMENT",
     "single_will": "LAST WILL AND TESTAMENT",
     "probate_will": "LAST WILL AND TESTAMENT (PROBATE WILL)",
     "non_probate_will": "LAST WILL AND TESTAMENT (NON-PROBATE WILL)",
@@ -40,7 +41,8 @@ DOCUMENT_TITLES: dict[str, str] = {
     "affidavit_execution_non_probate": "AFFIDAVIT OF EXECUTION (NON-PROBATE WILL)",
 }
 
-WILL_TYPES = {"single_will", "probate_will", "non_probate_will"}
+WILL_TYPES = {"simple_will_short", "single_will", "probate_will", "non_probate_will"}
+COMPACT_WILL_TYPES = {"simple_will_short"}
 POA_TYPES = {"poa_property", "poa_personal_care"}
 AFFIDAVIT_TYPES = {
     "affidavit_execution", "affidavit_execution_probate",
@@ -86,6 +88,41 @@ class _SimpleHTMLParser(HTMLParser):
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
+# Maps a stored ew_people.role to the {{placeholder}} it fills. The keys are the
+# roles the frontend actually stores (see extractPeople + the ew_people_role_check
+# constraint: executor / attorney_property / attorney_care / …). The older
+# generator vocabulary (primary_executor / poa_*_attorney) is accepted too so a
+# mix of legacy rows still resolves. This is the single source of truth for both
+# the DOCX generator and the client review portal.
+_ROLE_TO_VARIABLE = {
+    "executor": "primaryExecutorFullName",
+    "primary_executor": "primaryExecutorFullName",
+    "backup_executor": "backupExecutorFullName",
+    "attorney_property": "poaPropertyAttorneyFullName",
+    "poa_property_attorney": "poaPropertyAttorneyFullName",
+    "attorney_care": "poaPersonalCareAttorneyFullName",
+    "poa_personal_care_attorney": "poaPersonalCareAttorneyFullName",
+    "backup_attorney": "backupAttorneyFullName",
+    "guardian": "guardianFullName",
+    "backup_guardian": "backupGuardianFullName",
+}
+
+
+def map_people_to_variables(people: list) -> dict:
+    """Resolve a draft's people list into executor/attorney/guardian name
+    variables. Person name fields are the snake_case columns stored by
+    upsert_people (first_name/last_name). First non-empty name per role wins."""
+    out: dict = {}
+    for person in people or []:
+        var = _ROLE_TO_VARIABLE.get(person.get("role", ""))
+        if not var or out.get(var):
+            continue
+        full_name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
+        if full_name:
+            out[var] = full_name
+    return out
+
 
 def resolve_variables(text: str, variables: dict) -> str:
     """
@@ -155,7 +192,7 @@ def _strip_html(text: str) -> str:
 class DocumentGenerator:
     """
     Generates professional DOCX documents from clause selections.
-    Supports all 8 Ontario estate-planning document types with
+    Supports all built-in Ontario estate-planning document types with
     table-based signing pages.
     """
 
@@ -170,7 +207,7 @@ class DocumentGenerator:
         Generate a DOCX file from clause selections and return it as bytes.
 
         Args:
-            document_type: One of the 8 supported document types.
+            document_type: One of the supported document types.
             clauses: List of clause dicts with keys: clause_id, included,
                      templateText, customText, sortOrder, isFolder, title.
             variables: Dict of placeholder variables to resolve.
@@ -181,8 +218,12 @@ class DocumentGenerator:
             The generated DOCX file content as bytes.
         """
         doc = Document()
-        self._set_document_styles(doc)
-        self._create_cover_page(doc, document_type, variables)
+        compact = document_type in COMPACT_WILL_TYPES
+        self._set_document_styles(doc, compact=compact)
+        if compact:
+            self._create_compact_will_heading(doc, document_type, variables)
+        else:
+            self._create_cover_page(doc, document_type, variables)
 
         # Filter and sort clauses
         included = [c for c in clauses if c.get("included", True)]
@@ -200,7 +241,9 @@ class DocumentGenerator:
         # Signing pages
         if signing_data or document_type in WILL_TYPES | POA_TYPES | AFFIDAVIT_TYPES:
             sd = signing_data or {}
-            self._create_signing_page(doc, document_type, sd, variables)
+            self._create_signing_page(
+                doc, document_type, sd, variables, page_break=not compact
+            )
 
         # Schedule A for probate will
         if document_type == "probate_will":
@@ -279,6 +322,40 @@ class DocumentGenerator:
         # Page break after cover
         doc.add_page_break()
 
+    def _create_compact_will_heading(
+        self, doc: Document, document_type: str, variables: dict
+    ) -> None:
+        """Add an inline heading for short-form wills instead of a cover page."""
+        title = DOCUMENT_TITLES.get(document_type, document_type.upper().replace("_", " "))
+        client_name = (
+            variables.get("testatorFullName")
+            or variables.get("testator_full_name")
+            or variables.get("clientFullName")
+            or variables.get("client_full_name")
+            or "[Client Name]"
+        )
+        doc_date = variables.get("documentDate") or date.today().strftime("%B %d, %Y")
+
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(title)
+        run.bold = True
+        run.font.size = Pt(13)
+        run.font.name = "Times New Roman"
+
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(str(client_name).upper())
+        run.bold = True
+        run.font.size = Pt(11)
+        run.font.name = "Times New Roman"
+
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(str(doc_date))
+        run.font.size = Pt(10)
+        run.font.name = "Times New Roman"
+
     # ── Folder Heading ──────────────────────────────────────────────────────
 
     def _add_folder_heading(
@@ -355,12 +432,14 @@ class DocumentGenerator:
         document_type: str,
         signing_data: dict,
         variables: dict,
+        page_break: bool = True,
     ) -> None:
         """
         Create the signing page appropriate for the document type.
         Uses Word tables for precise spacing (critical for legal documents).
         """
-        doc.add_page_break()
+        if page_break:
+            doc.add_page_break()
 
         if document_type in WILL_TYPES:
             self._signing_page_will(doc, document_type, signing_data, variables)
@@ -388,7 +467,7 @@ class DocumentGenerator:
         elif document_type == "non_probate_will":
             will_type_label = "Non-Probate"
         else:
-            will_type_label = ""  # single_will — no qualifier
+            will_type_label = ""  # single/short wills need no qualifier
         num_pages = signing_data.get("numberOfPages", variables.get("numberOfPages", "[__]"))
 
         # Testimonium heading
@@ -916,19 +995,19 @@ class DocumentGenerator:
 
     # ── Document Styles ─────────────────────────────────────────────────────
 
-    def _set_document_styles(self, doc: Document) -> None:
+    def _set_document_styles(self, doc: Document, compact: bool = False) -> None:
         """Set base document styles: font, margins, line spacing."""
         style = doc.styles["Normal"]
         style.font.name = "Times New Roman"
-        style.font.size = Pt(12)
-        style.paragraph_format.line_spacing = 1.5
+        style.font.size = Pt(11 if compact else 12)
+        style.paragraph_format.line_spacing = 1.15 if compact else 1.5
 
-        # Margins: 1 inch all around
+        margin = Inches(0.75 if compact else 1)
         for section in doc.sections:
-            section.top_margin = Inches(1)
-            section.bottom_margin = Inches(1)
-            section.left_margin = Inches(1)
-            section.right_margin = Inches(1)
+            section.top_margin = margin
+            section.bottom_margin = margin
+            section.left_margin = margin
+            section.right_margin = margin
 
         # Heading styles
         for level in range(1, 4):

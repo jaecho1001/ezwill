@@ -157,6 +157,83 @@ def _build_will_clauses():
     ]
 
 
+def _build_short_will_clauses():
+    """Build the intentionally small clause set used by the short-form will."""
+    return [
+        {
+            "clause_id": "revocation",
+            "isFolder": True,
+            "included": True,
+            "title": "REVOCATION",
+            "sortOrder": 1,
+        },
+        {
+            "clause_id": "revocation_clause",
+            "isFolder": False,
+            "included": True,
+            "title": "Revocation",
+            "templateText": (
+                "I, {{testatorFullName}}, revoke all former Wills and Codicils "
+                "made by me."
+            ),
+            "sortOrder": 2,
+        },
+        {
+            "clause_id": "executor",
+            "isFolder": True,
+            "included": True,
+            "title": "ESTATE TRUSTEE",
+            "sortOrder": 3,
+        },
+        {
+            "clause_id": "executor_clause",
+            "isFolder": False,
+            "included": True,
+            "title": "Appointment",
+            "templateText": (
+                "I appoint {{primaryExecutorFullName}} to be the Estate Trustee "
+                "of this my Will. If {{primaryExecutorFullName}} is unable or "
+                "unwilling to act, I appoint {{backupExecutorFullName}} instead."
+            ),
+            "sortOrder": 4,
+        },
+        {
+            "clause_id": "debts",
+            "isFolder": False,
+            "included": True,
+            "title": "Debts and Taxes",
+            "templateText": (
+                "I direct my Estate Trustee to pay my just debts, funeral and "
+                "testamentary expenses, and taxes payable because of my death."
+            ),
+            "sortOrder": 5,
+        },
+        {
+            "clause_id": "residue",
+            "isFolder": False,
+            "included": True,
+            "title": "Residue",
+            "templateText": (
+                "I give the residue of my estate to {{spouseFullName}}, if my "
+                "spouse survives me, and otherwise to my children, {{childNames}}, "
+                "in equal shares per stirpes."
+            ),
+            "sortOrder": 6,
+        },
+        {
+            "clause_id": "fla_exclusion",
+            "isFolder": False,
+            "included": True,
+            "title": "Family Law Act Exclusion",
+            "templateText": (
+                "I declare that property passing under this Will, and income from "
+                "it, is excluded from a beneficiary's net family property."
+            ),
+            "sortOrder": 7,
+        },
+    ]
+
+
 def _build_poa_property_clauses():
     """Build POA Property clauses."""
     return [
@@ -332,6 +409,27 @@ class TestGenerateSingleWill:
         text = _all_text(doc)
         assert "HYUN JUNG KIM" in text
         assert "MOONYOUNG LEE" in text
+
+
+class TestGenerateShortFormWill:
+    """Generate the compact short-form will without the standard cover page."""
+
+    def test_generate_short_form_will(self, generator):
+        clauses = _build_short_will_clauses()
+        docx_bytes = generator.generate_document(
+            document_type="simple_will_short",
+            clauses=clauses,
+            variables=MOCK_VARIABLES,
+        )
+        doc = _save_and_validate(docx_bytes, "simple_will_short_kim.docx")
+        text = _all_text(doc)
+
+        assert "SHORT FORM LAST WILL AND TESTAMENT" in text
+        assert "HYUN JUNG KIM" in text
+        assert "MOONYOUNG LEE" in text
+        assert "TESTIMONIUM" in text
+        assert "VATURI & CHO LLP" not in text
+        assert "SCHEDULE" not in text
 
 
 class TestGenerateProbateWill:

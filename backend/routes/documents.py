@@ -19,6 +19,7 @@ from services.document_generator import (
     DocumentGenerator,
     DOCUMENT_TITLES,
     resolve_variables,
+    map_people_to_variables,
 )
 from services.pdf_converter import convert_to_pdf
 from routes.auth import verify_dashboard_token
@@ -77,22 +78,8 @@ def _build_variables(draft: dict) -> dict:
     variables["survivalDays"] = str(estate.get("survivalDays", 30))
     variables["trustDistributionAge"] = str(estate.get("trustDistributionAge", 21))
 
-    # People -> executors, attorneys, guardians
-    for person in draft.get("people", []):
-        role = person.get("role", "")
-        full_name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
-        if role == "primary_executor":
-            variables["primaryExecutorFullName"] = full_name
-        elif role == "backup_executor":
-            variables["backupExecutorFullName"] = full_name
-        elif role == "poa_property_attorney":
-            variables["poaPropertyAttorneyFullName"] = full_name
-        elif role == "poa_personal_care_attorney":
-            variables["poaPersonalCareAttorneyFullName"] = full_name
-        elif role == "guardian":
-            variables["guardianFullName"] = full_name
-        elif role == "backup_guardian":
-            variables["backupGuardianFullName"] = full_name
+    # People -> executors, attorneys, guardians (shared role->variable mapping)
+    variables.update(map_people_to_variables(draft.get("people", [])))
 
     # POA sections
     poa_prop = draft.get("poa_property") or {}

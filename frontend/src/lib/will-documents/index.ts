@@ -5,6 +5,21 @@ import { willClauseLibrary } from "./clause-library"
 
 export const willDocumentTypes: WillDocumentTypeConfig[] = [
   {
+    id: "simple_will_short",
+    name: "Short Form Last Will and Testament",
+    shortName: "Short Will",
+    description: "Compact 2-page-ish will for straightforward estates, with only core Ontario clauses selected by default.",
+    icon: "📝",
+    tier: 1,
+    defaultClauseIds: [
+      "rev", "rev-single",
+      "appt", "appt-primary", "appt-backup",
+      "debt", "debt-payment",
+      "res", "res-spouse", "res-children-stirpes",
+      "fla", "fla-exclusion",
+    ],
+  },
+  {
     id: "single_will",
     name: "Last Will and Testament",
     shortName: "Simple Will",
@@ -137,8 +152,9 @@ export const willDocumentTypes: WillDocumentTypeConfig[] = [
 
 /** Get clauses applicable to a specific document type */
 export function getClausesForDocumentType(docType: WillDocumentType): WillClauseTemplate[] {
+  const libraryDocType = docType === "simple_will_short" ? "single_will" : docType
   return willClauseLibrary.filter(
-    (c) => c.documentType === docType || c.documentType === "all"
+    (c) => c.documentType === docType || c.documentType === libraryDocType || c.documentType === "all"
   )
 }
 
@@ -150,6 +166,7 @@ export function getDocumentTypeConfig(docType: WillDocumentType): WillDocumentTy
 /** Get document title for rendering */
 export function getDocumentTitle(docType: WillDocumentType): string {
   const titles: Record<WillDocumentType, string> = {
+    simple_will_short: "SHORT FORM LAST WILL AND TESTAMENT",
     single_will: "LAST WILL AND TESTAMENT",
     probate_will: "LAST WILL AND TESTAMENT (PROBATE WILL)",
     non_probate_will: "LAST WILL AND TESTAMENT (NON-PROBATE WILL)",
@@ -222,6 +239,7 @@ export function determineRequiredDocuments(willData: {
   hasDualWill: boolean
   hasPoaProperty: boolean
   hasPoaPersonalCare: boolean
+  willStyle?: "short" | "standard"
 }): WillDocumentType[] {
   const docs: WillDocumentType[] = []
 
@@ -229,7 +247,7 @@ export function determineRequiredDocuments(willData: {
     docs.push("probate_will", "non_probate_will")
     docs.push("affidavit_execution_probate", "affidavit_execution_non_probate")
   } else {
-    docs.push("single_will")
+    docs.push(willData.willStyle === "standard" ? "single_will" : "simple_will_short")
     docs.push("affidavit_execution")
   }
 

@@ -72,6 +72,7 @@ describe('Clause Library — Data Integrity', () => {
   it('all clauses have valid documentType', () => {
     const validTypes = [
       'all',
+      'simple_will_short',
       'single_will',
       'probate_will',
       'non_probate_will',
