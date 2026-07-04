@@ -50,15 +50,15 @@ export default function YourArrangementsPage() {
         section={t.yourArrangements}
         title={
           subStep === 0 ? t.executor :
-          subStep === 1 ? 'Backup Executors' :
+          subStep === 1 ? t.arr_backupExecutors :
           subStep === 2 ? t.restingPlace :
           t.ceremonyWishes
         }
         description={
           subStep === 0 ? t.executorDescription :
-          subStep === 1 ? 'If your primary executor cannot act, who should step in?' :
-          subStep === 2 ? 'What are your wishes for your remains?' :
-          'Any wishes about your funeral or memorial service (optional).'
+          subStep === 1 ? t.arr_backupExecutorsDescription :
+          subStep === 2 ? t.arr_restingPlaceDescription :
+          t.arr_ceremonyDescription
         }
         step={subStep}
         totalSteps={SUB_STEPS.length}
@@ -72,10 +72,10 @@ export default function YourArrangementsPage() {
             showRelationship
             showEmail
             showPhone
-            title="Primary Executor"
+            title={t.arr_primaryExecutor}
           />
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-            <strong>Tip:</strong> Choose someone organized, trustworthy, and ideally in Ontario. They will manage your estate — filing taxes, paying debts, and distributing assets. Being an executor can take 1-2 years.
+            <strong>{t.arr_tipLabel}</strong> {t.arr_executorTip}
           </div>
         </div>
       )}
@@ -85,14 +85,14 @@ export default function YourArrangementsPage() {
           {data.backupExecutors.map((exec, i) => (
             <div key={exec.id} className="border border-gray-200 rounded-xl p-4 space-y-3">
               <div className="flex justify-between">
-                <p className="text-sm font-medium">Backup {i + 1}</p>
+                <p className="text-sm font-medium">{t.arr_backup} {i + 1}</p>
                 <button onClick={() => update({ backupExecutors: data.backupExecutors.filter(e => e.id !== exec.id) })} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
               </div>
               <PersonForm value={exec} onChange={updates => update({ backupExecutors: data.backupExecutors.map(e => e.id === exec.id ? { ...e, ...updates } : e) })} showRelationship showEmail />
             </div>
           ))}
           <Button variant="outline" className="w-full gap-2" onClick={() => update({ backupExecutors: [...data.backupExecutors, newPerson('executor')] })}>
-            <Plus className="h-4 w-4" /> Add Backup Executor
+            <Plus className="h-4 w-4" /> {t.arr_addBackupExecutor}
           </Button>
         </div>
       )}
@@ -104,24 +104,24 @@ export default function YourArrangementsPage() {
           value={data.restingPlace}
           onChange={v => update({ restingPlace: v as typeof data.restingPlace })}
           options={[
-            { value: 'burial', title: 'Burial', icon: '⚱️' },
-            { value: 'cremation', title: 'Cremation', icon: '🕯️' },
-            { value: 'donation', title: 'Body Donation to Science', icon: '🔬' },
-            { value: 'not_specified', title: "Leave to executor's discretion", icon: '📋' },
+            { value: 'burial', title: t.arr_burial, icon: '⚱️' },
+            { value: 'cremation', title: t.arr_cremation, icon: '🕯️' },
+            { value: 'donation', title: t.arr_bodyDonation, icon: '🔬' },
+            { value: 'not_specified', title: t.arr_executorDiscretion, icon: '📋' },
           ]}
         />
       )}
 
       {subStep === 3 && (
         <div className="space-y-3">
-          <Label>Ceremony Wishes (optional)</Label>
+          <Label>{t.arr_ceremonyWishesLabel}</Label>
           <Textarea
             value={data.ceremonyWishes ?? ''}
             onChange={e => update({ ceremonyWishes: e.target.value })}
-            placeholder="e.g. I would like a small gathering of close family and friends. No formal service. Please play my favourite music..."
+            placeholder={t.arr_ceremonyPlaceholder}
             className="min-h-[120px]"
           />
-          <p className="text-xs text-gray-400">Note: While your Will can express wishes, your executor has discretion. Consider also leaving a separate letter with detailed instructions.</p>
+          <p className="text-xs text-gray-400">{t.arr_ceremonyNote}</p>
         </div>
       )}
 

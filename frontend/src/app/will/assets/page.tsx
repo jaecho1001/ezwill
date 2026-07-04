@@ -17,46 +17,49 @@ import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
 import type { AssetData, AssetType, LiabilityData, LiabilityType, OwnershipType } from '@/lib/types/will'
 
-const ASSET_TYPES: { value: AssetType; label: string; icon: string }[] = [
-  { value: 'real_estate', label: 'Real Estate', icon: '🏠' },
-  { value: 'bank', label: 'Bank Account', icon: '🏦' },
-  { value: 'investment', label: 'Investment Account', icon: '📈' },
-  { value: 'rrsp', label: 'RRSP', icon: '🏛️' },
-  { value: 'tfsa', label: 'TFSA', icon: '💼' },
-  { value: 'insurance', label: 'Life Insurance', icon: '🛡️' },
-  { value: 'vehicle', label: 'Vehicle', icon: '🚗' },
-  { value: 'business', label: 'Business Interest', icon: '🏢' },
-  { value: 'resp', label: 'RESP', icon: '🎓' },
-  { value: 'pension', label: 'Pension / DPSP', icon: '💰' },
-  { value: 'digital', label: 'Digital Assets', icon: '💻' },
-  { value: 'personal_property', label: 'Personal Property', icon: '📦' },
+const ASSET_TYPES: { value: AssetType; labelKey: string; icon: string }[] = [
+  { value: 'real_estate', labelKey: 'assets_typeRealEstate', icon: '🏠' },
+  { value: 'bank', labelKey: 'assets_typeBank', icon: '🏦' },
+  { value: 'investment', labelKey: 'assets_typeInvestment', icon: '📈' },
+  { value: 'rrsp', labelKey: 'assets_typeRrsp', icon: '🏛️' },
+  { value: 'tfsa', labelKey: 'assets_typeTfsa', icon: '💼' },
+  { value: 'insurance', labelKey: 'assets_typeInsurance', icon: '🛡️' },
+  { value: 'vehicle', labelKey: 'assets_typeVehicle', icon: '🚗' },
+  { value: 'business', labelKey: 'assets_typeBusiness', icon: '🏢' },
+  { value: 'resp', labelKey: 'assets_typeResp', icon: '🎓' },
+  { value: 'pension', labelKey: 'assets_typePension', icon: '💰' },
+  { value: 'digital', labelKey: 'assets_typeDigital', icon: '💻' },
+  { value: 'personal_property', labelKey: 'assets_typePersonalProperty', icon: '📦' },
 ]
 
-const LIABILITY_TYPES: { value: LiabilityType; label: string; icon: string }[] = [
-  { value: 'mortgage', label: 'Mortgage', icon: '🏠' },
-  { value: 'home_equity_line', label: 'Home Equity Line (HELOC)', icon: '🏦' },
-  { value: 'car_loan', label: 'Car Loan', icon: '🚗' },
-  { value: 'student_loan', label: 'Student Loan', icon: '🎓' },
-  { value: 'personal_loan', label: 'Personal Loan', icon: '👤' },
-  { value: 'credit_card', label: 'Credit Card', icon: '💳' },
-  { value: 'line_of_credit', label: 'Line of Credit', icon: '📋' },
-  { value: 'tax_owing', label: 'Tax Owing (CRA/provincial)', icon: '🧾' },
-  { value: 'business_loan', label: 'Business Loan', icon: '💼' },
-  { value: 'other_debt', label: 'Other Debt', icon: '📝' },
+const LIABILITY_TYPES: { value: LiabilityType; labelKey: string; icon: string }[] = [
+  { value: 'mortgage', labelKey: 'assets_liabMortgage', icon: '🏠' },
+  { value: 'home_equity_line', labelKey: 'assets_liabHeloc', icon: '🏦' },
+  { value: 'car_loan', labelKey: 'assets_liabCarLoan', icon: '🚗' },
+  { value: 'student_loan', labelKey: 'assets_liabStudentLoan', icon: '🎓' },
+  { value: 'personal_loan', labelKey: 'assets_liabPersonalLoan', icon: '👤' },
+  { value: 'credit_card', labelKey: 'assets_liabCreditCard', icon: '💳' },
+  { value: 'line_of_credit', labelKey: 'assets_liabLineOfCredit', icon: '📋' },
+  { value: 'tax_owing', labelKey: 'assets_liabTaxOwing', icon: '🧾' },
+  { value: 'business_loan', labelKey: 'assets_liabBusinessLoan', icon: '💼' },
+  { value: 'other_debt', labelKey: 'assets_liabOtherDebt', icon: '📝' },
 ]
 
-const OWNERSHIP_OPTIONS: { value: OwnershipType; label: string }[] = [
-  { value: 'sole', label: 'Sole' },
-  { value: 'joint_spouse', label: 'Joint with Spouse' },
-  { value: 'joint_other', label: 'Joint with Other' },
-  { value: 'tenants_in_common', label: 'Tenants in Common' },
+const OWNERSHIP_OPTIONS: { value: OwnershipType; labelKey: string }[] = [
+  { value: 'sole', labelKey: 'assets_ownSole' },
+  { value: 'joint_spouse', labelKey: 'assets_ownJointSpouse' },
+  { value: 'joint_other', labelKey: 'assets_ownJointOther' },
+  { value: 'tenants_in_common', labelKey: 'assets_ownTenantsInCommon' },
 ]
 
 type TabKey = 'assets' | 'liabilities' | 'summary'
 
 // --- Asset Form ---
 function AssetForm({ asset, onChange, onRemove }: { asset: AssetData; onChange: (a: AssetData) => void; onRemove: () => void }) {
-  const typeInfo = ASSET_TYPES.find(t => t.value === asset.assetType)
+  const { t } = useTranslation()
+  const tx = t as unknown as Record<string, string>
+  const typeInfo = ASSET_TYPES.find(at => at.value === asset.assetType)
+  const typeLabel = typeInfo ? tx[typeInfo.labelKey] : ''
   const needsAddress = asset.assetType === 'real_estate'
   const needsAccount = ['bank', 'investment', 'rrsp', 'tfsa', 'resp'].includes(asset.assetType)
   const needsPolicy = asset.assetType === 'insurance'
@@ -65,62 +68,62 @@ function AssetForm({ asset, onChange, onRemove }: { asset: AssetData; onChange: 
   return (
     <div className="border border-gray-200 rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-lg">{typeInfo?.icon} <span className="text-sm font-medium text-gray-700">{typeInfo?.label}</span></span>
+        <span className="text-lg">{typeInfo?.icon} <span className="text-sm font-medium text-gray-700">{typeLabel}</span></span>
         <button onClick={onRemove} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
       </div>
       <div className="space-y-1.5">
-        <Label>Description</Label>
-        <Input value={asset.description} onChange={e => onChange({ ...asset, description: e.target.value })} placeholder={`e.g. ${typeInfo?.label} at TD Bank`} />
+        <Label>{t.assets_description}</Label>
+        <Input value={asset.description} onChange={e => onChange({ ...asset, description: e.target.value })} placeholder={`${t.assets_egPrefix}${typeLabel} ${t.assets_atTdBank}`} />
       </div>
       {needsAddress && (
         <div className="space-y-1.5">
-          <Label>Property Address</Label>
-          <Input value={asset.address ?? ''} onChange={e => onChange({ ...asset, address: e.target.value })} placeholder="123 Main St, Toronto, ON M5V 1A1" />
+          <Label>{t.assets_propertyAddress}</Label>
+          <Input value={asset.address ?? ''} onChange={e => onChange({ ...asset, address: e.target.value })} placeholder={t.assets_addressPlaceholder} />
         </div>
       )}
       {needsAccount && (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1.5">
-            <Label>Institution</Label>
-            <Input value={asset.institution ?? ''} onChange={e => onChange({ ...asset, institution: e.target.value })} placeholder="TD Bank" />
+            <Label>{t.assets_institution}</Label>
+            <Input value={asset.institution ?? ''} onChange={e => onChange({ ...asset, institution: e.target.value })} placeholder={t.assets_institutionPlaceholder} />
           </div>
           <div className="space-y-1.5">
-            <Label>Account # (last 4)</Label>
-            <Input value={asset.accountNumber ?? ''} onChange={e => onChange({ ...asset, accountNumber: e.target.value })} placeholder="****1234" maxLength={4} />
+            <Label>{t.assets_accountLast4}</Label>
+            <Input value={asset.accountNumber ?? ''} onChange={e => onChange({ ...asset, accountNumber: e.target.value })} placeholder={t.assets_accountPlaceholder} maxLength={4} />
           </div>
         </div>
       )}
       {needsPolicy && (
         <div className="space-y-1.5">
-          <Label>Policy Number</Label>
-          <Input value={asset.policyNumber ?? ''} onChange={e => onChange({ ...asset, policyNumber: e.target.value })} placeholder="POL-123456" />
+          <Label>{t.assets_policyNumber}</Label>
+          <Input value={asset.policyNumber ?? ''} onChange={e => onChange({ ...asset, policyNumber: e.target.value })} placeholder={t.assets_policyPlaceholder} />
         </div>
       )}
       <div className="space-y-1.5">
-        <Label>Estimated Value (optional)</Label>
+        <Label>{t.assets_estimatedValue}</Label>
         <div className="relative">
           <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
           <Input type="number" value={asset.estimatedValue ?? ''} onChange={e => onChange({ ...asset, estimatedValue: parseFloat(e.target.value) || undefined })} className="pl-7" placeholder="0" />
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>Ownership Type</Label>
+        <Label>{t.assets_ownershipType}</Label>
         <Select value={asset.ownershipType ?? 'sole'} onValueChange={v => onChange({ ...asset, ownershipType: v as OwnershipType })}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {OWNERSHIP_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            {OWNERSHIP_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{tx[o.labelKey]}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
       {isJoint && (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1.5">
-            <Label>Joint Owner Name</Label>
-            <Input value={asset.jointOwnerName ?? ''} onChange={e => onChange({ ...asset, jointOwnerName: e.target.value })} placeholder="Full name" />
+            <Label>{t.assets_jointOwnerName}</Label>
+            <Input value={asset.jointOwnerName ?? ''} onChange={e => onChange({ ...asset, jointOwnerName: e.target.value })} placeholder={t.assets_fullNamePlaceholder} />
           </div>
           <div className="space-y-1.5">
-            <Label>Relationship</Label>
-            <Input value={asset.jointOwnerRelationship ?? ''} onChange={e => onChange({ ...asset, jointOwnerRelationship: e.target.value })} placeholder="e.g. spouse, adult child" />
+            <Label>{t.assets_relationship}</Label>
+            <Input value={asset.jointOwnerRelationship ?? ''} onChange={e => onChange({ ...asset, jointOwnerRelationship: e.target.value })} placeholder={t.assets_relationshipPlaceholder} />
           </div>
         </div>
       )}
@@ -129,25 +132,25 @@ function AssetForm({ asset, onChange, onRemove }: { asset: AssetData; onChange: 
           id={`bendes-${asset.id}`}
           checked={!!asset.beneficiaryDesignation}
           onChange={e => onChange({ ...asset, beneficiaryDesignation: (e.target as HTMLInputElement).checked })}
-          label="Has named beneficiary designation (RRSP/TFSA/Insurance — passes outside Will)"
+          label={t.assets_beneficiaryDesignationLabel}
         />
         {asset.beneficiaryDesignation && (
           <div className="space-y-1.5 ml-8">
-            <Label>Designated Beneficiary Name</Label>
-            <Input value={asset.designatedBeneficiaryName ?? ''} onChange={e => onChange({ ...asset, designatedBeneficiaryName: e.target.value })} placeholder="Full legal name of beneficiary" />
+            <Label>{t.assets_designatedBeneficiaryName}</Label>
+            <Input value={asset.designatedBeneficiaryName ?? ''} onChange={e => onChange({ ...asset, designatedBeneficiaryName: e.target.value })} placeholder={t.assets_beneficiaryNamePlaceholder} />
           </div>
         )}
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <Label>Probate Classification</Label>
+          <Label>{t.assets_probateClassification}</Label>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-3.5 w-3.5 text-gray-400 cursor-help" />
               </TooltipTrigger>
               <TooltipContent>
-                <p>Probate assets pass through your Will. Non-probate assets (joint, beneficiary-designated) pass outside the Will and avoid Estate Administration Tax.</p>
+                <p>{t.assets_probateTooltip}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -155,15 +158,15 @@ function AssetForm({ asset, onChange, onRemove }: { asset: AssetData; onChange: 
         <Select value={asset.probateClassification ?? 'unclassified'} onValueChange={v => onChange({ ...asset, probateClassification: v as 'probate' | 'non_probate' | 'unclassified' })}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="probate">Probate</SelectItem>
-            <SelectItem value="non_probate">Non-Probate</SelectItem>
-            <SelectItem value="unclassified">Unclassified</SelectItem>
+            <SelectItem value="probate">{t.assets_probate}</SelectItem>
+            <SelectItem value="non_probate">{t.assets_nonProbate}</SelectItem>
+            <SelectItem value="unclassified">{t.assets_unclassified}</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <div className="space-y-1.5">
-        <Label>Notes (optional)</Label>
-        <Textarea value={asset.notes ?? ''} onChange={e => onChange({ ...asset, notes: e.target.value })} placeholder="Any additional details for your executor..." rows={2} />
+        <Label>{t.assets_notesOptional}</Label>
+        <Textarea value={asset.notes ?? ''} onChange={e => onChange({ ...asset, notes: e.target.value })} placeholder={t.assets_notesExecutorPlaceholder} rows={2} />
       </div>
     </div>
   )
@@ -171,33 +174,36 @@ function AssetForm({ asset, onChange, onRemove }: { asset: AssetData; onChange: 
 
 // --- Liability Form ---
 function LiabilityForm({ liability, assets, onChange, onRemove }: { liability: LiabilityData; assets: AssetData[]; onChange: (l: LiabilityData) => void; onRemove: () => void }) {
-  const typeInfo = LIABILITY_TYPES.find(t => t.value === liability.liabilityType)
+  const { t } = useTranslation()
+  const tx = t as unknown as Record<string, string>
+  const typeInfo = LIABILITY_TYPES.find(lt => lt.value === liability.liabilityType)
+  const typeLabel = typeInfo ? tx[typeInfo.labelKey] : ''
   const isJoint = liability.ownershipType === 'joint_spouse' || liability.ownershipType === 'joint_other'
 
   return (
     <div className="border border-gray-200 rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-lg">{typeInfo?.icon} <span className="text-sm font-medium text-gray-700">{typeInfo?.label}</span></span>
+        <span className="text-lg">{typeInfo?.icon} <span className="text-sm font-medium text-gray-700">{typeLabel}</span></span>
         <button onClick={onRemove} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
       </div>
       <div className="space-y-1.5">
-        <Label>Description</Label>
-        <Input value={liability.description} onChange={e => onChange({ ...liability, description: e.target.value })} placeholder={`e.g. ${typeInfo?.label} with TD Bank`} />
+        <Label>{t.assets_description}</Label>
+        <Input value={liability.description} onChange={e => onChange({ ...liability, description: e.target.value })} placeholder={`${t.assets_egPrefix}${typeLabel} ${t.assets_withTdBank}`} />
       </div>
       <div className="space-y-1.5">
-        <Label>Creditor</Label>
-        <Input value={liability.creditor ?? ''} onChange={e => onChange({ ...liability, creditor: e.target.value })} placeholder="e.g. TD Bank, CRA" />
+        <Label>{t.assets_creditor}</Label>
+        <Input value={liability.creditor ?? ''} onChange={e => onChange({ ...liability, creditor: e.target.value })} placeholder={t.assets_creditorPlaceholder} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1.5">
-          <Label>Outstanding Balance</Label>
+          <Label>{t.assets_outstandingBalance}</Label>
           <div className="relative">
             <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
             <Input type="number" value={liability.outstandingBalance ?? ''} onChange={e => onChange({ ...liability, outstandingBalance: parseFloat(e.target.value) || undefined })} className="pl-7" placeholder="0" />
           </div>
         </div>
         <div className="space-y-1.5">
-          <Label>Monthly Payment (optional)</Label>
+          <Label>{t.assets_monthlyPayment}</Label>
           <div className="relative">
             <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
             <Input type="number" value={liability.monthlyPayment ?? ''} onChange={e => onChange({ ...liability, monthlyPayment: parseFloat(e.target.value) || undefined })} className="pl-7" placeholder="0" />
@@ -205,40 +211,40 @@ function LiabilityForm({ liability, assets, onChange, onRemove }: { liability: L
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>Ownership</Label>
+        <Label>{t.assets_ownership}</Label>
         <Select value={liability.ownershipType ?? 'sole'} onValueChange={v => onChange({ ...liability, ownershipType: v as OwnershipType })}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="sole">Sole</SelectItem>
-            <SelectItem value="joint_spouse">Joint with Spouse</SelectItem>
-            <SelectItem value="joint_other">Joint with Other</SelectItem>
+            <SelectItem value="sole">{t.assets_ownSole}</SelectItem>
+            <SelectItem value="joint_spouse">{t.assets_ownJointSpouse}</SelectItem>
+            <SelectItem value="joint_other">{t.assets_ownJointOther}</SelectItem>
           </SelectContent>
         </Select>
       </div>
       {isJoint && (
         <div className="space-y-1.5">
-          <Label>Joint Owner Name</Label>
-          <Input value={liability.jointOwnerName ?? ''} onChange={e => onChange({ ...liability, jointOwnerName: e.target.value })} placeholder="Full name" />
+          <Label>{t.assets_jointOwnerName}</Label>
+          <Input value={liability.jointOwnerName ?? ''} onChange={e => onChange({ ...liability, jointOwnerName: e.target.value })} placeholder={t.assets_fullNamePlaceholder} />
         </div>
       )}
       {assets.length > 0 && (
         <div className="space-y-1.5">
-          <Label>Secured By (optional)</Label>
+          <Label>{t.assets_securedBy}</Label>
           <Select value={liability.securedByAssetId ?? '_none'} onValueChange={v => onChange({ ...liability, securedByAssetId: v === '_none' ? undefined : v })}>
-            <SelectTrigger><SelectValue placeholder="Link to an asset..." /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder={t.assets_linkToAsset} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="_none">None</SelectItem>
+              <SelectItem value="_none">{t.assets_none}</SelectItem>
               {assets.map(a => {
-                const aType = ASSET_TYPES.find(t => t.value === a.assetType)
-                return <SelectItem key={a.id} value={a.id}>{aType?.icon} {a.description || aType?.label}</SelectItem>
+                const aType = ASSET_TYPES.find(at => at.value === a.assetType)
+                return <SelectItem key={a.id} value={a.id}>{aType?.icon} {a.description || (aType ? tx[aType.labelKey] : '')}</SelectItem>
               })}
             </SelectContent>
           </Select>
         </div>
       )}
       <div className="space-y-1.5">
-        <Label>Notes (optional)</Label>
-        <Textarea value={liability.notes ?? ''} onChange={e => onChange({ ...liability, notes: e.target.value })} placeholder="Any additional details..." rows={2} />
+        <Label>{t.assets_notesOptional}</Label>
+        <Textarea value={liability.notes ?? ''} onChange={e => onChange({ ...liability, notes: e.target.value })} placeholder={t.assets_notesPlaceholder} rows={2} />
       </div>
     </div>
   )
@@ -246,6 +252,8 @@ function LiabilityForm({ liability, assets, onChange, onRemove }: { liability: L
 
 // --- Summary Tab ---
 function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities: LiabilityData[] }) {
+  const { t } = useTranslation()
+  const tx = t as unknown as Record<string, string>
   const totalAssets = assets.reduce((sum, a) => sum + (a.estimatedValue ?? 0), 0)
   const totalLiabilities = liabilities.reduce((sum, l) => sum + (l.outstandingBalance ?? 0), 0)
   const netWorth = totalAssets - totalLiabilities
@@ -269,11 +277,11 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
 
   // Group assets by type
   const assetsByType = useMemo(() => {
-    const grouped: Record<string, { label: string; icon: string; total: number; count: number }> = {}
+    const grouped: Record<string, { labelKey: string; icon: string; total: number; count: number }> = {}
     for (const a of assets) {
-      const info = ASSET_TYPES.find(t => t.value === a.assetType)
+      const info = ASSET_TYPES.find(at => at.value === a.assetType)
       if (!grouped[a.assetType]) {
-        grouped[a.assetType] = { label: info?.label ?? a.assetType, icon: info?.icon ?? '', total: 0, count: 0 }
+        grouped[a.assetType] = { labelKey: info?.labelKey ?? '', icon: info?.icon ?? '', total: 0, count: 0 }
       }
       grouped[a.assetType].total += a.estimatedValue ?? 0
       grouped[a.assetType].count += 1
@@ -283,11 +291,11 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
 
   // Group liabilities by type
   const liabilitiesByType = useMemo(() => {
-    const grouped: Record<string, { label: string; icon: string; total: number; count: number }> = {}
+    const grouped: Record<string, { labelKey: string; icon: string; total: number; count: number }> = {}
     for (const l of liabilities) {
-      const info = LIABILITY_TYPES.find(t => t.value === l.liabilityType)
+      const info = LIABILITY_TYPES.find(lt => lt.value === l.liabilityType)
       if (!grouped[l.liabilityType]) {
-        grouped[l.liabilityType] = { label: info?.label ?? l.liabilityType, icon: info?.icon ?? '', total: 0, count: 0 }
+        grouped[l.liabilityType] = { labelKey: info?.labelKey ?? '', icon: info?.icon ?? '', total: 0, count: 0 }
       }
       grouped[l.liabilityType].total += l.outstandingBalance ?? 0
       grouped[l.liabilityType].count += 1
@@ -300,20 +308,20 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
       {/* Net Worth Card */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><DollarSign className="h-4 w-4" /> Net Worth</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2"><DollarSign className="h-4 w-4" /> {t.assets_netWorth}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <p className="text-xs text-gray-500 mb-1">Total Assets</p>
+              <p className="text-xs text-gray-500 mb-1">{t.assets_totalAssets}</p>
               <p className="text-lg font-semibold text-green-600 flex items-center justify-center gap-1"><TrendingUp className="h-4 w-4" /> ${totalAssets.toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Total Liabilities</p>
+              <p className="text-xs text-gray-500 mb-1">{t.assets_totalLiabilities}</p>
               <p className="text-lg font-semibold text-red-500 flex items-center justify-center gap-1"><TrendingDown className="h-4 w-4" /> ${totalLiabilities.toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Net Worth</p>
+              <p className="text-xs text-gray-500 mb-1">{t.assets_netWorth}</p>
               <p className={`text-lg font-bold ${netWorth >= 0 ? 'text-gray-900' : 'text-red-600'}`}>${netWorth.toLocaleString()}</p>
             </div>
           </div>
@@ -324,12 +332,12 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
       {assetsByType.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Assets by Category</CardTitle>
+            <CardTitle className="text-base">{t.assets_assetsByCategory}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {assetsByType.map(cat => (
-              <div key={cat.label} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{cat.icon} {cat.label} ({cat.count})</span>
+              <div key={cat.labelKey} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{cat.icon} {tx[cat.labelKey]} ({cat.count})</span>
                 <span className="font-medium">${cat.total.toLocaleString()}</span>
               </div>
             ))}
@@ -341,12 +349,12 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
       {liabilitiesByType.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Liabilities by Category</CardTitle>
+            <CardTitle className="text-base">{t.assets_liabilitiesByCategory}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {liabilitiesByType.map(cat => (
-              <div key={cat.label} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{cat.icon} {cat.label} ({cat.count})</span>
+              <div key={cat.labelKey} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{cat.icon} {tx[cat.labelKey]} ({cat.count})</span>
                 <span className="font-medium text-red-500">${cat.total.toLocaleString()}</span>
               </div>
             ))}
@@ -357,17 +365,17 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
       {/* Estate Administration Tax */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Estate Administration Tax Estimate (Ontario)</CardTitle>
+          <CardTitle className="text-base">{t.assets_eatTitle}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Estimated EAT</span>
+            <span className="text-gray-600">{t.assets_estimatedEat}</span>
             <span className="font-semibold">${eatEstimate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
-          <p className="text-xs text-gray-500">Ontario: $5 per $1,000 on first $50,000 + $15 per $1,000 on the remainder. Calculated on {probateTotal > 0 ? 'probate assets' : 'total assets (classify assets to refine)'}.</p>
+          <p className="text-xs text-gray-500">{t.assets_eatNote}{probateTotal > 0 ? t.assets_eatProbateAssets : t.assets_eatTotalAssets}.</p>
           {totalAssets > 1000000 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-              Estate exceeds $1M. Consider a dual Will strategy to keep private company shares and other non-publicly-traded assets out of probate.
+              {t.assets_estateExceeds1m}
             </div>
           )}
         </CardContent>
@@ -377,20 +385,20 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
       {(probateAssets.length > 0 || nonProbateAssets.length > 0) && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Probate vs Non-Probate Split</CardTitle>
+            <CardTitle className="text-base">{t.assets_probateSplit}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Probate ({probateAssets.length} assets)</span>
+              <span className="text-gray-600">{t.assets_probate} ({probateAssets.length} {t.assets_assetsWord})</span>
               <span className="font-medium">${probateTotal.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Non-Probate ({nonProbateAssets.length} assets)</span>
+              <span className="text-gray-600">{t.assets_nonProbate} ({nonProbateAssets.length} {t.assets_assetsWord})</span>
               <span className="font-medium">${nonProbateTotal.toLocaleString()}</span>
             </div>
             {unclassifiedAssets.length > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Unclassified ({unclassifiedAssets.length} assets)</span>
+                <span className="text-gray-400">{t.assets_unclassified} ({unclassifiedAssets.length} {t.assets_assetsWord})</span>
                 <span className="text-gray-400">${unclassifiedTotal.toLocaleString()}</span>
               </div>
             )}
@@ -402,8 +410,8 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
               </div>
             )}
             <div className="flex gap-4 text-xs text-gray-500 mt-1">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Probate</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Non-Probate</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {t.assets_probate}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> {t.assets_nonProbate}</span>
             </div>
           </CardContent>
         </Card>
@@ -417,6 +425,7 @@ export default function AssetsPage() {
   const router = useRouter()
   const { will, dispatch } = useWillForm()
   const { t } = useTranslation()
+  const tx = t as unknown as Record<string, string>
   const [activeTab, setActiveTab] = useState<TabKey>('assets')
   const [selectedAssetType, setSelectedAssetType] = useState<AssetType>('real_estate')
   const [selectedLiabilityType, setSelectedLiabilityType] = useState<LiabilityType>('mortgage')
@@ -452,24 +461,24 @@ export default function AssetsPage() {
       <AIFlagBanner />
       <StepHeader
         section={t.yourAssets}
-        title="Assets & Liabilities"
-        description="A complete inventory helps your executor manage your estate. Values are estimates — your executor will get official valuations."
+        title={t.assets_pageTitle}
+        description={t.assets_pageDescription}
       />
 
       {/* Summary bar */}
       {(assets.length > 0 || liabilities.length > 0) && (
         <div className="mb-6 bg-gray-50 rounded-xl p-4">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">{assets.length} asset{assets.length !== 1 ? 's' : ''}, {liabilities.length} liabilit{liabilities.length !== 1 ? 'ies' : 'y'}</span>
+            <span className="text-gray-600">{assets.length} {t.assets_assetsWord}, {liabilities.length} {t.assets_liabilitiesWord}</span>
             <span className="font-medium text-gray-900">
-              Net: ${(totalAssets - totalLiabilities).toLocaleString()}
+              {t.assets_netLabel}${(totalAssets - totalLiabilities).toLocaleString()}
             </span>
           </div>
           {totalAssets > 1000000 && (
-            <p className="text-xs text-amber-600 mt-1">Estate over $1M — Ontario Estate Administration Tax will apply (~$15/$1,000). Consider dual Will strategy for business assets.</p>
+            <p className="text-xs text-amber-600 mt-1">{t.assets_estateOver1m}</p>
           )}
           {totalLiabilities > 0 && totalAssets > 0 && totalLiabilities > totalAssets * 0.5 && (
-            <p className="text-xs text-red-600 mt-1">High debt-to-asset ratio ({Math.round((totalLiabilities / totalAssets) * 100)}%). Your estate may face solvency issues.</p>
+            <p className="text-xs text-red-600 mt-1">{t.assets_highDebtPrefix}{Math.round((totalLiabilities / totalAssets) * 100)}{t.assets_highDebtSuffix}</p>
           )}
         </div>
       )}
@@ -508,18 +517,18 @@ export default function AssetsPage() {
             ))}
           </div>
           <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 space-y-3">
-            <p className="text-sm font-medium text-gray-700">Add an Asset</p>
+            <p className="text-sm font-medium text-gray-700">{t.assets_addAnAsset}</p>
             <div className="flex gap-2">
               <Select value={selectedAssetType} onValueChange={v => setSelectedAssetType(v as AssetType)}>
                 <SelectTrigger className="flex-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ASSET_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.icon} {t.label}</SelectItem>)}
+                  {ASSET_TYPES.map(at => <SelectItem key={at.value} value={at.value}>{at.icon} {tx[at.labelKey]}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Button onClick={addAsset} className="gap-2 shrink-0">
-                <Plus className="h-4 w-4" /> Add
+                <Plus className="h-4 w-4" /> {t.assets_add}
               </Button>
             </div>
           </div>
@@ -548,11 +557,11 @@ export default function AssetsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LIABILITY_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.icon} {t.label}</SelectItem>)}
+                  {LIABILITY_TYPES.map(lt => <SelectItem key={lt.value} value={lt.value}>{lt.icon} {tx[lt.labelKey]}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Button onClick={addLiability} className="gap-2 shrink-0">
-                <Plus className="h-4 w-4" /> Add
+                <Plus className="h-4 w-4" /> {t.assets_add}
               </Button>
             </div>
           </div>
@@ -570,7 +579,7 @@ export default function AssetsPage() {
           dispatch({ type: 'COMPLETE_STEP', payload: 7 })
           router.push('/will/review')
         }}
-        continueLabel="Review My Will"
+        continueLabel={t.reviewWill}
         showSkip
         onSkip={() => {
           dispatch({ type: 'COMPLETE_STEP', payload: 7 })
