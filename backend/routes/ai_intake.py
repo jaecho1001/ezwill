@@ -34,9 +34,10 @@ from collections import deque
 from threading import Lock
 from typing import Any, AsyncIterator, Optional, Deque
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from routes.auth import assert_auth_context_can_access_draft, verify_client_or_dashboard_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -493,7 +494,12 @@ async def _stream_with_mock(
 
 # ── Route ───────────────────────────────────────────────────────────────────
 @router.post("/chat")
-async def intake_chat(body: IntakeChatRequest):
+async def intake_chat(
+    body: IntakeChatRequest,
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_magic_token: Optional[str] = Header(None),
+):
     """
     SSE stream of assistant text deltas + tool calls + vault patches for
     conversational intake. Falls back to a regex extractor when Claude is
@@ -501,6 +507,9 @@ async def intake_chat(body: IntakeChatRequest):
     """
     if not body.messages:
         raise HTTPException(status_code=400, detail="messages is required")
+
+    ctx = verify_client_or_dashboard_access(request, authorization, x_magic_token)
+    assert_auth_context_can_access_draft(ctx, body.draft_id)
 
     # Rate limit per draft to prevent runaway costs if a client loops or a
     # token leaks. Raises 429 — frontend already surfaces errors inline.

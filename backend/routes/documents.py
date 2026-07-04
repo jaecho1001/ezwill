@@ -274,10 +274,19 @@ async def generate_all_documents(draft_id: str, _token: str = Depends(verify_das
 
 
 @router.get("/{draft_id}/preview/{document_type}")
-async def preview_document(draft_id: str, document_type: str):
+async def preview_document(
+    draft_id: str,
+    document_type: str,
+    _token: str = Depends(verify_dashboard_token),
+):
     """
     Get HTML preview of a document.
     Returns clause text as rendered HTML for the preview panel in frontend.
+
+    Dashboard-only: this returns the fully-rendered will/POA (testator name,
+    beneficiaries, executors, addresses, resolved clause bodies), so it must not
+    be reachable without lawyer auth. Clients use the review portal's own
+    token-bound preview route instead.
     """
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:

@@ -50,6 +50,14 @@ def _validate_review_token(token: str) -> dict:
     return link
 
 
+def _validate_review_token_for_draft(token: str, draft_id: str) -> dict:
+    """Resolve a review token and ensure it belongs to the requested draft."""
+    link = _validate_review_token(token)
+    if draft_id != "__from_token__" and str(link["draft_id"]) != str(draft_id):
+        raise HTTPException(403, "Review token does not grant access to this draft")
+    return link
+
+
 def _get_review_documents(draft_id: str) -> list[dict]:
     """Get all documents for a draft with their review status."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
@@ -242,7 +250,7 @@ async def resolve_review_token(token: str):
 @router.get("/{draft_id}/status")
 async def get_review_status(draft_id: str, token: str = Query(...)):
     """Get review status for all documents in a draft."""
-    _validate_review_token(token)
+    _validate_review_token_for_draft(token, draft_id)
 
     documents = _get_review_documents(draft_id)
     approved_count = sum(1 for d in documents if d["status"] == "approved")
@@ -263,7 +271,7 @@ async def get_review_preview(draft_id: str, document_type: str, token: str = Que
     Returns structured clauses (not just raw HTML) so the frontend
     can render clause-by-clause review UI.
     """
-    link = _validate_review_token(token)
+    link = _validate_review_token_for_draft(token, draft_id)
 
     # Allow __from_token__ as a placeholder — resolve to actual draft_id
     if draft_id == "__from_token__":
@@ -332,7 +340,7 @@ async def approve_document(draft_id: str, document_type: str, body: ApproveReque
     Client approves a reviewed document.
     Records the approval timestamp.
     """
-    link = _validate_review_token(body.token)
+    link = _validate_review_token_for_draft(body.token, draft_id)
 
     if document_type not in DOCUMENT_TITLES:
         raise HTTPException(400, f"Invalid document_type: {document_type}")
@@ -357,7 +365,7 @@ async def add_comment(draft_id: str, body: CommentRequest):
     Client adds a comment/question on a specific clause.
     The lawyer sees these in the dashboard.
     """
-    link = _validate_review_token(body.token)
+    link = _validate_review_token_for_draft(body.token, draft_id)
 
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:

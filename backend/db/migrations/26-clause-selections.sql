@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS ew_clause_selections (
     UNIQUE(draft_id, document_type, clause_id)
 );
 
-CREATE INDEX idx_ew_clause_selections_draft ON ew_clause_selections(draft_id);
-CREATE INDEX idx_ew_clause_selections_draft_doctype ON ew_clause_selections(draft_id, document_type);
+CREATE INDEX IF NOT EXISTS idx_ew_clause_selections_draft ON ew_clause_selections(draft_id);
+CREATE INDEX IF NOT EXISTS idx_ew_clause_selections_draft_doctype ON ew_clause_selections(draft_id, document_type);
 
 -- Track which document types the lawyer has configured for each draft
 CREATE TABLE IF NOT EXISTS ew_document_configs (
@@ -33,4 +33,4 @@ CREATE TABLE IF NOT EXISTS ew_document_configs (
     UNIQUE(draft_id, document_type)
 );
 
-CREATE INDEX idx_ew_document_configs_draft ON ew_document_configs(draft_id);
+CREATE INDEX IF NOT EXISTS idx_ew_document_configs_draft ON ew_document_configs(draft_id);

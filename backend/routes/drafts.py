@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from models import CreateDraftRequest, UpdateDraftRequest
-from routes.auth import verify_dashboard_token, verify_client_or_dashboard_token
+from routes.auth import verify_dashboard_token, verify_client_or_dashboard_draft_access
 from services.db import EWDbWriter
 import os
 import json
@@ -49,7 +49,7 @@ async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)
         }
 
 @router.put("/{draft_id}")
-async def update_draft(draft_id: str, body: UpdateDraftRequest, _token: str = Depends(verify_client_or_dashboard_token)):
+async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(verify_client_or_dashboard_draft_access)):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
         if not draft:
@@ -105,7 +105,7 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _token: str = De
         return dict(updated)
 
 @router.post("/{draft_id}/submit")
-async def submit_draft(draft_id: str, _token: str = Depends(verify_client_or_dashboard_token)):
+async def submit_draft(draft_id: str, _auth=Depends(verify_client_or_dashboard_draft_access)):
     from services.notification_service import notify_lawyer_submission
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
