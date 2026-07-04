@@ -43,6 +43,15 @@ export default function YourEstatePage() {
     }
   }
 
+  // If the residue is split among named beneficiaries, require at least one.
+  // Child-based distributions (per_stirpes / equal_children) need no list.
+  const isCurrentValid = () => {
+    if (subStep === 3 && (data.residueDistribution === 'custom' || data.residueDistribution === 'equal_beneficiaries')) {
+      return data.beneficiaries.length > 0
+    }
+    return true
+  }
+
   return (
     <div className="fade-in">
       <AIFlagBanner />
@@ -246,6 +255,7 @@ export default function YourEstatePage() {
       <StepNavigation
         onBack={() => subStep > 0 ? setSubStep(s => s - 1) : router.push('/will/your-family')}
         onContinue={handleContinue}
+        continueDisabled={!isCurrentValid()}
         showSkip={subStep === 0 || subStep === 1}
         onSkip={() => setSubStep(s => s + 1)}
       />

@@ -37,6 +37,11 @@ export default function POAPropertyPage() {
     }
   }
 
+  // Only enforce an attorney once the client has opted into this POA — never
+  // block someone who is choosing not to make one.
+  const isCurrentValid = () =>
+    subStep !== 0 || !data.hasAttorney || !!data.attorney?.firstName?.trim()
+
   return (
     <div className="fade-in">
       <AIFlagBanner />
@@ -119,6 +124,7 @@ export default function POAPropertyPage() {
       <StepNavigation
         onBack={() => subStep > 0 ? setSubStep(s => s - 1) : router.push('/will/your-arrangements')}
         onContinue={handleContinue}
+        continueDisabled={!isCurrentValid()}
         showSkip={subStep === 2}
         onSkip={() => { dispatch({ type: 'COMPLETE_STEP', payload: 5 }); router.push('/will/poa-personal-care') }}
       />

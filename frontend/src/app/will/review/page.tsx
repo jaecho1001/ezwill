@@ -42,17 +42,28 @@ function Field({ label, value }: { label: string; value?: string | null }) {
 export default function ReviewPage() {
   const { will } = useWillForm()
   const { t } = useTranslation()
-  const { draftId } = useDraft()
+  const { draftId, token } = useDraft()
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const router = useRouter()
 
   const criticalFlags = will.aiFlags.filter(f => !f.dismissed && f.severity === 'critical')
   const allStepsComplete = WILL_STEPS.every(s => will.completedSteps.includes(s.id))
 
   async function handleSubmit() {
+    setSubmitError(null)
+    if (!draftId) {
+      setSubmitError('We could not find your questionnaire. Please reopen the link your lawyer sent you.')
+      return
+    }
     setSubmitting(true)
-    if (draftId) {
-      await submitDraft(draftId)
+    // Pass the client magic token so the draft-bound submit endpoint accepts
+    // the request; on /will/* the token is the only auth available.
+    const result = await submitDraft(draftId, token ?? undefined)
+    setSubmitting(false)
+    if (!result) {
+      setSubmitError('Submission failed. Please check your connection and try again, or contact your lawyer.')
+      return
     }
     router.push('/will/submitted')
   }
@@ -143,6 +154,13 @@ export default function ReviewPage() {
           <li className="flex gap-2"><span className="font-bold">4.</span> <span>Your POAs are signed separately with 1 witness and no beneficiaries as witnesses.</span></li>
         </ol>
       </div>
+
+      {submitError && (
+        <div className="mt-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{submitError}</span>
+        </div>
+      )}
 
       <div className="mt-6 flex flex-col sm:flex-row gap-3">
         <Button size="xl" className="flex-1 gap-2" onClick={handleSubmit} disabled={submitting}>

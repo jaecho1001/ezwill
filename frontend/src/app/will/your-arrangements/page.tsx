@@ -39,6 +39,10 @@ export default function YourArrangementsPage() {
     }
   }
 
+  // A will needs an executor — require a name before leaving that sub-step.
+  const isCurrentValid = () =>
+    subStep !== 0 || !!data.primaryExecutor?.firstName?.trim()
+
   return (
     <div className="fade-in">
       <AIFlagBanner />
@@ -124,6 +128,7 @@ export default function YourArrangementsPage() {
       <StepNavigation
         onBack={() => subStep > 0 ? setSubStep(s => s - 1) : router.push('/will/your-estate')}
         onContinue={handleContinue}
+        continueDisabled={!isCurrentValid()}
         showSkip={subStep === 3}
         onSkip={() => { dispatch({ type: 'COMPLETE_STEP', payload: 4 }); router.push('/will/poa-property') }}
       />
