@@ -241,6 +241,51 @@ def test_build_variables_overlays_vault_when_present():
     assert v["primaryExecutorFullName"] == "Trusted Friend"
 
 
+def test_clause_body_preserves_sub_item_structure_from_raw_text():
+    """P1 fidelity: (a)/(i) hanging-indent structure must survive to Word instead
+    of collapsing into one run-on paragraph."""
+    from services.document_generator import clause_body_to_blocks
+
+    raw = (
+        "I hold the residue on the following terms:\n\n"
+        "(a) to pay income to my spouse;\n\n"
+        "(b) then to divide the capital as follows:\n\n"
+        "(i) one half to my children;\n\n"
+        "(ii) one half to charity."
+    )
+    blocks = clause_body_to_blocks(raw)
+    assert [b["indent"] for b in blocks] == [1, 2, 2, 3, 3]
+    assert [b["marker"] for b in blocks] == [None, "(a)", "(b)", "(i)", "(ii)"]
+
+    docx_bytes = DocumentGenerator().generate_document(
+        "single_will",
+        [{"clause_id": "x", "title": "Residue", "template_text": raw,
+          "is_folder": False, "included": True, "sort_order": 1}],
+        {},
+    )
+    d = Document(io.BytesIO(docx_bytes))
+    text = "\n".join(p.text for p in d.paragraphs)
+    assert "(a)\t" in text and "(i)\t" in text  # markers rendered as literal text
+    a_para = next(p for p in d.paragraphs if p.text.startswith("(a)"))
+    i_para = next(p for p in d.paragraphs if p.text.startswith("(i)"))
+    assert round(a_para.paragraph_format.left_indent.inches, 2) == 1.0
+    assert round(a_para.paragraph_format.first_line_indent.inches, 2) == -0.5
+    assert round(i_para.paragraph_format.left_indent.inches, 2) == 1.5
+
+
+def test_clause_body_html_preserves_blocks_and_inline_italic():
+    from services.document_generator import clause_body_to_blocks
+
+    html = (
+        '<p data-indent="1">The <i>Family Law Act</i> applies:</p>'
+        '<p data-indent="2" data-marker="(a)">the lettered item.</p>'
+    )
+    blocks = clause_body_to_blocks(html)
+    assert [b["indent"] for b in blocks] == [1, 2]
+    assert blocks[1]["marker"] == "(a)"
+    assert any(r[2] for r in blocks[0]["runs"])  # an italic run survived
+
+
 def test_clause_selection_model_accepts_template_fields():
     sel = ClauseSelection(
         clause_id="rev-single",

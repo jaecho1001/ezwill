@@ -274,6 +274,196 @@ def _strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
 
 
+# ── Structured clause rendering ─────────────────────────────────────────────
+# A clause body carries hierarchy the flat run-based renderer lost: an intro
+# paragraph (level 1), lettered sub-items (a)/(b) (level 2), and roman
+# sub-sub-items (i)/(ii) (level 3), each hanging-indented under its marker.
+# It arrives in two shapes and both must render identically to the editor:
+#   - lawyer-edited  -> HTML: <p data-indent="2" data-marker="(a)">text</p>
+#   - untouched      -> raw template_text with literal "(a)"/"(i)" + blank lines
+# We normalize both into "blocks" ({indent, marker, align, runs, heading}) and
+# lay each out as its own docx paragraph. Indent levels mirror globals.css:
+# 3.5em/7em/10.5em tab stops == 0.5in per level, hanging indent 0.5in.
+
+_ROMAN_SEQUENCE = [
+    "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+    "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx",
+]
+
+
+def _ends_with_colon(s: str) -> bool:
+    return bool(re.search(r":\s*$", s))
+
+
+def _inline_runs(text: str) -> list:
+    """Split a paragraph's (possibly inline-HTML) text into (text, b, i, u) runs."""
+    if not text:
+        return []
+    if "<" not in text:
+        return [(text, False, False, False)]
+    parser = _SimpleHTMLParser()
+    try:
+        parser.feed(text)
+    except Exception:
+        return [(_strip_html(text), False, False, False)]
+    return parser.runs or [(_strip_html(text), False, False, False)]
+
+
+def _format_clause_text(raw: str) -> list:
+    """Python port of the frontend formatClauseText (format-clause.ts): split
+    raw clause text into paragraphs with indent level + auto/explicit markers.
+    Kept in sync with the editor so the .docx matches the on-screen preview."""
+    if not raw:
+        return []
+    use_double = "\n\n" in raw
+    parts = re.split(r"\n\n+" if use_double else r"\n+", raw)
+    parts = [p.strip() for p in parts if p.strip()]
+    if not parts:
+        return []
+
+    result: list = []
+    mode = "body"
+    letter_counter = 0
+    roman_counter = 0
+
+    for i, text in enumerate(parts):
+        roman_match = re.match(r"^\(([ivx]+)\)\s+([\s\S]*)", text)
+        letter_match = re.match(r"^\(([a-z])\)\s+([\s\S]*)", text)
+
+        if roman_match:
+            body = roman_match.group(2).strip()
+            result.append({"text": body, "indent": 3, "marker": f"({roman_match.group(1)})"})
+            mode = "romans"
+            idx = _ROMAN_SEQUENCE.index(roman_match.group(1)) if roman_match.group(1) in _ROMAN_SEQUENCE else -1
+            roman_counter = idx + 1 if idx >= 0 else roman_counter + 1
+            continue
+
+        if letter_match:
+            body = letter_match.group(2).strip()
+            result.append({"text": body, "indent": 2, "marker": f"({letter_match.group(1)})"})
+            letter_counter = ord(letter_match.group(1)) - 0x61 + 1
+            mode = "romans" if _ends_with_colon(body) else "letters"
+            if mode == "romans":
+                roman_counter = 0
+            continue
+
+        if i == 0:
+            result.append({"text": text, "indent": 1, "marker": None})
+            if _ends_with_colon(text):
+                mode = "letters"
+                letter_counter = 0
+                roman_counter = 0
+            continue
+
+        if mode == "romans":
+            marker = f"({_ROMAN_SEQUENCE[roman_counter]})" if roman_counter < len(_ROMAN_SEQUENCE) else None
+            if marker:
+                roman_counter += 1
+            result.append({"text": text, "indent": 3, "marker": marker})
+        elif mode == "letters":
+            marker = f"({chr(0x61 + letter_counter)})"
+            letter_counter += 1
+            result.append({"text": text, "indent": 2, "marker": marker})
+            if _ends_with_colon(text):
+                mode = "romans"
+                roman_counter = 0
+        else:
+            result.append({"text": text, "indent": 1, "marker": None})
+
+    return result
+
+
+class _BlockHTMLParser(HTMLParser):
+    """Parse editor HTML into block paragraphs, preserving data-indent /
+    data-marker / data-num and inline b/i/u runs."""
+
+    _BLOCK_TAGS = ("p", "h3", "h4", "li")
+
+    def __init__(self):
+        super().__init__()
+        self.blocks: list = []
+        self._cur = None
+        self._bold = False
+        self._italic = False
+        self._underline = False
+
+    def _open(self, indent, marker, align, heading):
+        self._cur = {
+            "indent": indent, "marker": marker, "align": align,
+            "heading": heading, "runs": [],
+        }
+
+    def _close(self):
+        if self._cur is not None:
+            if self._cur["runs"] or self._cur["marker"]:
+                self.blocks.append(self._cur)
+            self._cur = None
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in self._BLOCK_TAGS:
+            self._close()
+            d = dict(attrs)
+            try:
+                indent = int(d.get("data-indent") or 1)
+            except (TypeError, ValueError):
+                indent = 1
+            indent = min(max(indent, 1), 3)
+            marker = d.get("data-marker") or d.get("data-num") or None
+            style = (d.get("style") or "").lower()
+            align = "center" if "center" in style else ("right" if "right" in style else None)
+            self._open(indent, marker, align, heading=tag in ("h3", "h4"))
+        elif tag in ("b", "strong"):
+            self._bold = True
+        elif tag in ("i", "em"):
+            self._italic = True
+        elif tag == "u":
+            self._underline = True
+        elif tag == "br" and self._cur is not None:
+            self._cur["runs"].append(("\n", self._bold, self._italic, self._underline))
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in self._BLOCK_TAGS:
+            self._close()
+        elif tag in ("b", "strong"):
+            self._bold = False
+        elif tag in ("i", "em"):
+            self._italic = False
+        elif tag == "u":
+            self._underline = False
+
+    def handle_data(self, data):
+        if not data:
+            return
+        if self._cur is None:
+            self._open(1, None, None, heading=False)
+        self._cur["runs"].append((data, self._bold, self._italic, self._underline))
+
+
+def clause_body_to_blocks(text: str):
+    """Normalize a clause body (edited HTML or raw template text) into layout
+    blocks. Returns None on parse failure so the caller can fall back to plain."""
+    if not text:
+        return []
+    if re.search(r"<\s*(p|h3|h4|li|ul|ol|div)\b", text, re.IGNORECASE):
+        parser = _BlockHTMLParser()
+        try:
+            parser.feed(text)
+        except Exception:
+            return None
+        parser._close()
+        return parser.blocks
+    # Raw text: structure via the ported formatter, then inline runs per line.
+    blocks = []
+    for para in _format_clause_text(text):
+        blocks.append({
+            "indent": para["indent"], "marker": para.get("marker"),
+            "align": None, "heading": False, "runs": _inline_runs(para["text"]),
+        })
+    return blocks
+
+
 # ── Document Generator ──────────────────────────────────────────────────────
 
 class DocumentGenerator:
@@ -491,25 +681,60 @@ class DocumentGenerator:
             run.font.size = Pt(12)
             run.font.name = "Times New Roman"
 
-        # Body text
-        p = doc.add_paragraph()
-        p.paragraph_format.left_indent = Inches(0.5)
-        p.space_after = Pt(6)
+        # Body text — render structured blocks so (a)/(i) markers, nested
+        # numbering, and hanging indents survive to Word. A flat run dump (the
+        # old html_to_docx_runs) collapsed the whole clause into one paragraph.
+        blocks = clause_body_to_blocks(resolved)
+        if not blocks:  # parse failure or empty — plain fallback
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent = Inches(0.5)
+            p.space_after = Pt(6)
+            if not title:
+                nr = p.add_run(f"{clause_number}.  ")
+                nr.bold = True
+                nr.font.size = Pt(12)
+                nr.font.name = "Times New Roman"
+            r = p.add_run(_strip_html(resolved))
+            r.font.size = Pt(12)
+            r.font.name = "Times New Roman"
+            return
 
-        # If no title, prefix with number in the body
-        if not title:
-            num_run = p.add_run(f"{clause_number}.  ")
-            num_run.bold = True
-            num_run.font.size = Pt(12)
-            num_run.font.name = "Times New Roman"
+        for idx, block in enumerate(blocks):
+            p = doc.add_paragraph()
+            p.space_after = Pt(6)
+            level = block.get("indent", 1)
+            p.paragraph_format.left_indent = Inches(0.5 * level)
+            marker = block.get("marker")
+            if marker:
+                # Hanging indent: marker sits 0.5in left of the wrapped body.
+                p.paragraph_format.first_line_indent = Inches(-0.5)
+                p.paragraph_format.tab_stops.add_tab_stop(Inches(0.5 * level))
+            align = block.get("align")
+            if align == "center":
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif align == "right":
+                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-        # Add the text, handling HTML if present
-        if "<" in resolved:
-            html_to_docx_runs(p, resolved)
-        else:
-            run = p.add_run(resolved)
-            run.font.size = Pt(12)
-            run.font.name = "Times New Roman"
+            # Untitled clauses carry their number on the first line.
+            if idx == 0 and not title:
+                nr = p.add_run(f"{clause_number}.  ")
+                nr.bold = True
+                nr.font.size = Pt(12)
+                nr.font.name = "Times New Roman"
+            if marker:
+                mr = p.add_run(f"{marker}\t")
+                mr.font.size = Pt(12)
+                mr.font.name = "Times New Roman"
+            for text, bold, italic, underline in block["runs"]:
+                run = p.add_run(text)
+                run.font.size = Pt(12)
+                run.font.name = "Times New Roman"
+                if bold or block.get("heading"):
+                    run.bold = True
+                if italic:
+                    run.italic = True
+                if underline:
+                    run.underline = True
 
     # ── Signing Pages ───────────────────────────────────────────────────────
 
