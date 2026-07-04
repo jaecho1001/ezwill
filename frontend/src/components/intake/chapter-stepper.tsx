@@ -2,15 +2,18 @@
 
 import { cn } from '@/lib/utils'
 import type { IntakeChapter } from '@/lib/intake/will-intake-script'
+import type { Language } from '@/lib/types/will'
+import { L } from '@/lib/intake/localize'
 
 interface Props {
   chapters: IntakeChapter[]
   currentIndex: number
   progressByChapter: Record<string, { pct: number; requiredUnanswered: number; asked: number }>
   onSelect: (index: number) => void
+  language: Language
 }
 
-export function ChapterStepper({ chapters, currentIndex, progressByChapter, onSelect }: Props) {
+export function ChapterStepper({ chapters, currentIndex, progressByChapter, onSelect, language }: Props) {
   return (
     <ol className="flex flex-col gap-1">
       {chapters.map((ch, i) => {
@@ -30,7 +33,7 @@ export function ChapterStepper({ chapters, currentIndex, progressByChapter, onSe
               <span className="text-lg leading-none">{ch.icon}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">{ch.title}</span>
+                  <span className="truncate font-medium">{L(language, ch.title, ch.titleKo)}</span>
                   {isComplete ? (
                     <span className="shrink-0 text-xs text-green-600">✓</span>
                   ) : p ? (

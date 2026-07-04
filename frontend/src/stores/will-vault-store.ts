@@ -11,9 +11,12 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { emptyVault, type WillVault, type VaultPath } from '@/types/will-vault'
+import type { Language } from '@/lib/types/will'
 
 interface VaultState {
   vault: WillVault
+  language: Language
+  setLanguage: (lang: Language) => void
   setField: (path: VaultPath, value: unknown) => void
   getField: (path: VaultPath) => unknown
   replaceVault: (next: WillVault) => void
@@ -56,6 +59,8 @@ export function useWillVault(willId: string): UseBoundStore<StoreApi<VaultState>
     persist(
       (set, get) => ({
         vault: emptyVault,
+        language: 'en' as Language,
+        setLanguage: (language) => set({ language }),
         setField: (path, value) => set({ vault: setByPath(get().vault, path, value) as WillVault }),
         getField: (path) => getByPath(get().vault, path),
         replaceVault: (next) => set({ vault: next }),
