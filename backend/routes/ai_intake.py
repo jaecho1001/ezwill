@@ -492,6 +492,24 @@ async def _stream_with_mock(
     yield _sse("done", {"tool_calls": tool_count, "elapsed_ms": elapsed_ms, "source": "mock"})
 
 
+def _persist_vault_snapshot(draft_id: str, vault: dict) -> None:
+    """Save the client's vault snapshot onto the draft so the document
+    generator can read it. Best-effort: intake chat must not fail if the draft
+    doesn't exist yet or the DB write errors."""
+    if not vault:
+        return
+    try:
+        import os
+        import json as _json
+        from services.db import EWDbWriter
+
+        schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+        with EWDbWriter(schema) as db:
+            db.update_draft(draft_id, {"vault": _json.dumps(vault)})
+    except Exception:  # noqa: BLE001 — never break the chat on persistence
+        logger.exception("failed to persist intake vault for draft %s", draft_id)
+
+
 # ── Route ───────────────────────────────────────────────────────────────────
 @router.post("/chat")
 async def intake_chat(
@@ -514,6 +532,10 @@ async def intake_chat(
     # Rate limit per draft to prevent runaway costs if a client loops or a
     # token leaks. Raises 429 — frontend already surfaces errors inline.
     _check_rate_limit(body.draft_id)
+
+    # Persist the latest vault snapshot so conversational-intake data reaches
+    # the document generator (best-effort; never break the chat on a DB error).
+    _persist_vault_snapshot(body.draft_id, body.vault)
 
     vault = dict(body.vault or {})  # shallow copy we mutate while streaming
 

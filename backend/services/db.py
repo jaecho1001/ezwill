@@ -103,6 +103,8 @@ class EWDbWriter:
             # Questionnaire section answers (JSONB) — feed the document generator.
             'about_you', 'your_family', 'your_estate', 'your_arrangements',
             'poa_property', 'poa_personal_care',
+            # Conversational AI-intake snapshot (JSONB).
+            'vault',
         }
         safe = {k: v for k, v in updates.items() if k in allowed}
         if not safe:

@@ -14,7 +14,12 @@ from pydantic import BaseModel
 from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 from services.draft_service import get_full_draft
-from services.document_generator import DOCUMENT_TITLES, resolve_variables, map_people_to_variables
+from services.document_generator import (
+    DOCUMENT_TITLES,
+    resolve_variables,
+    map_people_to_variables,
+    vault_to_variables,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +142,11 @@ def _build_variables(draft: dict) -> dict:
     variables["trustDistributionAge"] = str(estate.get("trustDistributionAge", 21))
 
     variables.update(map_people_to_variables(draft.get("people", [])))
+
+    # Overlay conversational AI-intake vault data (canonical when present).
+    for k, val in vault_to_variables(draft.get("vault") or {}).items():
+        if val:
+            variables[k] = val
 
     return variables
 

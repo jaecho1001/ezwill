@@ -18,7 +18,11 @@ from docx import Document
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from models import ClauseSelection
-from services.document_generator import DocumentGenerator, map_people_to_variables
+from services.document_generator import (
+    DocumentGenerator,
+    map_people_to_variables,
+    vault_to_variables,
+)
 
 
 VARIABLES = {
@@ -179,6 +183,62 @@ def test_build_variables_reads_questionnaire_sections():
     assert "Sunny Kim" in v["childNames"] and "Helen Kim" in v["childNames"]
     assert v["trustDistributionAge"] == "25"
     assert v["primaryExecutorFullName"] == "Moonyoung Lee"
+
+
+def test_vault_to_variables_projects_intake_data():
+    """P0 #2 (vault): conversational-intake facts must project into the same
+    {{placeholder}} variables the generator resolves."""
+    vault = {
+        "testator": {"fullName": "Jane Doe", "address": "10 King St, Vaughan, ON"},
+        "spouse": {"included": True, "fullName": "Moonyoung Lee"},
+        "children": [{"id": "1", "fullName": "Sunny Kim"}, {"id": "2", "fullName": "Helen Kim"}],
+        "executors": [
+            {"id": "e1", "fullName": "Moonyoung Lee", "isBackup": False},
+            {"id": "e2", "fullName": "Joon Park", "isBackup": True},
+        ],
+        "guardians": [{"id": "g1", "fullName": "Sung Hee", "isBackup": False}],
+    }
+    v = vault_to_variables(vault)
+    assert v["testatorFullName"] == "Jane Doe"
+    assert v["cityName"] == "Vaughan"
+    assert v["province"] == "Ontario"
+    assert v["spouseFullName"] == "Moonyoung Lee"
+    assert v["childNames"] == "Sunny Kim and Helen Kim"
+    assert v["primaryExecutorFullName"] == "Moonyoung Lee"
+    assert v["backupExecutorFullName"] == "Joon Park"
+    assert v["guardianFullName"] == "Sung Hee"
+
+
+def test_vault_to_variables_empty_is_noop():
+    assert vault_to_variables({}) == {}
+    assert vault_to_variables(None) == {}
+    # An uninvolved spouse is not projected.
+    assert "spouseFullName" not in vault_to_variables(
+        {"testator": {}, "spouse": {"included": False, "fullName": "X"},
+         "children": [], "executors": [], "guardians": []}
+    )
+
+
+def test_build_variables_overlays_vault_when_present():
+    """A chat-only client (no questionnaire sections) still gets their data in
+    the document via the vault overlay."""
+    from routes.documents import _build_variables
+
+    draft = {
+        "client_first_name": "",
+        "client_last_name": "",
+        "province": "ON",
+        "vault": {
+            "testator": {"fullName": "Chat Only", "address": "5 Yonge St, Toronto, ON"},
+            "children": [],
+            "executors": [{"id": "e", "fullName": "Trusted Friend", "isBackup": False}],
+            "guardians": [],
+        },
+    }
+    v = _build_variables(draft)
+    assert v["testatorFullName"] == "Chat Only"
+    assert v["cityName"] == "Toronto"
+    assert v["primaryExecutorFullName"] == "Trusted Friend"
 
 
 def test_clause_selection_model_accepts_template_fields():

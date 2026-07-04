@@ -124,6 +124,93 @@ def map_people_to_variables(people: list) -> dict:
     return out
 
 
+_PROVINCE_RE = re.compile(
+    r"\b(Ontario|ON|Quebec|QC|British Columbia|BC|Alberta|AB|Manitoba|MB|"
+    r"Saskatchewan|SK|Nova Scotia|NS|New Brunswick|NB|Newfoundland|NL|"
+    r"Prince Edward Island|PE|PEI)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_city(address: str) -> str:
+    parts = [p.strip() for p in address.split(",") if p.strip()]
+    if len(parts) >= 2:
+        return parts[-2]
+    return parts[0] if parts else ""
+
+
+def _extract_province(address: str) -> str:
+    m = _PROVINCE_RE.search(address)
+    if not m:
+        return ""
+    raw = m.group(1)
+    if raw.upper() == "ON" or raw.lower() == "ontario":
+        return "Ontario"
+    return raw
+
+
+def _list_names(names: list) -> str:
+    clean = [n for n in names if n]
+    if not clean:
+        return ""
+    if len(clean) == 1:
+        return clean[0]
+    if len(clean) == 2:
+        return f"{clean[0]} and {clean[1]}"
+    return f"{', '.join(clean[:-1])}, and {clean[-1]}"
+
+
+def vault_to_variables(vault: dict) -> dict:
+    """Project a conversational-intake WillVault into {{placeholder}} variables.
+
+    Python mirror of the frontend vaultToVariables (src/lib/will-documents/
+    vault-to-variables.ts). Only emits variables backed by real vault data, so
+    merging it over questionnaire-derived variables never clobbers a filled
+    field with a blank. Keep the two in sync when the vault schema changes.
+    """
+    if not vault:
+        return {}
+    v: dict = {}
+
+    testator = vault.get("testator") or {}
+    if testator.get("fullName"):
+        v["testatorFullName"] = testator["fullName"]
+    if testator.get("address"):
+        city = _extract_city(testator["address"])
+        if city:
+            v["city"] = city
+            v["cityName"] = city
+        province = _extract_province(testator["address"])
+        if province:
+            v["province"] = province
+
+    spouse = vault.get("spouse") or {}
+    if spouse.get("included") and spouse.get("fullName"):
+        v["spouseFullName"] = spouse["fullName"]
+
+    child_names = [c.get("fullName") for c in (vault.get("children") or [])]
+    names = _list_names(child_names)
+    if names:
+        v["childNames"] = names
+
+    executors = vault.get("executors") or []
+    primary = next((e for e in executors if not e.get("isBackup")), None)
+    backup = next((e for e in executors if e.get("isBackup")), None)
+    if primary and primary.get("fullName"):
+        v["primaryExecutorFullName"] = primary["fullName"]
+    if backup and backup.get("fullName"):
+        v["backupExecutorFullName"] = backup["fullName"]
+
+    primary_guardian = next(
+        (g for g in (vault.get("guardians") or []) if not g.get("isBackup")), None
+    )
+    if primary_guardian and primary_guardian.get("fullName"):
+        v["guardianFullName"] = primary_guardian["fullName"]
+        v["primaryGuardianFullName"] = primary_guardian["fullName"]
+
+    return v
+
+
 def resolve_variables(text: str, variables: dict) -> str:
     """
     Replace {{variableName}} placeholders with values from variables dict.

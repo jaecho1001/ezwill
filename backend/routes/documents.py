@@ -20,6 +20,7 @@ from services.document_generator import (
     DOCUMENT_TITLES,
     resolve_variables,
     map_people_to_variables,
+    vault_to_variables,
 )
 from services.pdf_converter import convert_to_pdf
 from routes.auth import verify_dashboard_token
@@ -93,6 +94,11 @@ def _build_variables(draft: dict) -> dict:
         k: v for k, v in poa_pc.items()
         if isinstance(v, (str, int, float, bool))
     })
+
+    # Overlay conversational AI-intake vault data (canonical when present).
+    for k, val in vault_to_variables(draft.get("vault") or {}).items():
+        if val:
+            variables[k] = val
 
     return variables
 
