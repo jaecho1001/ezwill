@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { resolveReviewToken, type ReviewData, type ReviewDocument } from '@/lib/api/review'
 
 const DOCUMENT_ICONS: Record<string, string> = {
+  simple_will_short: '\u{1F4DD}',
   single_will: '\u{1F4DC}',
   probate_will: '\u{1F4CB}',
   non_probate_will: '\u{1F4C4}',

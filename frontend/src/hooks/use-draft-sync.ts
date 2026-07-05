@@ -24,6 +24,23 @@ function extractPeople(will: WillDocument): unknown[] {
   return people
 }
 
+export function buildDraftSyncSnapshot(will: WillDocument): string {
+  return JSON.stringify({
+    aboutYou: will.aboutYou,
+    yourFamily: will.yourFamily,
+    yourEstate: will.yourEstate,
+    yourArrangements: will.yourArrangements,
+    poaProperty: will.poaProperty,
+    poaPersonalCare: will.poaPersonalCare,
+    assets: will.assets,
+    liabilities: will.liabilities,
+    aiFlags: will.aiFlags,
+    currentStep: will.currentStep,
+    completedSteps: will.completedSteps,
+    language: will.language,
+  })
+}
+
 export function useDraftSync() {
   const { will } = useWillForm()
   const { draftId, token } = useDraft()
@@ -32,11 +49,7 @@ export function useDraftSync() {
 
   const sync = useCallback(async (w: WillDocument) => {
     if (!draftId) return
-    const snapshot = JSON.stringify({
-      step: w.currentStep,
-      steps: w.completedSteps,
-      lang: w.language,
-    })
+    const snapshot = buildDraftSyncSnapshot(w)
     if (snapshot === lastSyncedRef.current) return
     lastSyncedRef.current = snapshot
 

@@ -41,6 +41,7 @@ export type IntakeStreamEvent =
 
 export interface IntakeChatRequestBody {
   draftId: string
+  magicToken?: string
   messages: ChatMessage[]
   vault: WillVault
   progressSummary?: string
@@ -54,13 +55,18 @@ export async function* streamIntakeChat(
   body: IntakeChatRequestBody,
   signal: AbortSignal
 ): AsyncIterable<IntakeStreamEvent> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+    ...getAuthHeaders(),
+  }
+  if (body.magicToken) {
+    headers['X-Magic-Token'] = body.magicToken
+  }
+
   const res = await fetch('/api/ai/intake/chat', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      ...getAuthHeaders(),
-    },
+    headers,
     body: JSON.stringify({
       draft_id: body.draftId,
       messages: body.messages,

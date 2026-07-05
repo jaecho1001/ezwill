@@ -19,6 +19,14 @@ describe('getClausesForDocumentType', () => {
     expect(clauses.length).toBeGreaterThan(0)
   })
 
+  it('short-form will reuses single_will and all clauses', () => {
+    const clauses = getClausesForDocumentType('simple_will_short')
+    for (const c of clauses) {
+      expect(['simple_will_short', 'single_will', 'all']).toContain(c.documentType)
+    }
+    expect(clauses.length).toBeGreaterThan(0)
+  })
+
   it('includes probate-specific clauses for probate_will', () => {
     const clauses = getClausesForDocumentType('probate_will')
     const probateOnly = clauses.filter((c) => c.documentType === 'probate_will')
@@ -50,6 +58,20 @@ describe('buildDefaultSelections', () => {
     for (const s of selections) {
       expect(s.included).toBe(true)
     }
+  })
+
+  it('short-form will has a compact default clause set', () => {
+    const shortSelections = buildDefaultSelections('simple_will_short')
+    const standardSelections = buildDefaultSelections('single_will')
+
+    expect(shortSelections.length).toBeLessThan(standardSelections.length)
+    expect(shortSelections.map((s) => s.clauseId)).toEqual([
+      'rev', 'rev-single',
+      'appt', 'appt-primary', 'appt-backup',
+      'debt', 'debt-payment',
+      'res', 'res-spouse', 'res-children-stirpes',
+      'fla', 'fla-exclusion',
+    ])
   })
 })
 
@@ -115,8 +137,9 @@ describe('getDocumentTypeConfig', () => {
     expect(config!.shortName).toBe('Probate Will')
   })
 
-  it('all 8 document types have configs', () => {
+  it('all 9 document types have configs', () => {
     const allTypes = [
+      'simple_will_short',
       'single_will',
       'probate_will',
       'non_probate_will',
@@ -133,7 +156,7 @@ describe('getDocumentTypeConfig', () => {
 })
 
 describe('determineRequiredDocuments', () => {
-  it('Tier 1 without dual will returns single_will + affidavit + POAs', () => {
+  it('Tier 1 without dual will returns short-form will + affidavit + POAs by default', () => {
     const docs = determineRequiredDocuments({
       tier: 1,
       hasDualWill: false,
@@ -141,11 +164,22 @@ describe('determineRequiredDocuments', () => {
       hasPoaPersonalCare: true,
     })
     expect(docs).toEqual([
-      'single_will',
+      'simple_will_short',
       'affidavit_execution',
       'poa_property',
       'poa_personal_care',
     ])
+  })
+
+  it('Tier 1 can request the standard single will instead of the short form', () => {
+    const docs = determineRequiredDocuments({
+      tier: 1,
+      hasDualWill: false,
+      hasPoaProperty: false,
+      hasPoaPersonalCare: false,
+      willStyle: 'standard',
+    })
+    expect(docs).toEqual(['single_will', 'affidavit_execution'])
   })
 
   it('Tier 2 with dual will returns probate + non-probate + two affidavits + POA', () => {
@@ -166,13 +200,14 @@ describe('determineRequiredDocuments', () => {
 })
 
 describe('willDocumentTypes tiers', () => {
-  it('Tier 1 types are single_will, poa_property, poa_personal_care, affidavit_execution', () => {
+  it('Tier 1 types are short will, single_will, poa_property, poa_personal_care, affidavit_execution', () => {
     const tier1Ids = willDocumentTypes.filter((t) => t.tier === 1).map((t) => t.id)
+    expect(tier1Ids).toContain('simple_will_short')
     expect(tier1Ids).toContain('single_will')
     expect(tier1Ids).toContain('poa_property')
     expect(tier1Ids).toContain('poa_personal_care')
     expect(tier1Ids).toContain('affidavit_execution')
-    expect(tier1Ids.length).toBe(4)
+    expect(tier1Ids.length).toBe(5)
   })
 
   it('Tier 2 types are probate_will, non_probate_will, affidavit_execution_probate, affidavit_execution_non_probate', () => {

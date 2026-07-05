@@ -100,6 +100,11 @@ class EWDbWriter:
             'reviewed_at', 'approved_at',
             'client_first_name', 'client_last_name', 'client_email', 'client_phone',
             'liabilities',
+            # Questionnaire section answers (JSONB) — feed the document generator.
+            'about_you', 'your_family', 'your_estate', 'your_arrangements',
+            'poa_property', 'poa_personal_care',
+            # Conversational AI-intake snapshot (JSONB).
+            'vault',
         }
         safe = {k: v for k, v in updates.items() if k in allowed}
         if not safe:
@@ -245,12 +250,16 @@ class EWDbWriter:
         for c in clauses:
             self.execute("""
                 INSERT INTO ew_clause_selections
-                    (draft_id, document_type, clause_id, included, custom_text, ai_generated, sort_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (draft_id, document_type, clause_id, included, custom_text,
+                     template_text, title, is_folder, ai_generated, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 draft_id, document_type,
                 c['clause_id'], c.get('included', True),
-                c.get('custom_text'), c.get('ai_generated', False),
+                c.get('custom_text'),
+                c.get('template_text'), c.get('title'),
+                c.get('is_folder', False),
+                c.get('ai_generated', False),
                 c.get('sort_order', 0)
             ))
         return True
@@ -283,6 +292,31 @@ class EWDbWriter:
             (draft_id, document_type)
         )
         return True
+
+    # ── Firm Settings ─────────────────────────────────────────────────────────
+
+    def get_firm_settings(self) -> dict:
+        """Return the firm's settings blob (single row per schema), or {}."""
+        row = self.fetchone(
+            "SELECT settings FROM ew_firm_settings ORDER BY updated_at DESC LIMIT 1"
+        )
+        return dict(row).get("settings") or {} if row else {}
+
+    def upsert_firm_settings(self, settings: dict) -> dict:
+        """Persist the firm settings blob (single row per schema)."""
+        existing = self.fetchone("SELECT id FROM ew_firm_settings LIMIT 1")
+        if existing:
+            row = self.fetchone(
+                "UPDATE ew_firm_settings SET settings = %s, updated_at = now() "
+                "WHERE id = %s RETURNING settings",
+                (psycopg2.extras.Json(settings), existing["id"]),
+            )
+        else:
+            row = self.fetchone(
+                "INSERT INTO ew_firm_settings (settings) VALUES (%s) RETURNING settings",
+                (psycopg2.extras.Json(settings),),
+            )
+        return dict(row).get("settings") or {}
 
     # ── Document Configs ──────────────────────────────────────────────────────
 

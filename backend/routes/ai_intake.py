@@ -34,9 +34,10 @@ from collections import deque
 from threading import Lock
 from typing import Any, AsyncIterator, Optional, Deque
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from routes.auth import assert_auth_context_can_access_draft, verify_client_or_dashboard_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -491,9 +492,32 @@ async def _stream_with_mock(
     yield _sse("done", {"tool_calls": tool_count, "elapsed_ms": elapsed_ms, "source": "mock"})
 
 
+def _persist_vault_snapshot(draft_id: str, vault: dict) -> None:
+    """Save the client's vault snapshot onto the draft so the document
+    generator can read it. Best-effort: intake chat must not fail if the draft
+    doesn't exist yet or the DB write errors."""
+    if not vault:
+        return
+    try:
+        import os
+        import json as _json
+        from services.db import EWDbWriter
+
+        schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+        with EWDbWriter(schema) as db:
+            db.update_draft(draft_id, {"vault": _json.dumps(vault)})
+    except Exception:  # noqa: BLE001 — never break the chat on persistence
+        logger.exception("failed to persist intake vault for draft %s", draft_id)
+
+
 # ── Route ───────────────────────────────────────────────────────────────────
 @router.post("/chat")
-async def intake_chat(body: IntakeChatRequest):
+async def intake_chat(
+    body: IntakeChatRequest,
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_magic_token: Optional[str] = Header(None),
+):
     """
     SSE stream of assistant text deltas + tool calls + vault patches for
     conversational intake. Falls back to a regex extractor when Claude is
@@ -502,9 +526,16 @@ async def intake_chat(body: IntakeChatRequest):
     if not body.messages:
         raise HTTPException(status_code=400, detail="messages is required")
 
+    ctx = verify_client_or_dashboard_access(request, authorization, x_magic_token)
+    assert_auth_context_can_access_draft(ctx, body.draft_id)
+
     # Rate limit per draft to prevent runaway costs if a client loops or a
     # token leaks. Raises 429 — frontend already surfaces errors inline.
     _check_rate_limit(body.draft_id)
+
+    # Persist the latest vault snapshot so conversational-intake data reaches
+    # the document generator (best-effort; never break the chat on a DB error).
+    _persist_vault_snapshot(body.draft_id, body.vault)
 
     vault = dict(body.vault or {})  # shallow copy we mutate while streaming
 

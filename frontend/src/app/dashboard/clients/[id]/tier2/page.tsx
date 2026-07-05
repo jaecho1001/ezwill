@@ -10,6 +10,10 @@ import {
   willDocumentTypes,
   buildDefaultSelections,
 } from '@/lib/will-documents/index'
+import {
+  serializeSelectionsForSave,
+  deserializeStoredClauses,
+} from '@/lib/will-documents/clause-serialization'
 import type { WillDocumentType, SelectedWillClause } from '@/types/will-document'
 import { ClauseEditor } from '@/components/editor/clause-editor'
 import { useWillVault } from '@/stores/will-vault-store'
@@ -23,7 +27,7 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
-  const [selectedDocType, setSelectedDocType] = useState<WillDocumentType>('single_will')
+  const [selectedDocType, setSelectedDocType] = useState<WillDocumentType>('simple_will_short')
   const [clausesByDocType, setClausesByDocType] = useState<Record<string, SelectedWillClause[]>>({})
   const [draftData, setDraftData] = useState<Record<string, unknown>>({})
 
@@ -44,10 +48,13 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
             headers: { ...getAuthHeaders() },
           })
           if (clauseRes.ok) {
-            const stored = await clauseRes.json() as Record<string, SelectedWillClause[]>
+            // API returns { selections: { [docType]: storedRow[] } } in snake_case.
+            const payload = await clauseRes.json() as { selections?: Record<string, unknown[]> }
+            const stored = payload.selections ?? {}
             for (const docType of willDocumentTypes) {
-              if (stored[docType.id] && Array.isArray(stored[docType.id])) {
-                initial[docType.id] = stored[docType.id]
+              const rows = stored[docType.id]
+              if (Array.isArray(rows) && rows.length > 0) {
+                initial[docType.id] = deserializeStoredClauses(rows)
               } else {
                 initial[docType.id] = buildDefaultSelections(docType.id)
               }
@@ -117,7 +124,9 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
         fetch(`/api/drafts/${id}/clauses/${docType}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ clauses }),
+          // Enrich with library text (template_text/title/is_folder) so the
+          // backend generator can render a complete document.
+          body: JSON.stringify({ clauses: serializeSelectionsForSave(clauses) }),
         })
       )
       const results = await Promise.all(promises)

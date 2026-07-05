@@ -86,22 +86,22 @@ export default function YourFamilyPage() {
             options={[
               { value: 'single', title: t.maritalStatuses.single, icon: '🧑' },
               { value: 'married', title: t.maritalStatuses.married, icon: '💍' },
-              { value: 'commonlaw', title: t.maritalStatuses.commonlaw, icon: '🤝', description: 'Living together 3+ years or with child' },
-              { value: 'separated', title: t.maritalStatuses.separated, icon: '↔️', description: 'SLRA s.17: gifts to ex may be void after 3 years' },
+              { value: 'commonlaw', title: t.maritalStatuses.commonlaw, icon: '🤝', description: t.family_commonlawDesc },
+              { value: 'separated', title: t.maritalStatuses.separated, icon: '↔️', description: t.family_separatedDesc },
               { value: 'divorced', title: t.maritalStatuses.divorced, icon: '📋' },
               { value: 'widowed', title: t.maritalStatuses.widowed, icon: '🕊️' },
             ]}
           />
           {data.maritalStatus === 'separated' && (
             <div className="space-y-1.5">
-              <Label>Date of Separation</Label>
+              <Label>{t.family_separationDate}</Label>
               <input
                 type="date"
                 value={data.separationDate ?? ''}
                 onChange={e => update({ separationDate: e.target.value })}
                 className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
               />
-              <p className="text-xs text-amber-600">SLRA s.17: Gifts to a separated spouse may be void after 3+ years of separation.</p>
+              <p className="text-xs text-amber-600">{t.family_separationNote}</p>
             </div>
           )}
         </div>
@@ -135,7 +135,7 @@ export default function YourFamilyPage() {
               {data.children.map((child, i) => (
                 <div key={child.id} className="border border-gray-200 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-700">Child {i + 1}</p>
+                    <p className="text-sm font-medium text-gray-700">{t.family_child} {i + 1}</p>
                     <button onClick={() => update({ children: data.children.filter(c => c.id !== child.id) })} className="text-gray-400 hover:text-red-500">
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -149,13 +149,13 @@ export default function YourFamilyPage() {
                       id={`minor-${child.id}`}
                       checked={!!child.isMinor}
                       onChange={e => update({ children: data.children.map(c => c.id === child.id ? { ...c, isMinor: (e.target as HTMLInputElement).checked } : c) })}
-                      label="Currently a minor (under 18)"
+                      label={t.family_minorLabel}
                     />
                     <Checkbox
                       id={`odsp-${child.id}`}
                       checked={!!child.receivesODSP}
                       onChange={e => update({ children: data.children.map(c => c.id === child.id ? { ...c, receivesODSP: (e.target as HTMLInputElement).checked } : c) })}
-                      label="Receives ODSP"
+                      label={t.family_odspLabel}
                     />
                   </div>
                 </div>
@@ -175,12 +175,12 @@ export default function YourFamilyPage() {
       {currentKey === 'guardians' && (
         <div className="space-y-4">
           <p className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <strong>Ontario law (CLRA s.61):</strong> A guardian named in your Will has authority for 90 days, then must apply to court to continue.
+            <strong>{t.family_guardianLawTitle}</strong> {t.family_guardianLawNote}
           </p>
           {data.guardians.map((g, i) => (
             <div key={g.id} className="border border-gray-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-700">Guardian {i + 1}{i === 0 ? ' (Primary)' : ' (Backup)'}</p>
+                <p className="text-sm font-medium text-gray-700">{t.family_guardian} {i + 1}{i === 0 ? ` ${t.family_primary}` : ` ${t.family_backup}`}</p>
                 <button onClick={() => update({ guardians: data.guardians.filter(x => x.id !== g.id) })} className="text-gray-400 hover:text-red-500">
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -211,15 +211,15 @@ export default function YourFamilyPage() {
               {data.pets.map((pet, i) => (
                 <div key={pet.id} className="border border-gray-200 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-700">Pet {i + 1}</p>
+                    <p className="text-sm font-medium text-gray-700">{t.family_pet} {i + 1}</p>
                     <button onClick={() => update({ pets: data.pets.filter(p => p.id !== pet.id) })} className="text-gray-400 hover:text-red-500">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <div className="space-y-1"><Label>Name</Label><Input value={pet.name} onChange={e => update({ pets: data.pets.map(p => p.id === pet.id ? { ...p, name: e.target.value } : p) })} placeholder="Buddy" /></div>
-                    <div className="space-y-1"><Label>Type</Label><Input value={pet.type} onChange={e => update({ pets: data.pets.map(p => p.id === pet.id ? { ...p, type: e.target.value } : p) })} placeholder="Dog" /></div>
-                    <div className="space-y-1 col-span-3"><Label>Caregiver Name</Label><Input value={pet.caregiverName} onChange={e => update({ pets: data.pets.map(p => p.id === pet.id ? { ...p, caregiverName: e.target.value } : p) })} placeholder="Who will care for them?" /></div>
+                    <div className="space-y-1"><Label>{t.family_petName}</Label><Input value={pet.name} onChange={e => update({ pets: data.pets.map(p => p.id === pet.id ? { ...p, name: e.target.value } : p) })} placeholder={t.family_petNamePlaceholder} /></div>
+                    <div className="space-y-1"><Label>{t.family_petType}</Label><Input value={pet.type} onChange={e => update({ pets: data.pets.map(p => p.id === pet.id ? { ...p, type: e.target.value } : p) })} placeholder={t.family_petTypePlaceholder} /></div>
+                    <div className="space-y-1 col-span-3"><Label>{t.family_caregiverName}</Label><Input value={pet.caregiverName} onChange={e => update({ pets: data.pets.map(p => p.id === pet.id ? { ...p, caregiverName: e.target.value } : p) })} placeholder={t.family_caregiverPlaceholder} /></div>
                   </div>
                 </div>
               ))}

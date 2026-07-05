@@ -4,6 +4,8 @@
 --
 -- Usage: SET search_path TO firm_demo; \i 25-ezwill-tables.sql
 
+SET search_path TO firm_demo;
+
 -- ── Will Drafts (core record) ─────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS ew_will_drafts (
@@ -242,18 +244,11 @@ CREATE TABLE IF NOT EXISTS ew_document_generations (
 -- Adds ew_client_id to ix_cross_client_map (shared integration layer table)
 -- Only run once per database (not per schema)
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'ix_cross_client_map'
-        AND column_name = 'ew_client_id'
-    ) THEN
-        ALTER TABLE ix_cross_client_map ADD COLUMN ew_client_id UUID NULL;
-        CREATE INDEX idx_ix_cross_client_map_ew
-            ON ix_cross_client_map(ew_client_id)
-            WHERE ew_client_id IS NOT NULL;
-        COMMENT ON COLUMN ix_cross_client_map.ew_client_id
-            IS 'EZWill client identifier — links will drafts to platform identity';
-    END IF;
-END $$;
+ALTER TABLE public.ix_cross_client_map ADD COLUMN IF NOT EXISTS ew_client_id UUID NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ix_cross_client_map_ew
+    ON public.ix_cross_client_map(ew_client_id)
+    WHERE ew_client_id IS NOT NULL;
+
+COMMENT ON COLUMN public.ix_cross_client_map.ew_client_id
+    IS 'EZWill client identifier - links will drafts to platform identity';

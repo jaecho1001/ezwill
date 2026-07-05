@@ -37,20 +37,25 @@ export default function POAPropertyPage() {
     }
   }
 
+  // Only enforce an attorney once the client has opted into this POA — never
+  // block someone who is choosing not to make one.
+  const isCurrentValid = () =>
+    subStep !== 0 || !data.hasAttorney || !!data.attorney?.firstName?.trim()
+
   return (
     <div className="fade-in">
       <AIFlagBanner />
       <StepHeader
         section={t.poaProperty}
         title={
-          subStep === 0 ? 'Attorney for Property' :
-          subStep === 1 ? 'When Does It Take Effect?' :
-          'Restrictions & Compensation'
+          subStep === 0 ? t.poaProp_titleAttorney :
+          subStep === 1 ? t.poaProp_titleEffective :
+          t.poaProp_titleRestrictions
         }
         description={
-          subStep === 0 ? 'This person manages your finances (bank, real estate, investments) if you cannot.' :
-          subStep === 1 ? 'A Continuing POA for Property can be effective immediately or only upon mental incapacity.' :
-          'Optional restrictions or instructions for your attorney.'
+          subStep === 0 ? t.poaProp_descAttorney :
+          subStep === 1 ? t.poaProp_descEffective :
+          t.poaProp_descRestrictions
         }
         step={subStep}
         totalSteps={SUB_STEPS.length}
@@ -64,10 +69,10 @@ export default function POAPropertyPage() {
             showRelationship
             showEmail
             showPhone
-            title="Primary Attorney"
+            title={t.poaProp_primaryAttorney}
           />
           <div className="border-t pt-4">
-            <p className="text-sm font-medium text-gray-700 mb-3">Backup Attorney (optional)</p>
+            <p className="text-sm font-medium text-gray-700 mb-3">{t.poaProp_backupAttorneyOptional}</p>
             <PersonForm
               value={data.backupAttorney ?? {}}
               onChange={updates => update({ backupAttorney: { ...newPerson('attorney_property'), ...data.backupAttorney, ...updates } })}
@@ -75,7 +80,7 @@ export default function POAPropertyPage() {
             />
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-            <strong>Ontario SDA s.7:</strong> An attorney for property cannot change your Will or make gifts on your behalf (unless the POA explicitly permits small gifts).
+            <strong>{t.poaProp_sdaNoteLabel}</strong> {t.poaProp_sdaNoteBody}
           </div>
         </div>
       )}
@@ -88,8 +93,8 @@ export default function POAPropertyPage() {
             value={data.effectiveImmediately ? 'immediate' : 'incapacity'}
             onChange={v => update({ effectiveImmediately: v === 'immediate' })}
             options={[
-              { value: 'immediate', title: 'Effective Immediately (Recommended)', description: 'Your attorney can act now and continues if you lose capacity. Most flexible — useful if travelling or hospitalized.' },
-              { value: 'incapacity', title: 'Effective Only on Incapacity', description: 'Attorney can only act after a doctor certifies you are mentally incapable. Requires assessment process — can cause delays in emergencies.' },
+              { value: 'immediate', title: t.poaProp_immediateTitle, description: t.poaProp_immediateDesc },
+              { value: 'incapacity', title: t.poaProp_incapacityTitle, description: t.poaProp_incapacityDesc },
             ]}
           />
         </div>
@@ -98,19 +103,19 @@ export default function POAPropertyPage() {
       {subStep === 2 && (
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Restrictions (optional)</Label>
+            <Label>{t.poaProp_restrictionsLabel}</Label>
             <Textarea
               value={data.restrictions ?? ''}
               onChange={e => update({ restrictions: e.target.value })}
-              placeholder="e.g. My attorney cannot sell my principal residence without court approval..."
+              placeholder={t.poaProp_restrictionsPlaceholder}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Compensation</Label>
+            <Label>{t.poaProp_compensationLabel}</Label>
             <Textarea
               value={data.compensation ?? ''}
               onChange={e => update({ compensation: e.target.value })}
-              placeholder="e.g. My attorney shall be entitled to reasonable compensation as permitted by the SDA... (or leave blank for no compensation)"
+              placeholder={t.poaProp_compensationPlaceholder}
             />
           </div>
         </div>
@@ -119,6 +124,7 @@ export default function POAPropertyPage() {
       <StepNavigation
         onBack={() => subStep > 0 ? setSubStep(s => s - 1) : router.push('/will/your-arrangements')}
         onContinue={handleContinue}
+        continueDisabled={!isCurrentValid()}
         showSkip={subStep === 2}
         onSkip={() => { dispatch({ type: 'COMPLETE_STEP', payload: 5 }); router.push('/will/poa-personal-care') }}
       />

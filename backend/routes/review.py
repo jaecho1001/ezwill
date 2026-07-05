@@ -14,7 +14,13 @@ from pydantic import BaseModel
 from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 from services.draft_service import get_full_draft
-from services.document_generator import DOCUMENT_TITLES, resolve_variables
+from services.document_generator import (
+    DOCUMENT_TITLES,
+    resolve_variables,
+    map_people_to_variables,
+    vault_to_variables,
+    firm_variables,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +28,18 @@ router = APIRouter()
 
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
 FIRM_NAME = os.getenv("FIRM_NAME", "Vaturi & Cho LLP")
+
+
+def _firm_display_name() -> str:
+    """Firm name from saved settings, falling back to the env/default."""
+    try:
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            name = (db.get_firm_settings().get("firm") or {}).get("firmName")
+            if name:
+                return name
+    except Exception:
+        pass
+    return FIRM_NAME
 
 
 # ── Models ───────────────────────────────────────────────────────────────────
@@ -47,6 +65,14 @@ def _validate_review_token(token: str) -> dict:
             link = db.resolve_link(token)
     if not link:
         raise HTTPException(401, "Review link expired, revoked, or invalid")
+    return link
+
+
+def _validate_review_token_for_draft(token: str, draft_id: str) -> dict:
+    """Resolve a review token and ensure it belongs to the requested draft."""
+    link = _validate_review_token(token)
+    if draft_id != "__from_token__" and str(link["draft_id"]) != str(draft_id):
+        raise HTTPException(403, "Review token does not grant access to this draft")
     return link
 
 
@@ -128,19 +154,18 @@ def _build_variables(draft: dict) -> dict:
     variables["survivalDays"] = str(estate.get("survivalDays", 30))
     variables["trustDistributionAge"] = str(estate.get("trustDistributionAge", 21))
 
-    for person in draft.get("people", []):
-        role = person.get("role", "")
-        full_name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
-        if role == "primary_executor":
-            variables["primaryExecutorFullName"] = full_name
-        elif role == "backup_executor":
-            variables["backupExecutorFullName"] = full_name
-        elif role == "poa_property_attorney":
-            variables["poaPropertyAttorneyFullName"] = full_name
-        elif role == "poa_personal_care_attorney":
-            variables["poaPersonalCareAttorneyFullName"] = full_name
-        elif role == "guardian":
-            variables["guardianFullName"] = full_name
+    variables.update(map_people_to_variables(draft.get("people", [])))
+
+    # Overlay conversational AI-intake vault data (canonical when present).
+    for k, val in vault_to_variables(draft.get("vault") or {}).items():
+        if val:
+            variables[k] = val
+
+    try:
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            variables.update(firm_variables(db.get_firm_settings()))
+    except Exception:
+        pass
 
     return variables
 
@@ -233,7 +258,7 @@ async def resolve_review_token(token: str):
         "client_first_name": draft.get("client_first_name", ""),
         "client_last_name": draft.get("client_last_name", ""),
         "language": link.get("language", "en"),
-        "firm_name": FIRM_NAME,
+        "firm_name": _firm_display_name(),
         "documents": documents,
         "all_approved": all_approved,
     }
@@ -242,7 +267,7 @@ async def resolve_review_token(token: str):
 @router.get("/{draft_id}/status")
 async def get_review_status(draft_id: str, token: str = Query(...)):
     """Get review status for all documents in a draft."""
-    _validate_review_token(token)
+    _validate_review_token_for_draft(token, draft_id)
 
     documents = _get_review_documents(draft_id)
     approved_count = sum(1 for d in documents if d["status"] == "approved")
@@ -263,7 +288,7 @@ async def get_review_preview(draft_id: str, document_type: str, token: str = Que
     Returns structured clauses (not just raw HTML) so the frontend
     can render clause-by-clause review UI.
     """
-    link = _validate_review_token(token)
+    link = _validate_review_token_for_draft(token, draft_id)
 
     # Allow __from_token__ as a placeholder — resolve to actual draft_id
     if draft_id == "__from_token__":
@@ -332,7 +357,7 @@ async def approve_document(draft_id: str, document_type: str, body: ApproveReque
     Client approves a reviewed document.
     Records the approval timestamp.
     """
-    link = _validate_review_token(body.token)
+    link = _validate_review_token_for_draft(body.token, draft_id)
 
     if document_type not in DOCUMENT_TITLES:
         raise HTTPException(400, f"Invalid document_type: {document_type}")
@@ -357,7 +382,7 @@ async def add_comment(draft_id: str, body: CommentRequest):
     Client adds a comment/question on a specific clause.
     The lawyer sees these in the dashboard.
     """
-    link = _validate_review_token(body.token)
+    link = _validate_review_token_for_draft(body.token, draft_id)
 
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:

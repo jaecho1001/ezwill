@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, Header
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
 from models import AgentInvokeRequest, AgentInvokeResponse
+from routes.auth import AuthContext, verify_agent_or_dashboard_token
 from services.db import EWDbWriter
 import os
 import json
@@ -92,7 +92,7 @@ IMPORTANT:
 @router.post("/will/invoke", response_model=AgentInvokeResponse)
 async def invoke_will_agent(
     body: AgentInvokeRequest,
-    authorization: Optional[str] = Header(None),
+    _auth: AuthContext = Depends(verify_agent_or_dashboard_token),
 ):
     capability = body.capability
     payload = body.payload

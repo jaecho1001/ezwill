@@ -27,6 +27,8 @@ class UpdateDraftRequest(BaseModel):
     completed_steps: Optional[List[int]] = None
     language: Optional[str] = None
     status: Optional[str] = None
+    lawyer_notes: Optional[str] = None
+    design_decisions: Optional[dict] = None
 
 class SubmitDraftRequest(BaseModel):
     draft_id: str
@@ -58,6 +60,11 @@ class ClauseSelection(BaseModel):
     clause_id: str
     included: bool = True
     custom_text: Optional[str] = None
+    # Default clause body from the library (with {{placeholders}}). Persisted so
+    # the generator has text for clauses the lawyer never hand-edited.
+    template_text: Optional[str] = None
+    title: Optional[str] = None
+    is_folder: bool = False
     ai_generated: bool = False
     sort_order: int = 0
 

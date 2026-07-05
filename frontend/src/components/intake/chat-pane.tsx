@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWillVault } from '@/stores/will-vault-store'
+import { useDraft } from '@/providers/draft-provider'
 import {
   streamIntakeChat,
   type ChatMessage,
@@ -28,6 +29,7 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
   const store = useWillVault(willId)
   const vault = store((s) => s.vault)
   const setField = store((s) => s.setField)
+  const { token } = useDraft()
 
   const [turns, setTurns] = useState<ChatTurn[]>(() => [
     {
@@ -137,6 +139,7 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
       for await (const event of streamIntakeChat(
         {
           draftId: willId,
+          magicToken: token ?? undefined,
           messages: fullMessages,
           vault,
           progressSummary,
@@ -178,23 +181,34 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
       }
       if (!sawAnyFrame) throw new Error('empty stream')
     } catch (err) {
-      // Graceful degrade: regex extractor on the client.
-      const name = (err as Error).name
-      if (name !== 'AbortError') {
-        const { patches, assistantText } = extractFromMessage(text, vault)
-        applyMockPatches(patches)
-        appendText(
-          (sawErrorBanner(lastError) ? '' : 'Network issue — using offline pattern matcher. ') + assistantText
-        )
-        setSource('mock')
-        setLastError((err as Error).message)
+      const error = err as Error
+      if (error.name !== 'AbortError') {
+        // An auth failure (401/403) means the session expired or the magic
+        // link isn't bound to this draft. Surface it instead of silently
+        // degrading to the offline extractor, which would hide a broken link
+        // behind plausible-looking mock output.
+        if (/HTTP 40[13]\b/.test(error.message)) {
+          const msg =
+            'Your session or secure link is no longer valid for this file. Please reopen your link to continue.'
+          appendText(`\n\n${msg}`)
+          setLastError(msg)
+        } else {
+          // Graceful degrade: regex extractor on the client.
+          const { patches, assistantText } = extractFromMessage(text, vault)
+          applyMockPatches(patches)
+          appendText(
+            (sawErrorBanner(lastError) ? '' : 'Network issue — using offline pattern matcher. ') + assistantText
+          )
+          setSource('mock')
+          setLastError(error.message)
+        }
       }
     } finally {
       applyAssistantPatch({ streaming: false })
       setSending(false)
       abortRef.current = null
     }
-  }, [input, sending, turns, vault, handleVaultPatch, applyMockPatches, willId, onAdvanceChapter, lastError])
+  }, [input, sending, turns, vault, handleVaultPatch, applyMockPatches, willId, token, onAdvanceChapter, lastError])
 
   const cancel = useCallback(() => {
     abortRef.current?.abort()

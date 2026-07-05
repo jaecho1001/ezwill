@@ -19,6 +19,9 @@ from services.document_generator import (
     DocumentGenerator,
     DOCUMENT_TITLES,
     resolve_variables,
+    map_people_to_variables,
+    vault_to_variables,
+    firm_variables,
 )
 from services.pdf_converter import convert_to_pdf
 from routes.auth import verify_dashboard_token
@@ -77,22 +80,8 @@ def _build_variables(draft: dict) -> dict:
     variables["survivalDays"] = str(estate.get("survivalDays", 30))
     variables["trustDistributionAge"] = str(estate.get("trustDistributionAge", 21))
 
-    # People -> executors, attorneys, guardians
-    for person in draft.get("people", []):
-        role = person.get("role", "")
-        full_name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
-        if role == "primary_executor":
-            variables["primaryExecutorFullName"] = full_name
-        elif role == "backup_executor":
-            variables["backupExecutorFullName"] = full_name
-        elif role == "poa_property_attorney":
-            variables["poaPropertyAttorneyFullName"] = full_name
-        elif role == "poa_personal_care_attorney":
-            variables["poaPersonalCareAttorneyFullName"] = full_name
-        elif role == "guardian":
-            variables["guardianFullName"] = full_name
-        elif role == "backup_guardian":
-            variables["backupGuardianFullName"] = full_name
+    # People -> executors, attorneys, guardians (shared role->variable mapping)
+    variables.update(map_people_to_variables(draft.get("people", [])))
 
     # POA sections
     poa_prop = draft.get("poa_property") or {}
@@ -106,6 +95,18 @@ def _build_variables(draft: dict) -> dict:
         k: v for k, v in poa_pc.items()
         if isinstance(v, (str, int, float, bool))
     })
+
+    # Overlay conversational AI-intake vault data (canonical when present).
+    for k, val in vault_to_variables(draft.get("vault") or {}).items():
+        if val:
+            variables[k] = val
+
+    # Firm identity from saved settings (cover page falls back to defaults).
+    try:
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            variables.update(firm_variables(db.get_firm_settings()))
+    except Exception:
+        logger.exception("failed to load firm settings for document variables")
 
     return variables
 
@@ -274,10 +275,19 @@ async def generate_all_documents(draft_id: str, _token: str = Depends(verify_das
 
 
 @router.get("/{draft_id}/preview/{document_type}")
-async def preview_document(draft_id: str, document_type: str):
+async def preview_document(
+    draft_id: str,
+    document_type: str,
+    _token: str = Depends(verify_dashboard_token),
+):
     """
     Get HTML preview of a document.
     Returns clause text as rendered HTML for the preview panel in frontend.
+
+    Dashboard-only: this returns the fully-rendered will/POA (testator name,
+    beneficiaries, executors, addresses, resolved clause bodies), so it must not
+    be reachable without lawyer auth. Clients use the review portal's own
+    token-bound preview route instead.
     """
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
