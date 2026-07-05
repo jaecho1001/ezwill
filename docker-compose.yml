@@ -35,6 +35,14 @@ services:
       AI_INTAKE_RATE_WINDOW_SECS: ${AI_INTAKE_RATE_WINDOW_SECS:-60}
       AI_INTAKE_RATE_MAX_REQS: ${AI_INTAKE_RATE_MAX_REQS:-20}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-vaturi2026}
+      FIRM_EMAIL: ${FIRM_EMAIL:-lawyers@vaturicho.com}
+      FIRM_NAME: ${FIRM_NAME:-Vaturi & Cho LLP}
+      FIRM_PHONE: ${FIRM_PHONE:-+14166614529}
+      FROM_EMAIL: ${FROM_EMAIL:-noreply@ezwill.app}
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      GHL_API_KEY: ${GHL_API_KEY:-}
+      GHL_LOCATION_ID: ${GHL_LOCATION_ID:-}
+      NOTIFICATION_MODE: ${NOTIFICATION_MODE:-stdout}
     depends_on:
       db:
         condition: service_healthy

@@ -111,7 +111,7 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(ve
 
 @router.post("/{draft_id}/submit")
 async def submit_draft(draft_id: str, _auth=Depends(verify_client_or_dashboard_draft_access)):
-    from services.notification_service import notify_lawyer_submission
+    from services.notification_service import notify_lawyer_submission, track_ghl_engagement
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
@@ -130,7 +130,15 @@ async def submit_draft(draft_id: str, _auth=Depends(verify_client_or_dashboard_d
 
     # Send email notification (non-blocking)
     try:
-        await notify_lawyer_submission(dict(submitted), [dict(f) for f in flags])
+        submitted_dict = dict(submitted)
+        await notify_lawyer_submission(submitted_dict, [dict(f) for f in flags])
+        await track_ghl_engagement(
+            "completed-quiz",
+            email=submitted_dict.get("client_email"),
+            phone=submitted_dict.get("client_phone"),
+            first_name=submitted_dict.get("client_first_name"),
+            last_name=submitted_dict.get("client_last_name"),
+        )
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Failed to send notification: {e}")

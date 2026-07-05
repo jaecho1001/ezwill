@@ -51,6 +51,28 @@ def test_ghl_headers_include_bearer_and_version(monkeypatch):
     assert "Version" in headers
 
 
+def test_reminder_preferences_map_to_managed_ghl_tags():
+    tags = ns._desired_reminder_tags({
+        "email_enabled": True,
+        "sms_enabled": True,
+        "annual_reminder": True,
+        "annual_frequency": "yearly",
+        "enabled_life_events": ["marriage", "home-purchase", "unknown"],
+        "custom_reminders": [
+            {"id": "tax", "label": "Review after tax season", "date": "2027-04-30"}
+        ],
+    })
+
+    assert tags == [
+        ns.GHL_TAGS["CHANNEL_EMAIL"],
+        ns.GHL_TAGS["CHANNEL_SMS"],
+        ns.GHL_TAGS["REMINDER_ANNUAL"],
+        ns.GHL_TAGS["REMINDER_CUSTOM"],
+        ns.GHL_TAGS["EVENT_MARRIAGE"],
+        ns.GHL_TAGS["EVENT_HOME_PURCHASE"],
+    ]
+
+
 # ── send_magic_link_to_client — stdout fallback ───────────────────
 
 @pytest.mark.asyncio
@@ -171,6 +193,167 @@ async def test_send_magic_link_ghl_mode_calls_api(monkeypatch):
     assert result["contact_id"] == "contact-123"
     # 3 POSTs: 1 create contact, 1 email send, 1 sms send
     assert mock_client.post.call_count == 3
+
+
+# ── sync_reminder_preferences_to_ghl ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_sync_reminder_preferences_stdout_calculates_tags(monkeypatch, caplog):
+    monkeypatch.setenv("NOTIFICATION_MODE", "stdout")
+    ns.NOTIFICATION_MODE = "stdout"
+
+    import logging
+    caplog.set_level(logging.INFO)
+
+    result = await ns.sync_reminder_preferences_to_ghl(
+        {"first_name": "Jane", "last_name": "Smith", "name": "Jane Smith", "email": "jane@test.com"},
+        {
+            "email_enabled": True,
+            "sms_enabled": False,
+            "email": "jane@test.com",
+            "annual_reminder": True,
+            "annual_frequency": "biannual",
+            "enabled_life_events": ["child-birth"],
+            "custom_reminders": [
+                {"id": "tax", "label": "Review after tax season", "date": "2027-04-30"}
+            ],
+        },
+    )
+
+    assert result["success"] is True
+    assert result["ghl_synced"] is False
+    assert result["tags_added"] == [
+        ns.GHL_TAGS["CHANNEL_EMAIL"],
+        ns.GHL_TAGS["REMINDER_BIANNUAL"],
+        ns.GHL_TAGS["REMINDER_CUSTOM"],
+        ns.GHL_TAGS["EVENT_CHILD_BIRTH"],
+    ]
+    assert result["custom_tasks"]["desired"] == 1
+    assert any("[GHL REMINDER SYNC]" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_sync_reminder_preferences_ghl_replaces_managed_tags(monkeypatch):
+    monkeypatch.setenv("NOTIFICATION_MODE", "ghl")
+    monkeypatch.setenv("GHL_API_KEY", "test-key")
+    monkeypatch.setenv("GHL_LOCATION_ID", "test-location")
+    ns.NOTIFICATION_MODE = "ghl"
+    monkeypatch.setattr(ns, "_find_or_create_contact", AsyncMock(return_value="contact-123"))
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200,
+        json=lambda: {
+            "contact": {
+                "tags": [
+                    ns.GHL_TAGS["CHANNEL_EMAIL"],
+                    ns.GHL_TAGS["REMINDER_BIANNUAL"],
+                    ns.GHL_TAGS["EVENT_BUSINESS"],
+                ]
+            }
+        },
+    ))
+    mock_client.request = AsyncMock(return_value=MagicMock(status_code=204, text=""))
+    mock_client.post = AsyncMock(return_value=MagicMock(status_code=201, text="", json=lambda: {"tags": []}))
+
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__.return_value = mock_client
+    mock_ctx.__aexit__.return_value = None
+
+    with patch("services.notification_service.httpx.AsyncClient", return_value=mock_ctx):
+        result = await ns.sync_reminder_preferences_to_ghl(
+            {"first_name": "Jane", "last_name": "Smith", "name": "Jane Smith", "email": "jane@test.com"},
+            {
+                "email_enabled": True,
+                "sms_enabled": True,
+                "email": "jane@test.com",
+                "phone": "+14165550123",
+                "annual_reminder": True,
+                "annual_frequency": "yearly",
+                "enabled_life_events": ["marriage"],
+            },
+        )
+
+    assert result["success"] is True
+    assert result["ghl_synced"] is True
+    assert result["contact_id"] == "contact-123"
+    assert mock_client.request.call_args.args[0] == "DELETE"
+    assert mock_client.request.call_args.kwargs["json"]["tags"] == [
+        ns.GHL_TAGS["REMINDER_BIANNUAL"],
+        ns.GHL_TAGS["EVENT_BUSINESS"],
+    ]
+    assert mock_client.post.call_args.kwargs["json"]["tags"] == [
+        ns.GHL_TAGS["CHANNEL_SMS"],
+        ns.GHL_TAGS["REMINDER_ANNUAL"],
+        ns.GHL_TAGS["EVENT_MARRIAGE"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sync_reminder_preferences_reconciles_custom_tasks(monkeypatch):
+    monkeypatch.setenv("NOTIFICATION_MODE", "ghl")
+    monkeypatch.setenv("GHL_API_KEY", "test-key")
+    monkeypatch.setenv("GHL_LOCATION_ID", "test-location")
+    ns.NOTIFICATION_MODE = "ghl"
+    monkeypatch.setattr(ns, "_find_or_create_contact", AsyncMock(return_value="contact-123"))
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=[
+        MagicMock(status_code=200, json=lambda: {"contact": {"tags": []}}),
+        MagicMock(status_code=200, json=lambda: {
+            "tasks": [
+                {
+                    "id": "task-old",
+                    "title": "EZWill review reminder: old",
+                    "body": f"{ns.CUSTOM_REMINDER_MARKER_PREFIX}old\nDate: 2027-01-01",
+                }
+            ]
+        }),
+    ])
+    mock_client.request = AsyncMock(return_value=MagicMock(status_code=204, text=""))
+    mock_client.delete = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+    mock_client.post = AsyncMock(side_effect=[
+        MagicMock(status_code=201, text="", json=lambda: {"tags": []}),
+        MagicMock(status_code=201, text="", json=lambda: {"task": {"id": "task-tax"}}),
+    ])
+
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__.return_value = mock_client
+    mock_ctx.__aexit__.return_value = None
+
+    with patch("services.notification_service.httpx.AsyncClient", return_value=mock_ctx):
+        result = await ns.sync_reminder_preferences_to_ghl(
+            {"first_name": "Jane", "last_name": "Smith", "name": "Jane Smith", "email": "jane@test.com"},
+            {
+                "email_enabled": True,
+                "sms_enabled": False,
+                "email": "jane@test.com",
+                "annual_reminder": False,
+                "annual_frequency": "yearly",
+                "enabled_life_events": [],
+                "custom_reminders": [
+                    {
+                        "id": "tax",
+                        "label": "Review after tax season",
+                        "date": "2027-04-30",
+                        "recurring": True,
+                    }
+                ],
+            },
+        )
+
+    assert result["ghl_synced"] is True
+    assert result["tags_added"] == [
+        ns.GHL_TAGS["CHANNEL_EMAIL"],
+        ns.GHL_TAGS["REMINDER_CUSTOM"],
+    ]
+    assert result["custom_tasks"]["deleted"] == ["task-old"]
+    assert result["custom_tasks"]["created"] == ["task-tax"]
+    assert mock_client.delete.call_args.args[0].endswith("/contacts/contact-123/tasks/task-old")
+    task_payload = mock_client.post.call_args_list[1].kwargs["json"]
+    assert task_payload["title"] == "EZWill review reminder: Review after tax season"
+    assert task_payload["dueDate"] == "2027-04-30T14:00:00Z"
+    assert f"{ns.CUSTOM_REMINDER_MARKER_PREFIX}tax" in task_payload["body"]
 
 
 # ── send_review_link_to_client ────────────────────────────────────

@@ -99,7 +99,8 @@ class EWDbWriter:
             'lawyer_notes', 'design_decisions', 'submitted_at',
             'reviewed_at', 'approved_at',
             'client_first_name', 'client_last_name', 'client_email', 'client_phone',
-            'liabilities',
+            'liabilities', 'reminder_preferences', 'ghl_contact_id',
+            'reminders_synced_at',
             # Questionnaire section answers (JSONB) — feed the document generator.
             'about_you', 'your_family', 'your_estate', 'your_arrangements',
             'poa_property', 'poa_personal_care',
@@ -118,6 +119,28 @@ class EWDbWriter:
             f"UPDATE ew_will_drafts SET {set_clauses} WHERE id = %s RETURNING *",
             values
         )
+
+    def save_reminder_preferences(
+        self,
+        draft_id: str,
+        preferences: dict,
+        ghl_contact_id: str = None,
+        synced: bool = False,
+    ) -> dict:
+        return self.fetchone("""
+            UPDATE ew_will_drafts
+            SET reminder_preferences = %s,
+                ghl_contact_id = COALESCE(%s, ghl_contact_id),
+                reminders_synced_at = CASE WHEN %s THEN now() ELSE reminders_synced_at END,
+                updated_at = now()
+            WHERE id = %s
+            RETURNING *
+        """, (
+            psycopg2.extras.Json(preferences),
+            ghl_contact_id,
+            synced,
+            draft_id,
+        ))
 
     def list_drafts(self, limit: int = 50, offset: int = 0, status: str = None) -> list:
         if status:

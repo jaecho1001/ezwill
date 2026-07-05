@@ -12,7 +12,7 @@ from starlette.requests import Request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from routes import agents, ai_intake, auth, documents, drafts, review
+from routes import agents, ai_intake, auth, documents, drafts, reminders, review
 
 
 class FakeDb:
@@ -235,6 +235,43 @@ def test_drafts_submit_route_rejects_cross_draft_magic_token(monkeypatch):
     )
 
     assert res.status_code == 403
+
+
+def _reminders_client(monkeypatch) -> TestClient:
+    import services.db as db_mod
+
+    monkeypatch.setattr(db_mod, "EWDbWriter", FakeDb)
+    monkeypatch.setattr(reminders, "EWDbWriter", FakeDb)
+    app = FastAPI()
+    app.include_router(reminders.router, prefix="/api/reminders")
+    return TestClient(app)
+
+
+def test_reminders_route_rejects_cross_draft_magic_token(monkeypatch):
+    client = _reminders_client(monkeypatch)
+
+    res = client.post(
+        "/api/reminders/draft-b",
+        headers={"X-Magic-Token": "token-a"},
+        json={
+            "email_enabled": True,
+            "email": "client@test.com",
+            "annual_reminder": True,
+            "annual_frequency": "yearly",
+            "enabled_life_events": [],
+            "custom_reminders": [],
+        },
+    )
+
+    assert res.status_code == 403
+
+
+def test_reminders_route_rejects_missing_auth(monkeypatch):
+    client = _reminders_client(monkeypatch)
+
+    res = client.get("/api/reminders/draft-a")
+
+    assert res.status_code == 401
 
 
 def _review_client(monkeypatch) -> TestClient:

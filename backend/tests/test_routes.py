@@ -71,6 +71,10 @@ class TestRouteRegistration:
         paths = [r['path'] for r in get_routes()]
         assert '/ready' in paths
 
+    def test_reminders_routes_registered(self):
+        paths = [r['path'] for r in get_routes()]
+        assert '/api/reminders/{draft_id}' in paths
+
     def test_drafts_routes_registered(self):
         paths = [r['path'] for r in get_routes()]
         assert '/api/drafts' in paths
@@ -116,6 +120,11 @@ class TestRouteHTTPMethods:
 
     def test_ready_is_get(self):
         assert 'GET' in self._methods_for_path('/ready')
+
+    def test_reminders_support_get_and_post(self):
+        methods = self._methods_for_path('/api/reminders/{draft_id}')
+        assert 'GET' in methods
+        assert 'POST' in methods
 
     def test_create_draft_is_post(self):
         assert 'POST' in self._methods_for_path('/api/drafts')

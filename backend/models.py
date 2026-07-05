@@ -49,6 +49,22 @@ class SendReviewLinkRequest(BaseModel):
     send_email: bool = True
     send_sms: bool = True
 
+class CustomReminder(BaseModel):
+    id: Optional[str] = None
+    label: str = Field(default='', max_length=120)
+    date: str = Field(default='', max_length=20)
+    recurring: bool = False
+
+class ReminderPreferencesRequest(BaseModel):
+    email_enabled: bool = True
+    sms_enabled: bool = False
+    email: Optional[str] = Field(default=None, max_length=254)
+    phone: Optional[str] = Field(default=None, max_length=40)
+    annual_reminder: bool = True
+    annual_frequency: str = Field(default='yearly', pattern='^(quarterly|biannual|yearly|biennial)$')
+    enabled_life_events: List[str] = Field(default_factory=list)
+    custom_reminders: List[CustomReminder] = Field(default_factory=list)
+
 class CreateLinkResponse(BaseModel):
     token: str
     draft_id: str

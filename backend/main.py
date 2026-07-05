@@ -15,6 +15,7 @@ from routes.auth import router as auth_router
 from routes.export import router as export_router
 from routes.ai_intake import router as ai_intake_router
 from routes.settings import router as settings_router
+from routes.reminders import router as reminders_router
 
 load_dotenv()
 
@@ -49,6 +50,7 @@ app.include_router(auth_router)
 app.include_router(export_router, prefix="/api/export", tags=["export"])
 app.include_router(ai_intake_router, prefix="/api/ai/intake", tags=["ai-intake"])
 app.include_router(settings_router, prefix="/api/settings", tags=["settings"])
+app.include_router(reminders_router, prefix="/api/reminders", tags=["reminders"])
 
 @app.get("/")
 async def health():
