@@ -53,6 +53,42 @@ a {
   text-decoration: none;
 }
 
+.ezw-container {
+  width: 100%;
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.ezw-display {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.ezw-primary-button {
+  background-color: #20394f;
+  color: #ffffff !important;
+}
+
+.ezw-primary-button:hover {
+  background-color: #172a3c;
+}
+
+@media (min-width: 640px) {
+  .ezw-container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ezw-container {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(20px); }
   to { opacity: 1; transform: translateX(0); }
@@ -221,4 +257,41 @@ a {
 .will-editor li {
   line-height: 1.5;
   margin-bottom: 0.3em;
+}
+
+/* ── Manus landing design system (scoped; does not affect other pages) ── */
+@theme {
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+.text-display {
+  font-family: var(--font-playfair), 'Playfair Display', Georgia, serif;
+  letter-spacing: -0.02em;
+}
+
+.ezw-container {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+@media (min-width: 640px) {
+  .ezw-container { padding-inline: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .ezw-container { padding-inline: 2rem; max-width: 1280px; }
+}
+
+.gold-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #c9a84c, transparent);
 }
