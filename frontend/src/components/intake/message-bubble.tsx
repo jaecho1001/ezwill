@@ -27,8 +27,8 @@ export function MessageBubble({ turn }: { turn: ChatTurn }) {
         className={cn(
           'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm',
           isUser
-            ? 'bg-amber-500 text-white'
-            : 'border border-gray-200 bg-white text-gray-800'
+            ? 'bg-[#1B2A4A] text-white'
+            : 'border border-[#E8E4DF] bg-white text-gray-800'
         )}
       >
         {turn.text && <p className="whitespace-pre-wrap">{turn.text}</p>}
@@ -40,7 +40,7 @@ export function MessageBubble({ turn }: { turn: ChatTurn }) {
           </div>
         )}
         {turn.streaming && (
-          <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" aria-label="thinking" />
+          <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-[#1B2A4A]" aria-label="thinking" />
         )}
       </div>
     </div>

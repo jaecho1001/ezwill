@@ -76,7 +76,7 @@ export default function DashboardPage() {
       {/* Loading / Error */}
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
         </div>
       )}
 
@@ -90,7 +90,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Total Clients" value={stats.total} accent="text-gray-900" />
             <StatCard label="Submitted (Pending Review)" value={stats.submitted} accent="text-green-600" />
-            <StatCard label="In Progress" value={stats.inProgress} accent="text-amber-600" />
+            <StatCard label="In Progress" value={stats.inProgress} accent="text-[#8a6a1e]" />
             <StatCard label="Completed" value={stats.completed} accent="text-emerald-600" />
           </div>
 

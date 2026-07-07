@@ -19,10 +19,10 @@ interface Props {
 export function QuestionCard({ question, value, onChange, language }: Props) {
   const id = useId()
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-[#E8E4DF] bg-white p-5 shadow-sm">
       <label htmlFor={id} className="block text-sm font-semibold text-gray-900">
         {L(language, question.prompt, question.promptKo)}
-        {question.required && <span className="ml-1 text-amber-600">*</span>}
+        {question.required && <span className="ml-1 text-[#C9A84C]">*</span>}
       </label>
       {question.helpText && (
         <p className="mt-1 text-xs text-gray-500 leading-relaxed">
@@ -103,7 +103,7 @@ function renderInput(
       return (
         <select
           id={id}
-          className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+          className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B2A4A]/25 focus:border-[#1B2A4A]"
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
         >
@@ -140,7 +140,7 @@ function ToggleChip({
       className={
         'rounded-full border px-4 py-1.5 text-sm transition-colors ' +
         (selected
-          ? 'border-amber-500 bg-amber-50 text-amber-800'
+          ? 'border-[#1B2A4A] bg-[#1B2A4A]/10 text-[#1B2A4A]'
           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50')
       }
     >
@@ -178,7 +178,7 @@ function PersonListEditor({
       {value.map((p, i) => (
         <div key={p.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2">
           <span className="shrink-0 rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                style={{ background: p.isBackup ? '#fef3c7' : '#dcfce7', color: p.isBackup ? '#92400e' : '#166534' }}>
+                style={{ background: p.isBackup ? '#F6EEDA' : '#E9F1EC', color: p.isBackup ? '#8a6a1e' : '#4A6B57' }}>
             {p.isBackup ? L(language, 'Backup', '예비') : L(language, 'Primary', '기본')}
           </span>
           <Input

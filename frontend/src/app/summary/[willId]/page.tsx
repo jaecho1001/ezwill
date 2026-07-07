@@ -59,7 +59,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 p-6">
       {/* Header */}
-      <header className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <header className="rounded-xl border border-[#E8E4DF] bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Review & Generate</h1>
@@ -87,14 +87,14 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
             <span>Completion</span>
             <span>{overall.pct}%</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+          <div className="h-2 overflow-hidden rounded-full bg-[#E8E4DF]">
             <div
-              className="h-2 rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-emerald-500 transition-all"
+              className="h-2 rounded-full bg-gradient-to-r from-[#1B2A4A] to-[#7BA68C] transition-all"
               style={{ width: `${overall.pct}%` }}
             />
           </div>
           {overall.requiredUnanswered > 0 && (
-            <p className="mt-2 text-[11px] text-amber-700">
+            <p className="mt-2 text-[11px] text-[#8a6a1e]">
               {overall.requiredUnanswered} required field{overall.requiredUnanswered === 1 ? '' : 's'} still empty.
             </p>
           )}
@@ -167,7 +167,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
 
         {/* Right — documents sidebar */}
         <aside className="col-span-12 lg:col-span-4">
-          <div className="sticky top-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="sticky top-4 rounded-xl border border-[#E8E4DF] bg-white p-4 shadow-sm">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               Documents to be generated
             </h3>
@@ -175,7 +175,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
               {requiredDocs.map((docId) => {
                 const cfg = getDocumentTypeConfig(docId)
                 return (
-                  <li key={docId} className="flex items-start gap-2 rounded-md border border-gray-100 bg-gray-50 p-2">
+                  <li key={docId} className="flex items-start gap-2 rounded-md border border-[#E8E4DF] bg-[#FAF8F5] p-2">
                     <span className="text-lg leading-none">{cfg?.icon ?? '📄'}</span>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-gray-900">{cfg?.shortName ?? docId}</div>

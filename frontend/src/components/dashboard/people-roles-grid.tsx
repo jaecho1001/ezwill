@@ -38,8 +38,8 @@ const ROLE_CONFIG: Record<RoleType, { label: string; color: string }> = {
   poa_property_backup:    { label: 'POA Property (Backup)',   color: 'bg-purple-50 text-purple-600 border-purple-100' },
   poa_care:               { label: 'POA Personal Care',       color: 'bg-pink-100 text-pink-700 border-pink-200' },
   poa_care_backup:        { label: 'POA Personal Care (Backup)', color: 'bg-pink-50 text-pink-600 border-pink-100' },
-  beneficiary:            { label: 'Beneficiary',             color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  contingent_beneficiary: { label: 'Contingent Beneficiary',  color: 'bg-amber-50 text-amber-600 border-amber-100' },
+  beneficiary:            { label: 'Beneficiary',             color: 'bg-[#C9A84C]/15 text-[#8a6a1e] border-[#C9A84C]/30' },
+  contingent_beneficiary: { label: 'Contingent Beneficiary',  color: 'bg-[#C9A84C]/10 text-[#8a6a1e] border-[#C9A84C]/20' },
   witness:                { label: 'Witness',                 color: 'bg-gray-100 text-gray-600 border-gray-200' },
 }
 
@@ -223,7 +223,7 @@ export function PeopleRolesGrid({ draft, onNavigate }: PeopleRolesGridProps) {
         {onNavigate && (
           <button
             onClick={() => onNavigate('your_arrangements')}
-            className="mt-2 text-sm font-medium text-amber-600 hover:text-amber-700"
+            className="mt-2 text-sm font-medium text-[#1B2A4A] hover:text-[#16233d]"
           >
             Configure executors and attorneys
           </button>

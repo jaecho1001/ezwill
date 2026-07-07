@@ -19,12 +19,12 @@ export function ToolCallRenderer({ call }: { call: ToolCall }) {
   return (
     <div
       className={cn(
-        'my-1 inline-flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900'
+        'my-1 inline-flex items-center gap-2 rounded-md border border-[#1B2A4A]/20 bg-[#1B2A4A]/5 px-2 py-1 text-[11px] text-[#1B2A4A]'
       )}
     >
       <span aria-hidden>{icon}</span>
       <span className="font-medium">{title}</span>
-      {detail && <span className="text-amber-800/80">· {detail}</span>}
+      {detail && <span className="text-[#1B2A4A]/70">· {detail}</span>}
     </div>
   )
 }

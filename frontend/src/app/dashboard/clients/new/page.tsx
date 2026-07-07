@@ -96,8 +96,8 @@ export default function NewClientPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs text-amber-700">
+            <div className="rounded-lg border border-[#C9A84C]/40 bg-[#C9A84C]/10 p-3">
+              <p className="text-xs text-[#8a6a1e]">
                 This link expires on{' '}
                 {new Date(result.expires_at).toLocaleDateString('en-CA', {
                   year: 'numeric',

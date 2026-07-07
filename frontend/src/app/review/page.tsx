@@ -20,7 +20,7 @@ const STATUS_CONFIG = {
   pending: {
     en: 'Pending Your Review',
     ko: '\uAC80\uD1A0 \uB300\uAE30 \uC911',
-    color: 'bg-amber-100 text-amber-800',
+    color: 'bg-[#C9A84C]/15 text-[#8a6a1e]',
   },
   reviewed: {
     en: 'Reviewed',

@@ -129,7 +129,7 @@ function SwitchControl({
         onChange(!checked)
       }}
       className={cn(
-        'relative h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400',
+        'relative h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B2A4A]/25',
         checked ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-gray-200',
       )}
     >
@@ -164,7 +164,7 @@ function newReminderId() {
 export default function RemindersPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-stone-50">
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700" />
       </div>
     }>
@@ -314,18 +314,18 @@ function RemindersContent() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-50">
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700" />
       </div>
     )
   }
 
   return (
-    <main className="min-h-screen bg-stone-50">
+    <main className="min-h-screen bg-[#FAF8F5]">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <header className="mb-6 flex flex-col gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1B2A4A]">
               EZWill Reminders
             </p>
             <h1 className="mt-2 text-2xl font-semibold text-stone-900">
@@ -374,8 +374,8 @@ function RemindersContent() {
             <CardContent className="space-y-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
-                    <Mail className="h-4 w-4 text-amber-700" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1B2A4A]/10">
+                    <Mail className="h-4 w-4 text-[#1B2A4A]" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-stone-900">Email reminders</p>
@@ -477,7 +477,7 @@ function RemindersContent() {
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 text-base font-semibold text-stone-900">
-                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <AlertTriangle className="h-5 w-5 text-[#C9A84C]" />
                 Life Event Triggers
               </h2>
               <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs text-stone-600">
@@ -501,14 +501,14 @@ function RemindersContent() {
                           key={event.id}
                           onClick={() => toggleLifeEvent(event.id)}
                           className={cn(
-                            'flex w-full items-center gap-3 rounded-lg border bg-white p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400',
-                            enabled ? 'border-amber-300' : 'border-stone-200 hover:border-stone-300',
+                            'flex w-full items-center gap-3 rounded-lg border bg-white p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B2A4A]/25',
+                            enabled ? 'border-[#7BA68C]/50' : 'border-stone-200 hover:border-stone-300',
                           )}
                         >
                           <div
                             className={cn(
                               'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                              enabled ? 'bg-amber-50 text-amber-700' : 'bg-stone-100 text-stone-500',
+                              enabled ? 'bg-[#7BA68C]/15 text-[#5c8069]' : 'bg-stone-100 text-stone-500',
                             )}
                           >
                             <Icon className="h-4 w-4" />
@@ -540,7 +540,7 @@ function RemindersContent() {
                   {customReminders.map(reminder => (
                     <div
                       key={reminder.id || `${reminder.label}-${reminder.date}`}
-                      className="flex items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3"
+                      className="flex items-center gap-3 rounded-lg border border-stone-200 bg-[#FAF8F5] px-3 py-3"
                     >
                       <Calendar className="h-4 w-4 text-sky-700" />
                       <div className="min-w-0 flex-1">

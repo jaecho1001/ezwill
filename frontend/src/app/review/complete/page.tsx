@@ -131,17 +131,17 @@ function ReviewCompleteContent() {
       </div>
 
       {/* SLRA signing requirements */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-6">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-          <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <div className="rounded-lg border border-[#C9A84C]/40 bg-[#C9A84C]/10 p-6">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-[#8a6a1e]">
+          <svg className="h-5 w-5 text-[#C9A84C]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
           </svg>
           {t.signingTitle}
         </h3>
         <ul className="mt-3 space-y-2">
           {[t.signingReq1, t.signingReq2, t.signingReq3, t.signingReq4].map((req, i) => (
-            <li key={i} className="flex gap-2 text-xs text-amber-800">
-              <span className="mt-0.5 flex-shrink-0 text-amber-500">&#8226;</span>
+            <li key={i} className="flex gap-2 text-xs text-[#8a6a1e]">
+              <span className="mt-0.5 flex-shrink-0 text-[#C9A84C]">&#8226;</span>
               {req}
             </li>
           ))}

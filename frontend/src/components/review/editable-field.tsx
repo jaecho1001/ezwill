@@ -63,7 +63,7 @@ export function EditableField({ label, value, kind = 'text', placeholder, onSave
                   }}
                   className={cn(
                     'rounded-full border px-3 py-1 text-xs',
-                    draft === opt ? 'border-amber-500 bg-amber-50 text-amber-800' : 'border-gray-300 bg-white text-gray-700'
+                    draft === opt ? 'border-[#1B2A4A] bg-[#1B2A4A]/5 text-[#1B2A4A]' : 'border-gray-300 bg-white text-gray-700'
                   )}
                 >
                   {opt === 'true' ? 'Yes' : opt === 'false' ? 'No' : 'Clear'}
@@ -89,7 +89,7 @@ export function EditableField({ label, value, kind = 'text', placeholder, onSave
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-sm hover:bg-amber-50"
+            className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-sm hover:bg-[#1B2A4A]/5"
           >
             <span className={cn('min-w-0 flex-1 truncate', isEmpty ? 'text-gray-300' : 'text-gray-900')}>
               {isEmpty ? '—' : rendered}

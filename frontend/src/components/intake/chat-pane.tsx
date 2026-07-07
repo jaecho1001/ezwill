@@ -215,8 +215,8 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
   }, [])
 
   return (
-    <div className="flex h-[calc(100vh-180px)] min-h-[520px] flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
-      <header className="flex items-center gap-2 border-b border-gray-200 px-4 py-2.5">
+    <div className="flex h-[calc(100vh-180px)] min-h-[520px] flex-col rounded-xl border border-[#E8E4DF] bg-white shadow-sm">
+      <header className="flex items-center gap-2 border-b border-[#E8E4DF] px-4 py-2.5">
         <span className="text-lg">💬</span>
         <h3 className="text-sm font-semibold text-gray-900">Chat intake</h3>
         <div className="ml-auto flex items-center gap-2">
@@ -233,8 +233,8 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
               className={
                 'rounded-full px-2 py-0.5 text-[10px] font-medium ' +
                 (source === 'claude'
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-amber-50 text-amber-800')
+                  ? 'bg-[#7BA68C]/15 text-[#4A6B57]'
+                  : 'bg-[#C9A84C]/10 text-[#8a6a1e]')
               }
             >
               {source === 'claude' ? 'Claude' : 'Offline · pattern matcher'}
@@ -251,7 +251,7 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
 
       <footer className="border-t border-gray-100 bg-gray-50 p-3">
         {lastError && (
-          <p className="mb-2 text-[11px] text-amber-700">{lastError}</p>
+          <p className="mb-2 text-[11px] text-[#8a6a1e]">{lastError}</p>
         )}
         <form
           onSubmit={(e) => {
@@ -271,7 +271,7 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
             }}
             placeholder="Type an answer… (Shift+Enter for newline)"
             rows={2}
-            className="min-h-[44px] flex-1 resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
+            className="min-h-[44px] flex-1 resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-[#1B2A4A] focus:outline-none focus:ring-2 focus:ring-[#1B2A4A]/25"
             disabled={sending}
           />
           {sending ? (

@@ -679,7 +679,7 @@ export function ClauseEditor({
                     {selectedTemplate.statute && (
                       <div className="flex items-start gap-2">
                         <span className="shrink-0 text-xs font-medium text-gray-500 w-16">Statute:</span>
-                        <span className="text-xs text-amber-700">{selectedTemplate.statute}</span>
+                        <span className="text-xs text-[#1B2A4A]">{selectedTemplate.statute}</span>
                       </div>
                     )}
                     {selectedTemplate.caselaw && (
@@ -748,7 +748,7 @@ export function ClauseEditor({
               </Button>
               <div className="flex items-center gap-2">
                 {selectedClause?.customText && (
-                  <span className="text-xs text-amber-600">Custom text applied</span>
+                  <span className="text-xs text-[#8a6a1e]">Custom text applied</span>
                 )}
               </div>
             </div>

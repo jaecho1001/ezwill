@@ -187,7 +187,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
       </div>
     )
   }
@@ -266,7 +266,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
           <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
             <div
-              className="h-full rounded-full bg-amber-500 transition-all"
+              className="h-full rounded-full bg-[#1B2A4A] transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -274,7 +274,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             {SECTION_LABELS.map((s, i) => (
               <span
                 key={s.key}
-                className={draft.completed_steps.includes(i) ? 'text-amber-600 font-medium' : ''}
+                className={draft.completed_steps.includes(i) ? 'text-[#7BA68C] font-medium' : ''}
               >
                 {s.label}
               </span>
@@ -370,7 +370,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                   {reviewDeliveryStatus.email && <span className="ml-1 text-green-600">✓ Email sent</span>}
                   {reviewDeliveryStatus.sms && <span className="ml-1 text-green-600">✓ SMS sent</span>}
                   {!reviewDeliveryStatus.email && !reviewDeliveryStatus.sms && (
-                    <span className="ml-1 text-amber-600">⚠ Copy link manually (no channels sent)</span>
+                    <span className="ml-1 text-[#8a6a1e]">⚠ Copy link manually (no channels sent)</span>
                   )}
                 </p>
               )}
@@ -401,7 +401,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               className={cn(
                 'whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors',
                 activeTab === tab.id
-                  ? 'border-amber-500 text-amber-600'
+                  ? 'border-[#1B2A4A] text-[#1B2A4A]'
                   : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
               )}
             >

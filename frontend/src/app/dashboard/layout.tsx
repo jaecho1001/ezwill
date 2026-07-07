@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AuthGuard } from '@/components/dashboard/auth-guard'
+import { EzWillLogo } from '@/components/ui/brand'
 import { logout } from '@/lib/auth'
 
 const NAV_ITEMS = [
@@ -47,15 +48,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <AuthGuard>
-      <div className="flex h-screen bg-gray-50">
+      <div className="flex h-screen bg-[#FAF8F5]">
         {/* Sidebar */}
-        <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
+        <aside className="flex w-64 flex-col border-r border-[#E8E4DF] bg-white">
           {/* Logo */}
-          <div className="flex h-16 items-center gap-2.5 border-b border-gray-100 px-6">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-white font-bold text-sm">
-              EZ
-            </div>
-            <span className="text-lg font-semibold text-gray-900">EZWill</span>
+          <div className="flex h-16 items-center gap-2.5 border-b border-[#E8E4DF] px-6">
+            <EzWillLogo className="h-8 w-8" />
+            <span className="text-display text-lg font-bold text-[#1B2A4A]">EzWill</span>
           </div>
 
           {/* Navigation */}
@@ -68,8 +67,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href={item.href}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-amber-50 text-amber-700'
-                      : 'text-gray-600 hover:bg-amber-50 hover:text-amber-700'
+                      ? 'bg-[#1B2A4A]/10 text-[#1B2A4A]'
+                      : 'text-gray-600 hover:bg-[#1B2A4A]/5 hover:text-[#1B2A4A]'
                   }`}
                 >
                   <NavIcon icon={item.icon} />
@@ -80,7 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </nav>
 
           {/* Sign Out + Footer */}
-          <div className="border-t border-gray-100 px-3 py-3">
+          <div className="border-t border-[#E8E4DF] px-3 py-3">
             <button
               onClick={() => logout()}
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
@@ -91,7 +90,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               Sign Out
             </button>
           </div>
-          <div className="border-t border-gray-100 px-6 py-4">
+          <div className="border-t border-[#E8E4DF] px-6 py-4">
             <p className="text-xs text-gray-400">EZWill v1.0</p>
           </div>
         </aside>
@@ -99,10 +98,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Main area */}
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Top bar */}
-          <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-8">
+          <header className="flex h-16 items-center justify-between border-b border-[#E8E4DF] bg-white px-8">
             <h1 className="text-sm font-semibold text-gray-900">Vaturi &amp; Cho LLP</h1>
             <div className="flex items-center gap-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-sm font-medium text-amber-700">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1B2A4A] text-sm font-medium text-white">
                 JC
               </div>
             </div>

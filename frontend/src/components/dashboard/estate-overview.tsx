@@ -359,7 +359,7 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
                           Generated
                         </span>
                       ) : status === 'pending' ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-[#8a6a1e]">
                           <svg className="h-4 w-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
@@ -429,7 +429,7 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
                       <div
                         className={`mt-1 h-3 w-3 rounded-full border-2 ${
                           event.done
-                            ? 'border-amber-500 bg-amber-500'
+                            ? 'border-[#7BA68C] bg-[#7BA68C]'
                             : 'border-gray-300 bg-white'
                         }`}
                       />

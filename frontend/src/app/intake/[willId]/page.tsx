@@ -83,7 +83,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-6">
       {/* Gradient progress bar + mode toggle */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-[#E8E4DF] bg-white p-4 shadow-sm">
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
           <span className="font-medium text-gray-700">
             {L(language, 'Intake', '설문')} · {willIntakeChapters.length} {L(language, 'chapters', '장')}
@@ -134,12 +134,12 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-gray-100">
           <div
-            className="h-2 rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-emerald-500 transition-all"
+            className="h-2 rounded-full bg-gradient-to-r from-[#1B2A4A] to-[#7BA68C] transition-all"
             style={{ width: `${overall.pct}%` }}
           />
         </div>
         {!canReview && (
-          <p className="mt-2 text-[11px] text-amber-700">
+          <p className="mt-2 text-[11px] text-[#8a6a1e]">
             {language === 'ko'
               ? `${overall.requiredUnanswered}개의 필수 질문에 답해야 문서를 생성할 수 있습니다.`
               : `${overall.requiredUnanswered} required question${overall.requiredUnanswered === 1 ? '' : 's'} remaining before you can generate documents.`}
@@ -150,7 +150,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
       <div className="grid grid-cols-12 gap-4">
         {/* Left — stepper */}
         <aside className="col-span-12 md:col-span-3">
-          <div className="sticky top-4 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="sticky top-4 rounded-xl border border-[#E8E4DF] bg-white p-3 shadow-sm">
             <ChapterStepper
               chapters={willIntakeChapters}
               currentIndex={chapterIdx}
@@ -184,7 +184,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
             </>
           ) : (
             <>
-              <header className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <header className="rounded-xl border border-[#E8E4DF] bg-white p-5 shadow-sm">
                 <div className="flex items-center gap-3">
                   <span className="text-3xl leading-none">{chapter.icon}</span>
                   <div>

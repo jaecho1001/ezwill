@@ -145,7 +145,7 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
       </div>
     )
   }
@@ -208,7 +208,7 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
             onClick={() => setSelectedDocType(docType.id)}
             className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
               selectedDocType === docType.id
-                ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-400'
+                ? 'border-[#1B2A4A] bg-[#1B2A4A]/5 ring-1 ring-[#1B2A4A]'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
           >

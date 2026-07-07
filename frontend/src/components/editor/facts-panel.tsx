@@ -41,7 +41,7 @@ export function FactsPanel({ willId, vault }: Props) {
         <span
           className={cn(
             'ml-1 rounded-full px-1.5 py-0.5 text-[10px]',
-            anyMissing ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'
+            anyMissing ? 'bg-[#C9A84C]/15 text-[#8a6a1e]' : 'bg-green-100 text-green-700'
           )}
         >
           {avgPct}%
@@ -61,7 +61,7 @@ export function FactsPanel({ willId, vault }: Props) {
               <span
                 className={cn(
                   'ml-auto text-[10px]',
-                  s.requiredUnanswered > 0 ? 'text-amber-700' : 'text-gray-400'
+                  s.requiredUnanswered > 0 ? 'text-[#8a6a1e]' : 'text-gray-400'
                 )}
               >
                 {s.pct}%

@@ -61,12 +61,12 @@ export function ClauseTreeItem({
       className={cn(
         'group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors cursor-pointer border-l-2',
         isSelected
-          ? 'bg-amber-50 border-amber-500'
+          ? 'bg-[#1B2A4A]/5 border-[#1B2A4A]'
           : isIncluded
-            ? 'border-green-500 hover:bg-gray-50'
+            ? 'border-[#7BA68C] hover:bg-gray-50'
             : 'border-transparent hover:bg-gray-50',
         !isIncluded && !clause.isFolder && 'opacity-60 hover:opacity-100',
-        isDragTarget && 'ring-2 ring-amber-400 ring-inset'
+        isDragTarget && 'ring-2 ring-[#1B2A4A] ring-inset'
       )}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
       onClick={onSelect}
@@ -89,8 +89,8 @@ export function ClauseTreeItem({
           className={cn(
             'h-4 w-4 rounded border-2 transition-all cursor-pointer',
             isIncluded
-              ? 'bg-amber-500 border-amber-500'
-              : 'bg-white border-gray-300 hover:border-amber-400'
+              ? 'bg-[#7BA68C] border-[#7BA68C]'
+              : 'bg-white border-gray-300 hover:border-[#7BA68C]'
           )}
         />
         {isIncluded && (
@@ -117,7 +117,7 @@ export function ClauseTreeItem({
             {clause.name}
           </span>
           {hasCustomText && (
-            <span className="shrink-0 text-xs text-amber-600" title="Custom text">
+            <span className="shrink-0 text-xs text-[#C9A84C]" title="Custom text">
               &#9998;
             </span>
           )}
@@ -128,7 +128,7 @@ export function ClauseTreeItem({
       <div className="flex shrink-0 items-center gap-1">
         {applicability === 'unknown' && (
           <span
-            className="rounded bg-amber-100 px-1.5 py-0 text-[10px] font-medium text-amber-800"
+            className="rounded bg-[#C9A84C]/15 px-1.5 py-0 text-[10px] font-medium text-[#8a6a1e]"
             title="Needs intake answers to know if this applies"
           >
             ?

@@ -20,7 +20,7 @@ export function EditableReviewSection({ title, icon, completenessPct, onJumpToIn
         <span
           className={cn(
             'ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium',
-            isComplete ? 'bg-green-100 text-green-700' : 'bg-amber-50 text-amber-700'
+            isComplete ? 'bg-green-100 text-green-700' : 'bg-[#C9A84C]/15 text-[#8a6a1e]'
           )}
         >
           {isComplete ? '✓ Complete' : `${completenessPct}%`}
@@ -29,7 +29,7 @@ export function EditableReviewSection({ title, icon, completenessPct, onJumpToIn
           <button
             type="button"
             onClick={onJumpToIntake}
-            className="text-[11px] text-gray-400 hover:text-amber-700"
+            className="text-[11px] text-gray-400 hover:text-[#1B2A4A]"
             title="Open this chapter in intake"
           >
             Open wizard →

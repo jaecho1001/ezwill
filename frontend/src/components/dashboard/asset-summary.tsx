@@ -161,7 +161,7 @@ export function AssetSummary({ assets, isDualWill, onNavigate }: AssetSummaryPro
         {onNavigate && (
           <button
             onClick={() => onNavigate('assets')}
-            className="mt-2 text-sm font-medium text-amber-600 hover:text-amber-700"
+            className="mt-2 text-sm font-medium text-[#1B2A4A] hover:text-[#16233d]"
           >
             Add assets
           </button>
@@ -172,7 +172,7 @@ export function AssetSummary({ assets, isDualWill, onNavigate }: AssetSummaryPro
 
   const SortIcon = ({ field }: { field: SortField }) => (
     <svg
-      className={cn('ml-1 inline h-3 w-3', sortField === field ? 'text-amber-600' : 'text-gray-400')}
+      className={cn('ml-1 inline h-3 w-3', sortField === field ? 'text-[#1B2A4A]' : 'text-gray-400')}
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -190,11 +190,11 @@ export function AssetSummary({ assets, isDualWill, onNavigate }: AssetSummaryPro
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {/* Total */}
-        <Card className="bg-amber-50 border-amber-200">
+        <Card className="bg-[#C9A84C]/10 border-[#C9A84C]/30">
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-amber-600">Total Estimated Value</p>
-            <p className="mt-1 text-lg font-bold text-amber-900">{formatCurrency(summaries.total)}</p>
-            <p className="text-xs text-amber-600">{typedAssets.length} asset{typedAssets.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs font-medium text-[#8a6a1e]">Total Estimated Value</p>
+            <p className="mt-1 text-lg font-bold text-[#1B2A4A]">{formatCurrency(summaries.total)}</p>
+            <p className="text-xs text-[#8a6a1e]">{typedAssets.length} asset{typedAssets.length !== 1 ? 's' : ''}</p>
           </CardContent>
         </Card>
 
