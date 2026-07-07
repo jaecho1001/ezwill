@@ -13,7 +13,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       <div className="relative mt-0.5">
         <input type="checkbox" id={id} ref={ref} className="sr-only peer" {...props} />
         <div className={cn(
-          'h-5 w-5 rounded border-2 border-gray-300 bg-white transition-all peer-checked:bg-amber-500 peer-checked:border-amber-500 peer-focus-visible:ring-2 peer-focus-visible:ring-amber-400 group-hover:border-amber-400',
+          'h-5 w-5 rounded border-2 border-gray-300 bg-white transition-all peer-checked:bg-[#1B2A4A] peer-checked:border-[#1B2A4A] peer-focus-visible:ring-2 peer-focus-visible:ring-[#1B2A4A]/25 group-hover:border-[#7BA68C]',
           className
         )} />
         <Check className="absolute inset-0 m-auto h-3 w-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />

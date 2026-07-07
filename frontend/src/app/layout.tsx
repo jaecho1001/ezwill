@@ -11,11 +11,8 @@ const playfair = Playfair_Display({
 })
 
 export const metadata: Metadata = {
-  title: 'EZWill — Ontario Will Builder',
+  title: 'EzWill — Ontario Will Builder',
   description: 'Create your Ontario Will and Power of Attorney online. Available in English and Korean.',
-  icons: {
-    icon: '/icon.svg',
-  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
