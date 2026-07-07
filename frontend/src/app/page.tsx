@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { EzWillLogo } from '@/components/ui/brand'
 import { LanguageToggle } from '@/components/will/language-toggle'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useDraft } from '@/providers/draft-provider'
@@ -33,21 +34,6 @@ const fadeUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] } },
 }
 const stagger = { visible: { transition: { staggerChildren: 0.08 } } }
-
-/** Inline logo mark — a will document with a growing sprout (legacy + protection).
- *  Single-color via currentColor so it inverts cleanly in the footer. */
-function EzWillLogo({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 32 32" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-      <path d="M9 3.5h8.2L23 9.3V25.5a2.5 2.5 0 0 1-2.5 2.5H9a2.5 2.5 0 0 1-2.5-2.5V6A2.5 2.5 0 0 1 9 3.5Z" fill="currentColor" opacity="0.12" />
-      <path d="M9 3.5h8.2L23 9.3V25.5a2.5 2.5 0 0 1-2.5 2.5H9a2.5 2.5 0 0 1-2.5-2.5V6A2.5 2.5 0 0 1 9 3.5Z" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M17 3.7V8a1.5 1.5 0 0 0 1.5 1.5H22.8" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M10.5 13.5h6M10.5 17h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.5" />
-      <path d="M15.6 24.2c0-2.6 1.9-4.5 4.5-4.6-.1 2.6-2 4.5-4.5 4.6Z" fill="currentColor" />
-      <path d="M15.6 24.2c0-1.7-1.1-3-2.8-3.1.1 1.7 1.1 3 2.8 3.1Z" fill="currentColor" opacity="0.55" />
-    </svg>
-  )
-}
 
 const navyBtn =
   'bg-[#1B2A4A] text-white hover:bg-[#16233d] transition-transform duration-150 hover:scale-[1.02] active:scale-[0.97]'
@@ -167,12 +153,8 @@ function HomePageInner() {
       {/* Hero */}
       <section className="relative overflow-hidden pt-28 pb-16 md:pt-36 md:pb-24">
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle at 20% 30%, #1B2A4A 0.5px, transparent 0.5px), radial-gradient(circle at 70% 60%, #7BA68C 0.5px, transparent 0.5px)',
-            backgroundSize: '48px 48px, 64px 64px',
-          }}
+          className="pointer-events-none absolute inset-0 opacity-[0.05]"
+          style={{ backgroundImage: 'url(/hero-abstract.png)', backgroundSize: 'cover', backgroundPosition: 'center' }}
         />
         <div className="ezw-container relative">
           <motion.div initial="hidden" animate="visible" variants={stagger} className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
@@ -209,14 +191,21 @@ function HomePageInner() {
             </motion.div>
 
             <motion.div variants={fadeUp} className="relative hidden lg:block">
-              <div className="relative h-[480px] overflow-hidden rounded-2xl bg-gradient-to-br from-[#20365a] via-[#1B2A4A] to-[#26433a] shadow-2xl shadow-[#1B2A4A]/10">
+              <div className="relative h-[480px] overflow-hidden rounded-2xl bg-gradient-to-br from-[#EAF1EC] via-[#E3E0DA] to-[#D3DFD6] shadow-2xl shadow-[#1B2A4A]/10">
+                {/* Warm placeholder shown until /hero-family.jpg is added — reads as an intentional panel, not an empty box */}
+                <div className="pointer-events-none absolute -top-20 -right-16 h-72 w-72 rounded-full bg-[#7BA68C]/30 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-24 -left-12 h-64 w-64 rounded-full bg-[#C9A84C]/25 blur-3xl" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
+                  <EzWillLogo className="h-16 w-16 opacity-25" />
+                  <p className="text-display text-lg font-semibold text-[#1B2A4A]/40">Your legacy, in good hands</p>
+                </div>
                 <img
                   src="/hero-family.jpg"
                   alt="Family planning their future together"
-                  className="h-full w-full object-cover"
+                  className="absolute inset-0 h-full w-full object-cover"
                   onError={(e) => { e.currentTarget.style.display = 'none' }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#1B2A4A]/40 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#1B2A4A]/30 to-transparent" />
                 <div className="absolute inset-x-6 bottom-6 rounded-xl bg-white/95 p-4 shadow-lg backdrop-blur-sm">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7BA68C]/10">
@@ -411,6 +400,10 @@ function HomePageInner() {
 
       {/* Final CTA */}
       <section className="relative overflow-hidden bg-[#1B2A4A] py-20 md:py-28">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.08]"
+          style={{ backgroundImage: 'url(/hero-abstract.png)', backgroundSize: 'cover', backgroundPosition: 'center', filter: 'invert(1)' }}
+        />
         <div className="ezw-container relative text-center">
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}>
             <motion.h2 variants={fadeUp} className="text-display mb-4 text-3xl font-bold text-white md:text-4xl">Ready to protect your family?</motion.h2>
@@ -435,7 +428,7 @@ function HomePageInner() {
           <div className="grid gap-8 md:grid-cols-4">
             <div>
               <div className="mb-4 flex items-center gap-2 text-white">
-                <EzWillLogo className="h-8 w-8" />
+                <EzWillLogo className="h-8 w-8" invert />
                 <span className="text-display text-lg font-bold">EzWill</span>
               </div>
               <p className="text-sm leading-relaxed text-white/40">Lawyer-built estate planning intake for Ontario families. A product of Vaturi &amp; Cho LLP.</p>
