@@ -99,9 +99,9 @@ export default function YourFamilyPage() {
                 type="date"
                 value={data.separationDate ?? ''}
                 onChange={e => update({ separationDate: e.target.value })}
-                className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1B2A4A]/25 focus-visible:border-[#1B2A4A]"
               />
-              <p className="text-xs text-amber-600">{t.family_separationNote}</p>
+              <p className="text-xs text-[#8a6a1e]">{t.family_separationNote}</p>
             </div>
           )}
         </div>
@@ -174,7 +174,7 @@ export default function YourFamilyPage() {
 
       {currentKey === 'guardians' && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-sm text-[#8a6a1e] bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-lg p-3">
             <strong>{t.family_guardianLawTitle}</strong> {t.family_guardianLawNote}
           </p>
           {data.guardians.map((g, i) => (

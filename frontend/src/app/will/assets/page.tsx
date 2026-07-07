@@ -374,7 +374,7 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
           </div>
           <p className="text-xs text-gray-500">{t.assets_eatNote}{probateTotal > 0 ? t.assets_eatProbateAssets : t.assets_eatTotalAssets}.</p>
           {totalAssets > 1000000 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+            <div className="bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-lg p-3 text-sm text-[#8a6a1e]">
               {t.assets_estateExceeds1m}
             </div>
           )}
@@ -405,12 +405,12 @@ function SummaryTab({ assets, liabilities }: { assets: AssetData[]; liabilities:
             {/* Visual bar */}
             {(probateTotal + nonProbateTotal) > 0 && (
               <div className="h-3 rounded-full overflow-hidden bg-gray-100 flex mt-2">
-                <div className="bg-amber-500 transition-all" style={{ width: `${(probateTotal / (probateTotal + nonProbateTotal)) * 100}%` }} />
+                <div className="bg-[#C9A84C] transition-all" style={{ width: `${(probateTotal / (probateTotal + nonProbateTotal)) * 100}%` }} />
                 <div className="bg-green-500 transition-all" style={{ width: `${(nonProbateTotal / (probateTotal + nonProbateTotal)) * 100}%` }} />
               </div>
             )}
             <div className="flex gap-4 text-xs text-gray-500 mt-1">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {t.assets_probate}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#C9A84C] inline-block" /> {t.assets_probate}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> {t.assets_nonProbate}</span>
             </div>
           </CardContent>
@@ -475,7 +475,7 @@ export default function AssetsPage() {
             </span>
           </div>
           {totalAssets > 1000000 && (
-            <p className="text-xs text-amber-600 mt-1">{t.assets_estateOver1m}</p>
+            <p className="text-xs text-[#8a6a1e] mt-1">{t.assets_estateOver1m}</p>
           )}
           {totalLiabilities > 0 && totalAssets > 0 && totalLiabilities > totalAssets * 0.5 && (
             <p className="text-xs text-red-600 mt-1">{t.assets_highDebtPrefix}{Math.round((totalLiabilities / totalAssets) * 100)}{t.assets_highDebtSuffix}</p>
@@ -491,7 +491,7 @@ export default function AssetsPage() {
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.key
-                ? 'border-amber-500 text-amber-600'
+                ? 'border-[#1B2A4A] text-[#1B2A4A]'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >

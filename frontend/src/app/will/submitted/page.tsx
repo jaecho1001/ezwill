@@ -61,7 +61,7 @@ export default function SubmittedPage() {
           </ol>
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+        <div className="bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-xl p-4 text-sm text-[#8a6a1e]">
           <p className="font-semibold mb-1">
             {lang === 'ko' ? '중요: 온타리오 유언장 서명 요건' : 'Important: Ontario Will Signing Requirements'}
           </p>

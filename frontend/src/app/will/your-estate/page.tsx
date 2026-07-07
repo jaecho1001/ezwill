@@ -235,7 +235,7 @@ export default function YourEstatePage() {
                 </div>
               </div>
             </div>
-            <div className={`rounded-xl border-2 p-4 ${data.includeDualWill ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}`}>
+            <div className={`rounded-xl border-2 p-4 ${data.includeDualWill ? 'border-[#1B2A4A] bg-[#1B2A4A]/5' : 'border-gray-200'}`}>
               <div className="flex items-start gap-3">
                 <Checkbox
                   id="dual"

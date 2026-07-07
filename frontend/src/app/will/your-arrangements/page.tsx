@@ -74,7 +74,7 @@ export default function YourArrangementsPage() {
             showPhone
             title={t.arr_primaryExecutor}
           />
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+          <div className="bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-lg p-3 text-xs text-[#8a6a1e]">
             <strong>{t.arr_tipLabel}</strong> {t.arr_executorTip}
           </div>
         </div>

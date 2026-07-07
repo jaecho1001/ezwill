@@ -21,7 +21,7 @@ function ReviewSection({ title, href, children }: { title: string; href: string;
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-gray-900 text-sm">{title}</h3>
         <Link href={href}>
-          <Button variant="ghost" size="sm" className="gap-1.5 text-amber-600 h-7 text-xs">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-[#1B2A4A] h-7 text-xs">
             <Edit2 className="h-3 w-3" /> {t.review_edit}
           </Button>
         </Link>
@@ -146,9 +146,9 @@ export default function ReviewPage() {
 
       <Separator className="my-6" />
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-        <h3 className="font-semibold text-amber-900 mb-2">{t.review_whatHappensNext}</h3>
-        <ol className="space-y-2 text-sm text-amber-800">
+      <div className="bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-xl p-5">
+        <h3 className="font-semibold text-[#8a6a1e] mb-2">{t.review_whatHappensNext}</h3>
+        <ol className="space-y-2 text-sm text-[#8a6a1e]">
           <li className="flex gap-2"><span className="font-bold">1.</span> <span>{t.review_nextStep1}</span></li>
           <li className="flex gap-2"><span className="font-bold">2.</span> <span>{t.review_nextStep2A}{criticalFlags.length > 0 ? `${criticalFlags.length} ${t.review_flaggedIssuesAbove}` : t.review_itemsAbove}{t.review_nextStep2B}</span></li>
           <li className="flex gap-2"><span className="font-bold">3.</span> <span>{t.review_nextStep3}</span></li>

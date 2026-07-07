@@ -144,7 +144,7 @@ export default function AboutYouPage() {
               </SelectContent>
             </Select>
             {data.province !== 'ON' && (
-              <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2 mt-1">
+              <p className="text-xs text-[#8a6a1e] bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-lg p-2 mt-1">
                 ⚠️ {t.about_nonOntarioWarning}
               </p>
             )}
