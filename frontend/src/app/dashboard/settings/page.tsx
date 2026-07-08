@@ -71,6 +71,17 @@ const DEFAULT_BRANDING: BrandingSettings = {
   defaultLanguage: 'en',
 }
 
+interface WitnessInfo {
+  name: string
+  occupation: string
+  address: string
+}
+
+const DEFAULT_WITNESSES: WitnessInfo[] = [
+  { name: '', occupation: '', address: '' },
+  { name: '', occupation: '', address: '' },
+]
+
 // ----- Storage helpers -----
 
 const STORAGE_KEY = 'ezwill_settings'
@@ -90,6 +101,7 @@ function saveSettings(data: {
   will: WillDefaults
   notifications: NotificationSettings
   branding: BrandingSettings
+  witnesses: WitnessInfo[]
 }) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
 }
@@ -139,6 +151,7 @@ export default function SettingsPage() {
   const [will, setWill] = useState<WillDefaults>(DEFAULT_WILL)
   const [notifications, setNotifications] = useState<NotificationSettings>(DEFAULT_NOTIFICATIONS)
   const [branding, setBranding] = useState<BrandingSettings>(DEFAULT_BRANDING)
+  const [witnesses, setWitnesses] = useState<WitnessInfo[]>(DEFAULT_WITNESSES)
   const [toast, setToast] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ current: '', newPass: '', confirm: '' })
   const [passwordError, setPasswordError] = useState('')
@@ -147,11 +160,13 @@ export default function SettingsPage() {
   // Load from the server (source of truth), falling back to the local cache.
   useEffect(() => {
     let cancelled = false
-    const apply = (s: { firm?: unknown; will?: unknown; notifications?: unknown; branding?: unknown }) => {
+    const apply = (s: { firm?: unknown; will?: unknown; notifications?: unknown; branding?: unknown; witnesses?: unknown }) => {
       setFirm({ ...DEFAULT_FIRM, ...(s.firm as object) })
       setWill({ ...DEFAULT_WILL, ...(s.will as object) })
       setNotifications({ ...DEFAULT_NOTIFICATIONS, ...(s.notifications as object) })
       setBranding({ ...DEFAULT_BRANDING, ...(s.branding as object) })
+      const w = Array.isArray(s.witnesses) ? (s.witnesses as Partial<WitnessInfo>[]) : []
+      setWitnesses([0, 1].map((i) => ({ ...DEFAULT_WITNESSES[i], ...(w[i] || {}) })))
     }
     async function load() {
       try {
@@ -174,7 +189,7 @@ export default function SettingsPage() {
   }, [])
 
   async function handleSave() {
-    const payload = { firm, will, notifications, branding }
+    const payload = { firm, will, notifications, branding, witnesses }
     saveSettings(payload) // keep a local cache for offline / instant reload
     try {
       await fetch('/api/settings', {
@@ -254,6 +269,43 @@ export default function SettingsPage() {
           <InputField label="Fax" value={firm.fax} onChange={(v) => setFirm({ ...firm, fax: v })} placeholder="(416) 555-0101" />
           <InputField label="Email" value={firm.email} onChange={(v) => setFirm({ ...firm, email: v })} type="email" placeholder="info@vatcho.com" />
           <InputField label="LSO Firm Number" value={firm.lsoNumber} onChange={(v) => setFirm({ ...firm, lsoNumber: v })} placeholder="12345" />
+        </div>
+      </section>
+
+      {/* Section A2: Default Witnesses */}
+      <section className="rounded-xl border border-[#E8E4DF] bg-white p-6">
+        <SectionHeading
+          title="Default Witnesses"
+          description="Pre-fills the witness block on generated Wills & POAs so you use the same witnesses every time."
+        />
+        <div className="mb-5 rounded-lg border border-[#C9A84C]/40 bg-[#C9A84C]/10 px-4 py-3 text-xs text-[#8a6a1e]">
+          Witnesses must sign in the testator&apos;s presence and cannot be a beneficiary
+          (or the spouse of a beneficiary). Ontario wills require two witnesses.
+        </div>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          {witnesses.map((w, i) => (
+            <div key={i} className="space-y-3 rounded-lg border border-[#E8E4DF] p-4">
+              <p className="text-sm font-semibold text-[#1B2A4A]">Witness {i + 1}</p>
+              <InputField
+                label="Full Name"
+                value={w.name}
+                onChange={(v) => setWitnesses(witnesses.map((x, j) => (j === i ? { ...x, name: v } : x)))}
+                placeholder="Jane Doe"
+              />
+              <InputField
+                label="Occupation"
+                value={w.occupation}
+                onChange={(v) => setWitnesses(witnesses.map((x, j) => (j === i ? { ...x, occupation: v } : x)))}
+                placeholder="Law Clerk"
+              />
+              <InputField
+                label="Address"
+                value={w.address}
+                onChange={(v) => setWitnesses(witnesses.map((x, j) => (j === i ? { ...x, address: v } : x)))}
+                placeholder="200 Bay St, Toronto"
+              />
+            </div>
+          ))}
         </div>
       </section>
 

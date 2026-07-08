@@ -231,6 +231,24 @@ def firm_variables(settings: dict) -> dict:
         v["firmAddressLine2"] = line2
     if firm.get("lsoNumber"):
         v["lsoNumber"] = firm["lsoNumber"]
+
+    # Default firm witnesses — pre-fill the witness attestation blocks so the
+    # same witnesses appear on every generated Will/POA. They must still sign
+    # in the testator's presence and cannot be beneficiaries (or a beneficiary's
+    # spouse); the settings page carries that caution.
+    witnesses = settings.get("witnesses") or []
+    for i, w in enumerate(witnesses[:2], start=1):
+        if not isinstance(w, dict):
+            continue
+        if w.get("name"):
+            v[f"witness{i}Name"] = w["name"]
+        if w.get("occupation"):
+            v[f"witness{i}Occupation"] = w["occupation"]
+        if w.get("address"):
+            v[f"witness{i}Address"] = w["address"]
+    # The affidavit of execution deponent defaults to the first witness.
+    if v.get("witness1Name") and not v.get("otherWitnessName"):
+        v["otherWitnessName"] = v["witness1Name"]
     return v
 
 
@@ -903,13 +921,20 @@ class DocumentGenerator:
         self._remove_table_borders(w_table)
 
         for col in range(2):
-            labels = ["Name:", "Occupation:", "Address:", ""]
-            for row_idx, label in enumerate(labels):
+            n = col + 1  # column 0 -> witness 1, column 1 -> witness 2
+            fields = [
+                ("Name:", variables.get(f"witness{n}Name")),
+                ("Occupation:", variables.get(f"witness{n}Occupation")),
+                ("Address:", variables.get(f"witness{n}Address")),
+                ("", None),
+            ]
+            for row_idx, (label, value) in enumerate(fields):
                 cell = w_table.cell(row_idx, col)
                 cell.text = ""
                 p = cell.paragraphs[0]
                 if label:
-                    run = p.add_run(f"{label}  {'_' * 25}")
+                    filled = value if value else "_" * 25
+                    run = p.add_run(f"{label}  {filled}")
                     run.font.size = Pt(11)
                     run.font.name = "Times New Roman"
 
@@ -996,9 +1021,15 @@ class DocumentGenerator:
 
         doc.add_paragraph()
 
-        for label in ["Name:", "Occupation:", "Address:"]:
+        poa_witness = [
+            ("Name:", variables.get("witness1Name")),
+            ("Occupation:", variables.get("witness1Occupation")),
+            ("Address:", variables.get("witness1Address")),
+        ]
+        for label, value in poa_witness:
             p = doc.add_paragraph()
-            run = p.add_run(f"{label}  {'_' * 40}")
+            filled = value if value else "_" * 40
+            run = p.add_run(f"{label}  {filled}")
             run.font.size = Pt(11)
             run.font.name = "Times New Roman"
 

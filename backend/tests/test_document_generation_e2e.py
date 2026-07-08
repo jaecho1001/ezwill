@@ -11,7 +11,7 @@ import io
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from docx import Document as DocxDocument
-from services.document_generator import DocumentGenerator, resolve_variables
+from services.document_generator import DocumentGenerator, resolve_variables, firm_variables
 
 # ── Output directory ─────────────────────────────────────────────────────────
 
@@ -409,6 +409,34 @@ class TestGenerateSingleWill:
         text = _all_text(doc)
         assert "HYUN JUNG KIM" in text
         assert "MOONYOUNG LEE" in text
+
+
+class TestDefaultWitnesses:
+    """Default firm witnesses (from settings) pre-fill the will/POA witness blocks."""
+
+    _WITNESS_SETTINGS = {
+        "witnesses": [
+            {"name": "Jane Doe", "occupation": "Law Clerk", "address": "200 Bay St, Toronto"},
+            {"name": "John Roe", "occupation": "Paralegal", "address": "200 Bay St, Toronto"},
+        ]
+    }
+
+    def test_will_prefills_both_witnesses(self, generator):
+        variables = {**MOCK_VARIABLES, **firm_variables(self._WITNESS_SETTINGS)}
+        docx_bytes = generator.generate_document(
+            document_type="probate_will", clauses=_build_will_clauses(), variables=variables
+        )
+        text = _all_text(_save_and_validate(docx_bytes, "will_with_witnesses.docx"))
+        assert "Jane Doe" in text
+        assert "John Roe" in text
+
+    def test_will_without_witnesses_keeps_blank_lines(self, generator):
+        docx_bytes = generator.generate_document(
+            document_type="probate_will", clauses=_build_will_clauses(), variables=MOCK_VARIABLES
+        )
+        text = _all_text(_save_and_validate(docx_bytes, "will_no_witnesses.docx"))
+        assert "Jane Doe" not in text
+        assert "_____" in text  # blank underscore witness lines remain
 
 
 class TestGenerateShortFormWill:

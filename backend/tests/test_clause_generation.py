@@ -308,6 +308,27 @@ def test_firm_variables_project_settings_onto_documents():
     assert firm_variables({}) == {}
 
 
+def test_firm_variables_project_default_witnesses():
+    """Default firm witnesses saved in settings must reach the document
+    variables so the same witnesses pre-fill every generated Will/POA."""
+    settings = {
+        "witnesses": [
+            {"name": "Jane Doe", "occupation": "Law Clerk", "address": "200 Bay St, Toronto"},
+            {"name": "John Roe", "occupation": "Paralegal", "address": "200 Bay St, Toronto"},
+        ]
+    }
+    v = firm_variables(settings)
+    assert v["witness1Name"] == "Jane Doe"
+    assert v["witness1Occupation"] == "Law Clerk"
+    assert v["witness1Address"] == "200 Bay St, Toronto"
+    assert v["witness2Name"] == "John Roe"
+    # affidavit deponent defaults to the first witness
+    assert v["otherWitnessName"] == "Jane Doe"
+    # partial / missing witnesses do not create empty keys
+    assert firm_variables({"witnesses": [{"name": ""}]}) == {}
+    assert "witness2Name" not in firm_variables({"witnesses": [{"name": "Solo"}]})
+
+
 def test_cover_page_uses_firm_name_from_variables():
     docx_bytes = DocumentGenerator().generate_document(
         "single_will",
