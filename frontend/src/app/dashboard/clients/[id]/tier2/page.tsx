@@ -178,8 +178,8 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Clause Editor</h2>
-          <p className="mt-1 text-sm text-gray-500">Edit and configure document clauses for each document type.</p>
+          <h2 className="text-2xl font-bold text-gray-900">Will Editor</h2>
+          <p className="mt-1 text-sm text-gray-500">Review and edit the clauses for each document — Will and Powers of Attorney.</p>
         </div>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? (
