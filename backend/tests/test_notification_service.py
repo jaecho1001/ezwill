@@ -51,6 +51,73 @@ def test_ghl_headers_include_bearer_and_version(monkeypatch):
     assert "Version" in headers
 
 
+# ── SMTP provider ─────────────────────────────────────────────────
+
+def test_smtp_not_ready_without_host(monkeypatch):
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    assert ns._smtp_ready() is False
+
+
+def test_send_smtp_email_uses_starttls_and_auth(monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_USERNAME", "smtp-user")
+    monkeypatch.setenv("SMTP_PASSWORD", "smtp-pass")
+    monkeypatch.setenv("SMTP_USE_TLS", "true")
+    monkeypatch.setenv("SMTP_USE_SSL", "false")
+    monkeypatch.setenv("FROM_EMAIL", "noreply@example.com")
+    monkeypatch.setenv("FROM_NAME", "EZWill Test")
+
+    smtp = MagicMock()
+    smtp_ctx = MagicMock()
+    smtp_ctx.__enter__.return_value = smtp
+    smtp_ctx.__exit__.return_value = None
+
+    with patch("services.notification_service.smtplib.SMTP", return_value=smtp_ctx) as smtp_cls:
+        assert ns._send_smtp_email("client@test.com", "Subject", "Body") is True
+
+    smtp_cls.assert_called_once_with("smtp.example.com", 587, timeout=10)
+    smtp.starttls.assert_called_once()
+    smtp.login.assert_called_once_with("smtp-user", "smtp-pass")
+    message = smtp.send_message.call_args.args[0]
+    assert message["To"] == "client@test.com"
+    assert message["Subject"] == "Subject"
+    assert message["From"] == "EZWill Test <noreply@example.com>"
+
+
+def test_send_smtp_email_returns_false_on_provider_error(monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("FROM_EMAIL", "noreply@example.com")
+    monkeypatch.delenv("SMTP_USERNAME", raising=False)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+
+    with patch("services.notification_service.smtplib.SMTP", side_effect=OSError("boom")):
+        assert ns._send_smtp_email("client@test.com", "Subject", "Body") is False
+
+
+@pytest.mark.asyncio
+async def test_send_magic_link_smtp_mode_sends_email_not_sms(monkeypatch):
+    monkeypatch.setenv("NOTIFICATION_MODE", "smtp")
+    ns.NOTIFICATION_MODE = "smtp"
+    smtp_send = MagicMock(return_value=True)
+    monkeypatch.setattr(ns, "_send_smtp_email", smtp_send)
+
+    result = await ns.send_magic_link_to_client(
+        client_email="client@test.com",
+        client_phone="+14165550123",
+        client_first_name="John",
+        client_last_name="Doe",
+        magic_link_url="https://ezwill.app/will?t=abc",
+        language="en",
+    )
+
+    assert result["email_sent"] is True
+    assert result["sms_sent"] is False
+    smtp_send.assert_called_once()
+    assert smtp_send.call_args.args[0] == "client@test.com"
+    assert "Your Will Questionnaire" in smtp_send.call_args.args[1]
+
+
 def test_reminder_preferences_map_to_managed_ghl_tags():
     tags = ns._desired_reminder_tags({
         "email_enabled": True,
@@ -92,8 +159,9 @@ async def test_send_magic_link_stdout_mode_email_and_sms(monkeypatch, caplog):
         magic_link_url="https://ezwill.app/will?t=abc",
         language="en",
     )
-    assert result["email_sent"] is True
-    assert result["sms_sent"] is True
+    # stdout is a preview sink, not a delivery provider.
+    assert result["email_sent"] is False
+    assert result["sms_sent"] is False
     assert any("[CLIENT EMAIL]" in r.message for r in caplog.records)
     assert any("[CLIENT SMS]" in r.message for r in caplog.records)
 
@@ -111,7 +179,7 @@ async def test_send_magic_link_stdout_no_phone_no_sms(monkeypatch):
         magic_link_url="https://ezwill.app/will?t=abc",
         language="en",
     )
-    assert result["email_sent"] is True
+    assert result["email_sent"] is False
     assert result["sms_sent"] is False
 
 
@@ -374,8 +442,8 @@ async def test_send_review_link_stdout_mode(monkeypatch, caplog):
         review_link_url="https://ezwill.app/review?t=xyz",
         language="en",
     )
-    assert result["email_sent"] is True
-    assert result["sms_sent"] is True
+    assert result["email_sent"] is False
+    assert result["sms_sent"] is False
     logs = "\n".join(r.message for r in caplog.records)
     assert "ready for your review" in logs.lower() or "will is ready" in logs.lower()
 
@@ -396,7 +464,7 @@ async def test_send_review_link_opt_out_email(monkeypatch):
         send_sms=True,
     )
     assert result["email_sent"] is False
-    assert result["sms_sent"] is True
+    assert result["sms_sent"] is False
 
 
 # ── notify_lawyer_submission ──────────────────────────────────────
@@ -424,7 +492,7 @@ async def test_notify_lawyer_submission_stdout(monkeypatch, caplog):
     ]
 
     result = await ns.notify_lawyer_submission(draft, flags)
-    assert result is True
+    assert result is False
     logs = "\n".join(r.message for r in caplog.records)
     assert "John Doe" in logs
     assert "CRITICAL" in logs

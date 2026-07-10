@@ -18,6 +18,7 @@ async def create_draft(body: CreateDraftRequest, _token: str = Depends(verify_da
             client_email=body.client_email,
             client_phone=body.client_phone,
             language=body.language,
+            province=body.province,
         )
         if not draft:
             raise HTTPException(500, "Failed to create draft")
@@ -32,7 +33,7 @@ async def list_drafts(
 ):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         drafts = db.list_drafts(limit=limit, offset=offset, status=status)
-        return {"drafts": [dict(d) for d in drafts], "total": len(drafts)}
+        return {"drafts": [dict(d) for d in drafts], "total": db.count_drafts(status)}
 
 @router.get("/{draft_id}")
 async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)):
@@ -80,9 +81,9 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(ve
         if body.language is not None:
             updates['language'] = body.language
         # Lawyer-only fields set from the dashboard.
-        if body.lawyer_notes is not None:
+        if _auth.kind == "dashboard" and body.lawyer_notes is not None:
             updates['lawyer_notes'] = body.lawyer_notes
-        if body.design_decisions is not None:
+        if _auth.kind == "dashboard" and body.design_decisions is not None:
             updates['design_decisions'] = json.dumps(body.design_decisions)
 
         # Update status to in_progress if still link_sent/opened

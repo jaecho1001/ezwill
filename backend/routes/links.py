@@ -20,7 +20,7 @@ async def create_link(
     _token: str = Depends(verify_dashboard_token),
 ):
     """
-    Create a new draft + magic link, then deliver the link to the client via GHL.
+    Create a new draft + magic link, then deliver the link to the client.
     - Sends email if body.send_email=True and client_email is provided
     - Sends SMS if body.send_sms=True and client_phone is provided
     """
@@ -44,7 +44,7 @@ async def create_link(
         if body.language == "ko":
             link_url += "&lang=ko"
 
-    # Deliver link via GHL (email + SMS)
+    # Deliver link via the configured notification provider.
     try:
         delivery = await send_magic_link_to_client(
             client_email=body.client_email,

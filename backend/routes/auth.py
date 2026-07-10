@@ -7,14 +7,20 @@ from typing import Optional
 import os
 import secrets
 import time
+import base64
+import hashlib
+import hmac
+import json
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# In production: store hashed password in DB. For now: env var.
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "vaturi2026")
-
-# In-memory token store: {token: expiry_timestamp}
+# Legacy in-memory tokens remain recognized during rolling upgrades. Newly
+# issued sessions are signed and therefore work across workers and restarts.
 _active_tokens: dict = {}
+_login_attempts: dict[str, list[float]] = {}
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_MAX_ATTEMPTS = 5
+SESSION_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -41,10 +47,92 @@ def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
 
 def _is_active_dashboard_token(token: str) -> bool:
     expiry = _active_tokens.get(token)
-    if not expiry or time.time() > expiry:
+    if expiry and time.time() <= expiry:
+        return True
+    if expiry:
         _active_tokens.pop(token, None)
+    try:
+        encoded, signature = token.split(".", 1)
+        expected = hmac.new(_session_secret(), encoded.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return False
+        padding = "=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+        return payload.get("purpose") == "dashboard" and time.time() < payload["exp"]
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
-    return True
+
+
+def _configured_password() -> str | None:
+    """Return the configured password, preferring a persisted salted hash."""
+    from services.db import EWDbWriter
+
+    try:
+        with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+            auth_settings = (db.get_firm_settings() or {}).get("_auth") or {}
+            if auth_settings.get("password_hash"):
+                return auth_settings["password_hash"]
+    except Exception:
+        pass
+    password = os.getenv("DASHBOARD_PASSWORD")
+    return f"plain:{password}" if password else None
+
+
+def _hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 600_000)
+    return "pbkdf2_sha256$600000$%s$%s" % (salt.hex(), digest.hex())
+
+
+def _verify_password(password: str, stored: str | None) -> bool:
+    if not stored:
+        return False
+    if stored.startswith("plain:"):
+        return secrets.compare_digest(password, stored[6:])
+    try:
+        algorithm, iterations, salt, expected = stored.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        actual = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), bytes.fromhex(salt), int(iterations)
+        ).hex()
+        return secrets.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def _session_secret() -> bytes:
+    secret = os.getenv("AUTH_SESSION_SECRET")
+    if not secret:
+        # The configured password is still preferable to an ephemeral or known
+        # default, and password changes automatically invalidate old sessions.
+        password = os.getenv("DASHBOARD_PASSWORD")
+        if not password:
+            raise ValueError("AUTH_SESSION_SECRET is not configured")
+        secret = password
+    return secret.encode()
+
+
+def _issue_session() -> str:
+    payload = {"purpose": "dashboard", "exp": int(time.time()) + SESSION_SECONDS,
+               "nonce": secrets.token_urlsafe(12)}
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()
+    ).decode().rstrip("=")
+    signature = hmac.new(_session_secret(), encoded.encode(), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _check_rate_limit(client: str) -> None:
+    now = time.time()
+    attempts = [t for t in _login_attempts.get(client, []) if now - t < LOGIN_WINDOW_SECONDS]
+    _login_attempts[client] = attempts
+    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(429, "Too many login attempts; try again later")
+
+
+def _record_failed_login(client: str) -> None:
+    _login_attempts.setdefault(client, []).append(time.time())
 
 
 def verify_dashboard_token(authorization: str = Header(None)) -> str:
@@ -137,25 +225,33 @@ def verify_agent_or_dashboard_token(
 
 
 @router.post("/login")
-async def login(req: LoginRequest):
-    if req.password != DASHBOARD_PASSWORD:
+async def login(req: LoginRequest, request: Request):
+    client = request.client.host if request.client else "unknown"
+    _check_rate_limit(client)
+    configured = _configured_password()
+    if not configured:
+        raise HTTPException(503, "Dashboard authentication is not configured")
+    if not _verify_password(req.password, configured):
+        _record_failed_login(client)
         raise HTTPException(status_code=401, detail="Invalid password")
-    token = secrets.token_urlsafe(32)
-    _active_tokens[token] = time.time() + 86400  # 24 hours
-    # Clean up expired tokens
-    now = time.time()
-    expired = [t for t, exp in _active_tokens.items() if now > exp]
-    for t in expired:
-        del _active_tokens[t]
-    return {"token": token, "expires_in": 86400}
+    _login_attempts.pop(client, None)
+    try:
+        token = _issue_session()
+    except ValueError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {"token": token, "expires_in": SESSION_SECONDS}
 
 
 @router.post("/change-password")
 async def change_password(req: ChangePasswordRequest):
-    global DASHBOARD_PASSWORD
-    if req.current_password != DASHBOARD_PASSWORD:
+    configured = _configured_password()
+    if not _verify_password(req.current_password, configured):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
-    if len(req.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    DASHBOARD_PASSWORD = req.new_password
+    if len(req.new_password) < 12:
+        raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
+    from services.db import EWDbWriter
+    with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+        settings = db.get_firm_settings() or {}
+        settings["_auth"] = {"password_hash": _hash_password(req.new_password)}
+        db.upsert_firm_settings(settings)
     return {"message": "Password changed successfully"}

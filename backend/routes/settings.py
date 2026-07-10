@@ -22,10 +22,18 @@ class SettingsBody(BaseModel):
 @router.get("")
 async def get_settings(_token: str = Depends(verify_dashboard_token)):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        return {"settings": db.get_firm_settings()}
+        settings = db.get_firm_settings() or {}
+        # Authentication material shares the settings JSON for persistence but
+        # must never be returned to browser code.
+        return {"settings": {k: v for k, v in settings.items() if k != "_auth"}}
 
 
 @router.put("")
 async def put_settings(body: SettingsBody, _token: str = Depends(verify_dashboard_token)):
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        return {"settings": db.upsert_firm_settings(body.settings)}
+        existing = db.get_firm_settings() or {}
+        settings = {k: v for k, v in body.settings.items() if k != "_auth"}
+        if "_auth" in existing:
+            settings["_auth"] = existing["_auth"]
+        saved = db.upsert_firm_settings(settings)
+        return {"settings": {k: v for k, v in saved.items() if k != "_auth"}}

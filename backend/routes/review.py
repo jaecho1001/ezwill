@@ -59,10 +59,7 @@ class CommentRequest(BaseModel):
 def _validate_review_token(token: str) -> dict:
     """Resolve and validate a review token. Returns link record or raises 401."""
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        # Try review-specific link first, fall back to generic resolve_link
         link = db.resolve_review_link(token)
-        if not link:
-            link = db.resolve_link(token)
     if not link:
         raise HTTPException(401, "Review link expired, revoked, or invalid")
     return link
@@ -118,6 +115,32 @@ def _get_review_documents(draft_id: str) -> list[dict]:
         })
 
     return documents
+
+
+def _validate_review_target(
+    draft_id: str, document_type: str, clause_id: str | None = None
+) -> None:
+    """Require an enabled, populated document and (when supplied) included clause."""
+    if document_type not in DOCUMENT_TITLES:
+        raise HTTPException(400, f"Invalid document_type: {document_type}")
+
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        configs = db.get_document_configs(draft_id) or []
+        config = next(
+            (dict(c) for c in configs if c["document_type"] == document_type), None
+        )
+        if config is not None and not config.get("enabled", True):
+            raise HTTPException(400, "Document is not enabled for review")
+
+        selections = db.get_clause_selections(draft_id, document_type) or []
+        included = [dict(c) for c in selections if dict(c).get("included", True)]
+        if not included:
+            raise HTTPException(400, "Document has no clauses available for review")
+        if clause_id is not None and not any(
+            c.get("clause_id") == clause_id and not c.get("is_folder", False)
+            for c in included
+        ):
+            raise HTTPException(400, "Clause is not available for review")
 
 
 def _build_variables(draft: dict) -> dict:
@@ -183,7 +206,7 @@ async def create_review_link(
     _token: str = Depends(verify_dashboard_token),
 ):
     """
-    Create a review portal magic link and deliver it to the client via GHL.
+    Create a review portal magic link and deliver it to the client.
     Query params send_email and send_sms control delivery channels.
     """
     from services.notification_service import send_review_link_to_client
@@ -207,7 +230,7 @@ async def create_review_link(
     token = str(link["token"])
     link_url = f"{BASE_URL}/review?t={token}"
 
-    # Deliver via GHL
+    # Deliver via the configured notification provider.
     delivery = {"email_sent": False, "sms_sent": False}
     try:
         delivery = await send_review_link_to_client(
@@ -298,8 +321,7 @@ async def get_review_preview(draft_id: str, document_type: str, token: str = Que
     if not draft:
         raise HTTPException(404, "Draft not found")
 
-    if document_type not in DOCUMENT_TITLES:
-        raise HTTPException(400, f"Invalid document_type: {document_type}")
+    _validate_review_target(draft_id, document_type)
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         clause_rows = db.get_clause_selections(draft_id, document_type)
@@ -359,8 +381,7 @@ async def approve_document(draft_id: str, document_type: str, body: ApproveReque
     """
     link = _validate_review_token_for_draft(body.token, draft_id)
 
-    if document_type not in DOCUMENT_TITLES:
-        raise HTTPException(400, f"Invalid document_type: {document_type}")
+    _validate_review_target(draft_id, document_type)
 
     # Verify draft exists
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
@@ -387,6 +408,8 @@ async def add_comment(draft_id: str, body: CommentRequest):
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
         raise HTTPException(404, "Draft not found")
+
+    _validate_review_target(draft_id, body.document_type, body.clause_id)
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         db.save_review_comment(

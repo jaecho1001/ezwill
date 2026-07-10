@@ -33,8 +33,22 @@ jobs:
           NEXT_PUBLIC_API_URL: http://backend:8003
 
   backend:
-    name: backend (pytest)
+    name: backend (migrations · pytest)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ezwill
+          POSTGRES_PASSWORD: ezwill_test
+          POSTGRES_DB: caselawvision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ezwill -d caselawvision"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -48,4 +62,19 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Apply migrations twice (fresh and existing database smoke test)
+        env:
+          DATABASE_URL: postgresql://ezwill:ezwill_test@localhost:5432/caselawvision
+          DEFAULT_SCHEMA: firm_ci
+        run: |
+          python scripts/run_migrations.py
+          python scripts/run_migrations.py
       - run: pytest -q
+
+  containers:
+    name: containers (compose config · image builds)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose build backend frontend migrate

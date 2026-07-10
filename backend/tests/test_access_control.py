@@ -183,6 +183,71 @@ def test_review_preview_placeholder_resolves_from_token(monkeypatch):
     assert link["draft_id"] == "draft-a"
 
 
+def test_questionnaire_token_is_not_accepted_as_review_token(monkeypatch):
+    class QuestionnaireOnlyDb(FakeDb):
+        def resolve_review_link(self, token: str):
+            return None
+
+    monkeypatch.setattr(review, "EWDbWriter", QuestionnaireOnlyDb)
+    with pytest.raises(HTTPException) as exc:
+        review._validate_review_token("token-a")
+    assert exc.value.status_code == 401
+
+
+def test_review_target_requires_enabled_document_and_real_clause(monkeypatch):
+    class ReviewTargetDb(FakeDb):
+        enabled = True
+
+        def get_document_configs(self, draft_id):
+            return [{"document_type": "single_will", "enabled": self.enabled}]
+
+        def get_clause_selections(self, draft_id, document_type):
+            return [{"clause_id": "real-clause", "included": True}]
+
+    monkeypatch.setattr(review, "EWDbWriter", ReviewTargetDb)
+    review._validate_review_target("draft-a", "single_will", "real-clause")
+
+    ReviewTargetDb.enabled = False
+    with pytest.raises(HTTPException) as exc:
+        review._validate_review_target("draft-a", "single_will", "real-clause")
+    assert exc.value.status_code == 400
+
+    ReviewTargetDb.enabled = True
+    with pytest.raises(HTTPException) as exc:
+        review._validate_review_target("draft-a", "single_will", "invented-clause")
+    assert exc.value.status_code == 400
+
+
+def test_magic_link_cannot_update_lawyer_only_fields(monkeypatch):
+    class UpdatingDb(FakeDb):
+        last_updates = None
+
+        def get_draft(self, draft_id):
+            return {"id": draft_id, "status": "in_progress"}
+
+        def update_draft(self, draft_id, updates):
+            type(self).last_updates = updates
+            return {"id": draft_id, **updates}
+
+    import services.db as db_mod
+    monkeypatch.setattr(db_mod, "EWDbWriter", UpdatingDb)
+    monkeypatch.setattr(drafts, "EWDbWriter", UpdatingDb)
+    app = FastAPI()
+    app.include_router(drafts.router, prefix="/api/drafts")
+
+    response = TestClient(app).put(
+        "/api/drafts/draft-a",
+        headers={"X-Magic-Token": "token-a"},
+        json={
+            "current_step": 2,
+            "lawyer_notes": "erase the lawyer's note",
+            "design_decisions": {"secret": "overwrite"},
+        },
+    )
+    assert response.status_code == 200
+    assert UpdatingDb.last_updates == {"current_step": 2}
+
+
 # ── Route-level regression guards (H2) ────────────────────────────────────────
 # The tests above exercise the auth HELPERS. These build the actual wired
 # routers via TestClient so that reverting a route back to an unbound token

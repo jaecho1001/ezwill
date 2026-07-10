@@ -78,13 +78,13 @@ class EWDbWriter:
 
     def create_draft(self, client_first_name: str, client_last_name: str,
                      client_email: str = None, client_phone: str = None,
-                     language: str = 'en') -> dict:
+                     language: str = 'en', province: str = 'ON') -> dict:
         return self.fetchone("""
             INSERT INTO ew_will_drafts
-                (client_first_name, client_last_name, client_email, client_phone, language, status)
-            VALUES (%s, %s, %s, %s, %s, 'link_sent')
+                (client_first_name, client_last_name, client_email, client_phone, language, province, status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'link_sent')
             RETURNING *
-        """, (client_first_name, client_last_name, client_email, client_phone, language))
+        """, (client_first_name, client_last_name, client_email, client_phone, language, province))
 
     def get_draft(self, draft_id: str) -> dict:
         return self.fetchone(
@@ -152,6 +152,17 @@ class EWDbWriter:
             "SELECT * FROM ew_will_drafts ORDER BY updated_at DESC LIMIT %s OFFSET %s",
             (limit, offset)
         )
+
+    def count_drafts(self, status: str = None) -> int:
+        """Return the full filtered count, independent of pagination."""
+        if status:
+            row = self.fetchone(
+                "SELECT COUNT(*) AS total FROM ew_will_drafts WHERE status = %s",
+                (status,),
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) AS total FROM ew_will_drafts")
+        return int(row["total"])
 
     def submit_draft(self, draft_id: str) -> dict:
         return self.fetchone("""

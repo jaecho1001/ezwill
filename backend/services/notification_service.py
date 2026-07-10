@@ -1,8 +1,8 @@
 """
 Notification Service for EZWill.
 
-Sends email and SMS via GoHighLevel (GHL) Conversations API.
-Replaces SendGrid — uses GHL as the unified messaging channel.
+Sends email and SMS via GoHighLevel (GHL) Conversations API, with optional
+SMTP email delivery for firms that want to use their own mail provider.
 
 Three notification types:
   1. Lawyer notification on client submission (email to firm)
@@ -20,14 +20,25 @@ Environment variables:
   FIRM_EMAIL        — firm email address for lawyer notifications
   FIRM_NAME         — firm display name in messages
   BASE_URL          — frontend base URL for dashboard links
-  NOTIFICATION_MODE — 'ghl' (default), 'stdout' (dev), or 'disabled'
+  NOTIFICATION_MODE — 'ghl' (default), 'smtp', 'stdout' (dev), or 'disabled'
+  SMTP_HOST        — SMTP server host (required for NOTIFICATION_MODE=smtp)
+  SMTP_PORT        — SMTP server port (defaults to 465 for SSL, 587 otherwise)
+  SMTP_USERNAME    — optional SMTP username
+  SMTP_PASSWORD    — optional SMTP password
+  SMTP_USE_TLS     — true/false, use STARTTLS (default true unless SSL is true)
+  SMTP_USE_SSL     — true/false, connect with SMTP_SSL (default false)
+  FROM_EMAIL       — sender address
+  FROM_NAME        — optional sender display name
 """
 from __future__ import annotations
 
 import os
 import logging
 import re
+import smtplib
 from datetime import date, datetime, time, timezone
+from email.message import EmailMessage
+from email.utils import formataddr
 from typing import Optional, Any
 
 import httpx
@@ -42,6 +53,7 @@ FIRM_NAME = os.getenv("FIRM_NAME", "Vaturi & Cho LLP")
 FIRM_PHONE = os.getenv("FIRM_PHONE", "+14166614529")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@ezwill.app")
+FROM_NAME = os.getenv("FROM_NAME", "EZWill")
 NOTIFICATION_MODE = os.getenv("NOTIFICATION_MODE", "ghl")
 
 
@@ -137,6 +149,96 @@ def _ghl_headers() -> dict:
 def _ghl_ready() -> bool:
     """Check GHL is configured."""
     return bool(os.getenv("GHL_API_KEY") and os.getenv("GHL_LOCATION_ID"))
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _smtp_config() -> dict[str, Any] | None:
+    """Read and validate SMTP settings from the environment."""
+    host = (os.getenv("SMTP_HOST") or "").strip()
+    if not host:
+        logger.error("SMTP delivery requested but SMTP_HOST is not configured")
+        return None
+
+    use_ssl = _env_bool("SMTP_USE_SSL", False)
+    use_tls = _env_bool("SMTP_USE_TLS", not use_ssl)
+    raw_port = (os.getenv("SMTP_PORT") or "").strip()
+    try:
+        port = int(raw_port) if raw_port else (465 if use_ssl else 587)
+    except ValueError:
+        logger.error("SMTP delivery requested but SMTP_PORT is invalid: %s", raw_port)
+        return None
+
+    username = (os.getenv("SMTP_USERNAME") or "").strip()
+    password = os.getenv("SMTP_PASSWORD") or ""
+    if bool(username) != bool(password):
+        logger.error("SMTP_USERNAME and SMTP_PASSWORD must either both be set or both be empty")
+        return None
+
+    from_email = (os.getenv("FROM_EMAIL") or FROM_EMAIL or "").strip()
+    if not from_email:
+        logger.error("SMTP delivery requested but FROM_EMAIL is not configured")
+        return None
+
+    return {
+        "host": host,
+        "port": port,
+        "username": username,
+        "password": password,
+        "use_tls": use_tls,
+        "use_ssl": use_ssl,
+        "from_email": from_email,
+        "from_name": (os.getenv("FROM_NAME") or FROM_NAME or "").strip(),
+    }
+
+
+def _smtp_ready() -> bool:
+    """Check whether SMTP has the minimum config needed to attempt delivery."""
+    return _smtp_config() is not None
+
+
+def _notification_mode() -> str:
+    return (NOTIFICATION_MODE or "").strip().lower()
+
+
+def _send_smtp_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    html: Optional[str] = None,
+) -> bool:
+    """Send one email via SMTP. Returns False on config or provider failure."""
+    config = _smtp_config()
+    if not config:
+        return False
+
+    message = EmailMessage()
+    from_name = config["from_name"]
+    message["From"] = formataddr((from_name, config["from_email"])) if from_name else config["from_email"]
+    message["To"] = to_email
+    message["Subject"] = subject
+    message.set_content(body)
+    if html:
+        message.add_alternative(html, subtype="html")
+
+    try:
+        smtp_cls = smtplib.SMTP_SSL if config["use_ssl"] else smtplib.SMTP
+        with smtp_cls(config["host"], config["port"], timeout=10) as smtp:
+            if config["use_tls"] and not config["use_ssl"]:
+                smtp.starttls()
+            if config["username"]:
+                smtp.login(config["username"], config["password"])
+            smtp.send_message(message)
+        logger.info("SMTP email sent to %s", to_email)
+        return True
+    except Exception as e:
+        logger.error("SMTP email send failed to %s: %s", to_email, e)
+        return False
 
 
 async def _find_or_create_contact(
@@ -529,11 +631,14 @@ async def _sync_custom_reminder_tasks(
 
 async def _send_firm_email(subject: str, body: str) -> bool:
     """Send email to the firm's own inbox (lawyer notification)."""
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return False
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        return _send_smtp_email(FIRM_EMAIL, subject, body)
+    if mode == "stdout" or not _ghl_ready():
         logger.info(f"[FIRM EMAIL] {subject}\n{body}")
-        return True
+        return False
 
     contact_id = await _find_or_create_contact(
         email=FIRM_EMAIL,
@@ -578,11 +683,11 @@ async def sync_reminder_preferences_to_ghl(
         },
     }
 
-    if NOTIFICATION_MODE == "disabled":
+    if _notification_mode() == "disabled":
         result["success"] = False
         return result
 
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if _notification_mode() in {"stdout", "smtp"} or not _ghl_ready():
         logger.info(
             "[GHL REMINDER SYNC] %s <%s> tags=%s preferences=%s",
             user.get("name", "").strip(),
@@ -638,9 +743,9 @@ async def track_ghl_engagement(
     tag = ENGAGEMENT_TAG_MAP.get(event)
     if not tag:
         return False
-    if NOTIFICATION_MODE == "disabled":
+    if _notification_mode() == "disabled":
         return False
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if _notification_mode() in {"stdout", "smtp"} or not _ghl_ready():
         logger.info("[GHL ENGAGEMENT] %s -> %s", email or phone or "unknown", tag)
         return True
 
@@ -657,7 +762,7 @@ async def track_ghl_engagement(
 async def notify_lawyer_submission(draft: dict, flags: list) -> bool:
     """
     Notify the firm when a client submits their will questionnaire.
-    Sent via GHL email to FIRM_EMAIL.
+    Sent through the configured email provider to FIRM_EMAIL.
     """
     FIRM_NAME = _resolve_firm_name()
     client_name = (
@@ -710,13 +815,14 @@ async def send_magic_link_to_client(
 ) -> dict:
     """
     Send the client their will questionnaire magic link.
-    Delivered via GHL as both Email and SMS (if phone provided).
+    Email is delivered through the configured provider; SMS is GHL-only.
     Returns: {'email_sent': bool, 'sms_sent': bool, 'contact_id': str | None}
     """
     FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False, "contact_id": None}
 
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return result
 
     # Build bilingual message
@@ -758,13 +864,18 @@ If you have any questions, please don't hesitate to contact us.
         sms_text = f"""{FIRM_NAME}: Hi {client_first_name}, here's your will questionnaire link: {magic_link_url}"""
 
     # Stdout fallback for dev
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        if send_email and client_email:
+            result["email_sent"] = _send_smtp_email(client_email, email_subject, body_text)
+        if send_sms and client_phone:
+            logger.info("[CLIENT SMS] SMTP notification mode does not send SMS; configure GHL for SMS delivery")
+        return result
+
+    if mode == "stdout" or not _ghl_ready():
         if send_email and client_email:
             logger.info(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}")
-            result["email_sent"] = True
         if send_sms and client_phone:
             logger.info(f"[CLIENT SMS] To: {client_phone}\n{sms_text}")
-            result["sms_sent"] = True
         return result
 
     # Send via GHL
@@ -804,12 +915,13 @@ async def send_review_link_to_client(
 ) -> dict:
     """
     Send the client their document review portal link.
-    Delivered via GHL as both Email and SMS (if phone provided).
+    Email is delivered through the configured provider; SMS is GHL-only.
     """
     FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False, "contact_id": None}
 
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return result
 
     is_korean = language == "ko"
@@ -849,13 +961,18 @@ Please review at your convenience — there is no rush. If you have any question
 """
         sms_text = f"""{FIRM_NAME}: Hi {client_first_name}, your will is ready for review: {review_link_url}"""
 
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        if send_email and client_email:
+            result["email_sent"] = _send_smtp_email(client_email, email_subject, body_text)
+        if send_sms and client_phone:
+            logger.info("[CLIENT SMS] SMTP notification mode does not send SMS; configure GHL for SMS delivery")
+        return result
+
+    if mode == "stdout" or not _ghl_ready():
         if send_email and client_email:
             logger.info(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}")
-            result["email_sent"] = True
         if send_sms and client_phone:
             logger.info(f"[CLIENT SMS] To: {client_phone}\n{sms_text}")
-            result["sms_sent"] = True
         return result
 
     contact_id = await _find_or_create_contact(
@@ -891,11 +1008,12 @@ async def send_signing_reminder(
 ) -> dict:
     """
     Send a signing appointment reminder to the client.
-    Delivered via GHL.
+    Email is delivered through the configured provider; SMS is GHL-only.
     """
     FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False}
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return result
 
     is_korean = language == "ko"
@@ -931,13 +1049,18 @@ Please bring government-issued photo ID.
 """
         sms_text = f"{FIRM_NAME}: Hi {client_first_name}, signing appointment: {signing_date} at {signing_address}"
 
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        if client_email:
+            result["email_sent"] = _send_smtp_email(client_email, email_subject, body_text)
+        if client_phone:
+            logger.info("[CLIENT SMS] SMTP notification mode does not send SMS; configure GHL for SMS delivery")
+        return result
+
+    if mode == "stdout" or not _ghl_ready():
         if client_email:
             logger.info(f"[CLIENT EMAIL] {email_subject}\n{body_text}")
-            result["email_sent"] = True
         if client_phone:
             logger.info(f"[CLIENT SMS] {sms_text}")
-            result["sms_sent"] = True
         return result
 
     contact_id = await _find_or_create_contact(
