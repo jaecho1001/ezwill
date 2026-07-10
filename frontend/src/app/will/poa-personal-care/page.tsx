@@ -10,6 +10,7 @@ import { AIFlagBanner } from '@/components/will/ai-flag-banner'
 import { PersonForm } from '@/components/will/person-form'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
+import { householdPersonSuggestions } from '@/lib/person-suggestions'
 import type { PersonData } from '@/lib/types/will'
 
 function newPerson(role: PersonData['role']): PersonData {
@@ -69,15 +70,19 @@ export default function POAPersonalCarePage() {
             showEmail
             showPhone
             title={t.poaCare_primaryAttorney}
+            suggestions={householdPersonSuggestions(will, 'attorney_care', [data.backupAttorney])}
           />
-          <div className="border-t pt-4">
+          {!!data.attorney?.firstName?.trim() && <div className="border-t pt-4">
             <p className="text-sm font-medium text-gray-700 mb-3">{t.poaCare_backupAttorney}</p>
             <PersonForm
               value={data.backupAttorney ?? {}}
               onChange={updates => update({ backupAttorney: { ...newPerson('attorney_care'), ...data.backupAttorney, ...updates } })}
               showRelationship
+              showEmail
+              showPhone
+              suggestions={householdPersonSuggestions(will, 'attorney_care', [data.attorney])}
             />
-          </div>
+          </div>}
         </div>
       )}
 

@@ -127,6 +127,8 @@ export const ko = {
   emailAddress: '이메일 주소',
   phoneNumber: '전화번호',
   address: '주소',
+  useExistingPerson: '이미 입력한 사람 사용',
+  usePersonSuggestion: '사용',
 
   // ===== Questionnaire question strings (bilingual coverage) =====
   // --- about-you ---

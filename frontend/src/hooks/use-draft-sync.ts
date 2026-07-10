@@ -6,7 +6,7 @@ import { saveDraftToServer } from '@/lib/api/drafts'
 import type { WillDocument } from '@/lib/types/will'
 
 // Extracts people array from the will document for server sync
-function extractPeople(will: WillDocument): unknown[] {
+export function extractPeople(will: WillDocument): unknown[] {
   const people: unknown[] = []
   const { yourFamily, yourEstate, yourArrangements, poaProperty, poaPersonalCare } = will
 
@@ -20,6 +20,7 @@ function extractPeople(will: WillDocument): unknown[] {
   if (poaProperty.attorney) people.push({ ...poaProperty.attorney, role: 'attorney_property' })
   if (poaProperty.backupAttorney) people.push({ ...poaProperty.backupAttorney, role: 'backup_attorney' })
   if (poaPersonalCare.attorney) people.push({ ...poaPersonalCare.attorney, role: 'attorney_care' })
+  if (poaPersonalCare.backupAttorney) people.push({ ...poaPersonalCare.backupAttorney, role: 'backup_attorney' })
 
   return people
 }

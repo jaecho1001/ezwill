@@ -15,6 +15,7 @@ import { PersonForm } from '@/components/will/person-form'
 import { PercentageAllocator } from '@/components/will/percentage-allocator'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
+import { householdPersonSuggestions } from '@/lib/person-suggestions'
 import type { PersonData } from '@/lib/types/will'
 
 function newPerson(role: PersonData['role']): PersonData {
@@ -146,7 +147,14 @@ export default function YourEstatePage() {
                 <p className="text-sm font-medium">{`${t.estate_beneficiaryLabel} ${i + 1}`}</p>
                 <button onClick={() => update({ beneficiaries: data.beneficiaries.filter(x => x.id !== b.id) })} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
               </div>
-              <PersonForm value={b} onChange={updates => update({ beneficiaries: data.beneficiaries.map(x => x.id === b.id ? { ...x, ...updates } : x) })} showRelationship />
+              <PersonForm
+                value={b}
+                onChange={updates => update({ beneficiaries: data.beneficiaries.map(x => x.id === b.id ? { ...x, ...updates } : x) })}
+                showRelationship
+                showEmail
+                showPhone
+                suggestions={householdPersonSuggestions(will, 'beneficiary', data.beneficiaries.filter(x => x.id !== b.id))}
+              />
               <div className="flex gap-3">
                 <Checkbox id={`odsp-b-${b.id}`} checked={!!b.receivesODSP} onChange={e => update({ beneficiaries: data.beneficiaries.map(x => x.id === b.id ? { ...x, receivesODSP: (e.target as HTMLInputElement).checked } : x) })} label={t.estate_receivesODSP} />
                 <Checkbox id={`us-b-${b.id}`} checked={!!b.isUSPerson} onChange={e => update({ beneficiaries: data.beneficiaries.map(x => x.id === b.id ? { ...x, isUSPerson: (e.target as HTMLInputElement).checked } : x) })} label={t.estate_usPerson} />

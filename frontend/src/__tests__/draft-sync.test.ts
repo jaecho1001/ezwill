@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDraftSyncSnapshot } from '@/hooks/use-draft-sync'
+import { buildDraftSyncSnapshot, extractPeople } from '@/hooks/use-draft-sync'
 import { INITIAL_WILL, type WillDocument } from '@/lib/types/will'
 
 function cloneInitialWill(): WillDocument {
@@ -7,6 +7,16 @@ function cloneInitialWill(): WillDocument {
 }
 
 describe('buildDraftSyncSnapshot', () => {
+  it('includes the personal-care backup attorney with a persisted role', () => {
+    const will = cloneInitialWill()
+    will.poaPersonalCare.backupAttorney = {
+      id: 'backup-care', role: 'attorney_care', firstName: 'Alex', lastName: 'Kim',
+    }
+
+    expect(extractPeople(will)).toContainEqual(expect.objectContaining({
+      id: 'backup-care', role: 'backup_attorney', firstName: 'Alex',
+    }))
+  })
   it('changes when answer fields change', () => {
     const before = cloneInitialWill()
     const after = cloneInitialWill()

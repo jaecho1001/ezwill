@@ -139,6 +139,8 @@ export const en = {
   emailAddress: 'Email Address',
   phoneNumber: 'Phone Number',
   address: 'Address',
+  useExistingPerson: 'Use someone already entered',
+  usePersonSuggestion: 'Use',
 
   // ===== Questionnaire question strings (bilingual coverage) =====
   // --- about-you ---

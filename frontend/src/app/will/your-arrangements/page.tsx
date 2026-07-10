@@ -12,6 +12,7 @@ import { AIFlagBanner } from '@/components/will/ai-flag-banner'
 import { PersonForm } from '@/components/will/person-form'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
+import { householdPersonSuggestions } from '@/lib/person-suggestions'
 import type { PersonData } from '@/lib/types/will'
 
 function newPerson(role: PersonData['role']): PersonData {
@@ -73,6 +74,7 @@ export default function YourArrangementsPage() {
             showEmail
             showPhone
             title={t.arr_primaryExecutor}
+            suggestions={householdPersonSuggestions(will, 'executor', data.backupExecutors)}
           />
           <div className="bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-lg p-3 text-xs text-[#8a6a1e]">
             <strong>{t.arr_tipLabel}</strong> {t.arr_executorTip}
@@ -88,7 +90,14 @@ export default function YourArrangementsPage() {
                 <p className="text-sm font-medium">{t.arr_backup} {i + 1}</p>
                 <button onClick={() => update({ backupExecutors: data.backupExecutors.filter(e => e.id !== exec.id) })} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
               </div>
-              <PersonForm value={exec} onChange={updates => update({ backupExecutors: data.backupExecutors.map(e => e.id === exec.id ? { ...e, ...updates } : e) })} showRelationship showEmail />
+              <PersonForm
+                value={exec}
+                onChange={updates => update({ backupExecutors: data.backupExecutors.map(e => e.id === exec.id ? { ...e, ...updates } : e) })}
+                showRelationship
+                showEmail
+                showPhone
+                suggestions={householdPersonSuggestions(will, 'executor', [data.primaryExecutor, ...data.backupExecutors.filter(e => e.id !== exec.id)])}
+              />
             </div>
           ))}
           <Button variant="outline" className="w-full gap-2" onClick={() => update({ backupExecutors: [...data.backupExecutors, newPerson('executor')] })}>
