@@ -813,130 +813,107 @@ class DocumentGenerator:
         signing_data: dict,
         variables: dict,
     ) -> None:
-        """Testimonium block for wills with witness attestation."""
+        """Precedent-style testimonium with the witnesses beside the attestation."""
         testator_name = (
             variables.get("testatorFullName")
             or variables.get("testator_full_name")
             or "[TESTATOR NAME]"
         )
-        pronoun = variables.get("pronoun", "his/her")
         if document_type == "probate_will":
-            will_type_label = "Primary"
+            will_type_label = "Probate Will"
         elif document_type == "non_probate_will":
-            will_type_label = "Non-Probate"
+            will_type_label = "Non-Probate Will"
         else:
-            will_type_label = ""  # single/short wills need no qualifier
+            will_type_label = "Will"
         num_pages = signing_data.get("numberOfPages", variables.get("numberOfPages", "[__]"))
 
-        # Testimonium heading
         p = doc.add_paragraph()
         p.space_before = Pt(24)
         run = p.add_run("TESTIMONIUM")
         run.bold = True
+        run.underline = True
         run.font.size = Pt(14)
         run.font.name = "Times New Roman"
+        p.paragraph_format.keep_with_next = True
 
-        # Attestation table: left column = text with ), right column = signature
-        table = doc.add_table(rows=7, cols=2)
+        p = doc.add_paragraph()
+        p.paragraph_format.keep_with_next = True
+        run = p.add_run(
+            f"I have signed this, my {will_type_label}, written upon {num_pages} pages, "
+            "including this page, this ______ day of ____________________, 20____."
+        )
+        run.font.size = Pt(11)
+        run.font.name = "Times New Roman"
+
+        # The precedent keeps the attestation at left, the testator signature at
+        # right, and both witness blocks directly beneath the attestation.
+        table = doc.add_table(rows=3, cols=2)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
         table.columns[0].width = Inches(3.5)
         table.columns[1].width = Inches(3.0)
-
-        # Remove table borders
         self._remove_table_borders(table)
 
-        # Row 0
-        left_lines = [
-            f"SIGNED, PUBLISHED AND DECLARED  )",
-            f"by the said Testator, {testator_name.upper()}  )",
-            f"as {pronoun} {(will_type_label + ' ') if will_type_label else ''}  )",
-            f"Will, consisting of {num_pages} pages  )",
-            f"including this page, in the  )",
-            f"presence of us, both present  )",
-            f"at the same time, who at  )",
-            f"{pronoun} request, in {pronoun} presence  )",
-            f"and in the presence of each  )",
-            f"other have hereunto subscribed  )",
-            f"our names as witnesses.  )",
+        attestation_lines = [
+            "SIGNED, PUBLISHED AND DECLARED",
+            f"by {testator_name.upper()} as the Testator's",
+            f"{will_type_label}, in the presence of both of us,",
+            "present at the same time, who, at the Testator's",
+            "request and in the presence of the Testator and",
+            "each other, have signed our names as witnesses.",
         ]
+        cell = table.cell(0, 0)
+        cell.text = ""
+        p = cell.paragraphs[0]
+        for line in attestation_lines:
+            run = p.add_run(f"{line:<57})")
+            run.font.size = Pt(10)
+            run.font.name = "Times New Roman"
+            run.add_break()
 
-        # Fill left column across rows
-        for i, line in enumerate(left_lines):
-            if i < len(table.rows):
-                cell = table.cell(i, 0)
-                cell.text = ""
-                p = cell.paragraphs[0]
-                run = p.add_run(line)
-                run.font.size = Pt(11)
-                run.font.name = "Times New Roman"
-
-        # If we need more rows, add them
-        while len(left_lines) > len(table.rows):
-            table.add_row()
-
-        # Re-fill if rows were added
-        if len(left_lines) > 7:
-            for i in range(7, len(left_lines)):
-                cell = table.cell(i, 0)
-                cell.text = ""
-                p = cell.paragraphs[0]
-                run = p.add_run(left_lines[i])
-                run.font.size = Pt(11)
-                run.font.name = "Times New Roman"
-
-        # Right column: signature line in the middle row area
-        sig_row = 4
-        cell = table.cell(sig_row, 1)
+        cell = table.cell(0, 1)
         cell.text = ""
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(66)
         run = p.add_run("_" * 30)
         run.font.size = Pt(11)
         run.font.name = "Times New Roman"
-
-        cell = table.cell(sig_row + 1, 1)
-        cell.text = ""
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run.add_break()
         run = p.add_run(testator_name.upper())
         run.bold = True
-        run.font.size = Pt(11)
+        run.font.size = Pt(10)
+        run.font.name = "Times New Roman"
+        run.add_break()
+        run = p.add_run("Testator")
+        run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
-        doc.add_paragraph()  # spacer
-
-        # Witness block
-        p = doc.add_paragraph()
-        run = p.add_run("WITNESSES:")
-        run.bold = True
-        run.font.size = Pt(12)
-        run.font.name = "Times New Roman"
-
-        doc.add_paragraph()
-
-        # Two witness blocks side by side
-        w_table = doc.add_table(rows=4, cols=2)
-        w_table.columns[0].width = Inches(3.25)
-        w_table.columns[1].width = Inches(3.25)
-        self._remove_table_borders(w_table)
-
-        for col in range(2):
-            n = col + 1  # column 0 -> witness 1, column 1 -> witness 2
-            fields = [
-                ("Name:", variables.get(f"witness{n}Name")),
-                ("Occupation:", variables.get(f"witness{n}Occupation")),
-                ("Address:", variables.get(f"witness{n}Address")),
-                ("", None),
+        for row_idx, witness_number in enumerate((1, 2), start=1):
+            cell = table.cell(row_idx, 0)
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(10)
+            witness_name = variables.get(f"witness{witness_number}Name") or "_" * 28
+            witness_address = variables.get(f"witness{witness_number}Address") or "_" * 28
+            witness_occupation = variables.get(f"witness{witness_number}Occupation") or "_" * 28
+            witness_label = "First" if witness_number == 1 else "Second"
+            lines = [
+                ("_" * 34, False),
+                (f"{witness_label} witness signature", False),
+                (f"Printed name: {witness_name}", False),
+                (f"Address: {witness_address}", False),
+                (f"Occupation: {witness_occupation}", False),
             ]
-            for row_idx, (label, value) in enumerate(fields):
-                cell = w_table.cell(row_idx, col)
-                cell.text = ""
-                p = cell.paragraphs[0]
-                if label:
-                    filled = value if value else "_" * 25
-                    run = p.add_run(f"{label}  {filled}")
-                    run.font.size = Pt(11)
-                    run.font.name = "Times New Roman"
+            for line, bold in lines:
+                run = p.add_run(line)
+                run.bold = bold
+                run.font.size = Pt(10)
+                run.font.name = "Times New Roman"
+                run.add_break()
+
+            # Keep the right side intentionally empty, as in the precedent.
+            table.cell(row_idx, 1).text = ""
 
     def _signing_page_poa(
         self,
@@ -945,7 +922,7 @@ class DocumentGenerator:
         signing_data: dict,
         variables: dict,
     ) -> None:
-        """Signature block for Powers of Attorney."""
+        """Execution block for Powers of Attorney with two witness signatures."""
         grantor_name = (
             variables.get("testatorFullName")
             or variables.get("testator_full_name")
@@ -962,8 +939,10 @@ class DocumentGenerator:
         p.space_before = Pt(24)
         run = p.add_run("EXECUTION")
         run.bold = True
+        run.underline = True
         run.font.size = Pt(14)
         run.font.name = "Times New Roman"
+        p.paragraph_format.keep_with_next = True
 
         # Execution text
         p = doc.add_paragraph()
@@ -973,13 +952,14 @@ class DocumentGenerator:
             f"my hand and seal to this {doc_label}."
         )
         run = p.add_run(text)
-        run.font.size = Pt(12)
+        run.font.size = Pt(11)
         run.font.name = "Times New Roman"
+        p.paragraph_format.keep_with_next = True
 
-        doc.add_paragraph()
-
-        # Signature table
-        table = doc.add_table(rows=5, cols=2)
+        # Testator/grantor line above two complete witness blocks.
+        table = doc.add_table(rows=3, cols=2)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
         table.columns[0].width = Inches(3.5)
         table.columns[1].width = Inches(3.0)
         self._remove_table_borders(table)
@@ -1001,37 +981,37 @@ class DocumentGenerator:
         run.font.size = Pt(11)
         run.font.name = "Times New Roman"
 
-        cell = table.cell(1, 1)
-        cell.text = ""
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run.add_break()
         run = p.add_run(grantor_name.upper())
         run.bold = True
-        run.font.size = Pt(11)
+        run.font.size = Pt(10)
+        run.font.name = "Times New Roman"
+        run.add_break()
+        run = p.add_run("Grantor")
+        run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
-        doc.add_paragraph()
-
-        # Witness block
-        p = doc.add_paragraph()
-        run = p.add_run("WITNESS:")
-        run.bold = True
-        run.font.size = Pt(12)
-        run.font.name = "Times New Roman"
-
-        doc.add_paragraph()
-
-        poa_witness = [
-            ("Name:", variables.get("witness1Name")),
-            ("Occupation:", variables.get("witness1Occupation")),
-            ("Address:", variables.get("witness1Address")),
-        ]
-        for label, value in poa_witness:
-            p = doc.add_paragraph()
-            filled = value if value else "_" * 40
-            run = p.add_run(f"{label}  {filled}")
-            run.font.size = Pt(11)
-            run.font.name = "Times New Roman"
+        for row_idx, witness_number in enumerate((1, 2), start=1):
+            witness_name = variables.get(f"witness{witness_number}Name") or "_" * 24
+            witness_address = variables.get(f"witness{witness_number}Address") or "_" * 24
+            witness_occupation = variables.get(f"witness{witness_number}Occupation") or "_" * 24
+            witness_label = "First" if witness_number == 1 else "Second"
+            cell = table.cell(row_idx, 0)
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(14)
+            for line in (
+                "_" * 34,
+                f"{witness_label} witness signature",
+                f"Printed name: {witness_name}",
+                f"Address: {witness_address}",
+                f"Occupation: {witness_occupation}",
+            ):
+                run = p.add_run(line)
+                run.font.size = Pt(10)
+                run.font.name = "Times New Roman"
+                run.add_break()
+            table.cell(row_idx, 1).text = ""
 
     def _signing_page_affidavit(
         self,
