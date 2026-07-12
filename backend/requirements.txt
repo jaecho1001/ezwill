@@ -12,3 +12,4 @@ python-docx==1.1.2
 uuid==1.30
 anthropic==0.44.0
 # Notifications use GoHighLevel (GHL) via httpx or SMTP via Python stdlib.
+stripe==11.1.0

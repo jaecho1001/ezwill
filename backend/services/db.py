@@ -106,6 +106,8 @@ class EWDbWriter:
             'poa_property', 'poa_personal_care',
             # Conversational AI-intake snapshot (JSONB).
             'vault',
+            # Payments.
+            'payment_status', 'payment_tier', 'paid_at', 'payment_ref',
         }
         safe = {k: v for k, v in updates.items() if k in allowed}
         if not safe:

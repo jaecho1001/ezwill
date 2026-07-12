@@ -304,6 +304,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             {draft.client_email && <span>{draft.client_email}</span>}
             {draft.client_phone && <span>{draft.client_phone}</span>}
             <Badge variant="secondary" className="uppercase text-xs">{draft.language}</Badge>
+            {(() => {
+              const p = draft as unknown as { payment_status?: string; payment_tier?: string }
+              const ps = p.payment_status || 'unpaid'
+              const cls = ps === 'paid' ? 'bg-[#7BA68C]/15 text-[#5f8a70]' : ps === 'pending' ? 'bg-[#C9A84C]/15 text-[#8a6a1e]' : 'bg-gray-100 text-gray-500'
+              const label = ps === 'paid' ? `Paid${p.payment_tier ? ' · ' + p.payment_tier : ''}` : ps === 'pending' ? 'Payment pending' : 'Unpaid'
+              return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${cls}`}>{label}</span>
+            })()}
           </div>
         </div>
         <StatusBadge status={draft.status} />
