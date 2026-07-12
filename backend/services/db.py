@@ -381,6 +381,50 @@ class EWDbWriter:
         """, (file_path, draft_id, document_type))
         return True
 
+    # ── Signing / execution events ───────────────────────────────────────────
+
+    def upsert_signing_event(self, draft_id: str, document_type: str, data: dict) -> dict:
+        """Record (or update) how a document was executed — Ontario SLRA s.4
+        (in person) or s.21.1 (remote video), witnesses, date and location."""
+        w1 = data.get('witness1') or {}
+        w2 = data.get('witness2') or {}
+        return self.fetchone("""
+            INSERT INTO ew_signing_events
+                (draft_id, document_type, signing_method, signed_at, location,
+                 witness1_name, witness1_address, witness1_occupation, witness1_is_lso,
+                 witness2_name, witness2_address, witness2_occupation, witness2_is_lso,
+                 platform, recording_url)
+            VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s,%s,%s, %s,%s)
+            ON CONFLICT (draft_id, document_type) DO UPDATE SET
+                signing_method = EXCLUDED.signing_method,
+                signed_at = EXCLUDED.signed_at,
+                location = EXCLUDED.location,
+                witness1_name = EXCLUDED.witness1_name,
+                witness1_address = EXCLUDED.witness1_address,
+                witness1_occupation = EXCLUDED.witness1_occupation,
+                witness1_is_lso = EXCLUDED.witness1_is_lso,
+                witness2_name = EXCLUDED.witness2_name,
+                witness2_address = EXCLUDED.witness2_address,
+                witness2_occupation = EXCLUDED.witness2_occupation,
+                witness2_is_lso = EXCLUDED.witness2_is_lso,
+                platform = EXCLUDED.platform,
+                recording_url = EXCLUDED.recording_url
+            RETURNING *
+        """, (
+            draft_id, document_type, data.get('signing_method', 'in_person'),
+            data.get('signed_at'), data.get('location'),
+            w1.get('name'), w1.get('address'), w1.get('occupation'), bool(w1.get('is_lso', False)),
+            w2.get('name'), w2.get('address'), w2.get('occupation'), bool(w2.get('is_lso', False)),
+            data.get('platform'), data.get('recording_url'),
+        ))
+
+    def get_signing_events(self, draft_id: str) -> list:
+        """All recorded signing/execution events for a draft."""
+        return self.fetchall(
+            "SELECT * FROM ew_signing_events WHERE draft_id = %s ORDER BY document_type",
+            (draft_id,)
+        )
+
     # ── Client Links ─────────────────────────────────────────────────────────
 
     # ── Liabilities ──────────────────────────────────────────────────────────
