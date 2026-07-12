@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from routes.auth import verify_dashboard_token
 from services.db import EWDbWriter
 from services.draft_service import get_full_draft
+from services.jurisdictions import resolve as resolve_jurisdiction
 from services.document_generator import (
     DOCUMENT_TITLES,
     resolve_variables,
@@ -156,7 +157,7 @@ def _build_variables(draft: dict) -> dict:
     variables["testatorFirstName"] = first
     variables["testatorLastName"] = last
     variables["documentDate"] = date.today().strftime("%B %d, %Y")
-    variables["province"] = draft.get("province", "Ontario")
+    variables["province"] = resolve_jurisdiction(draft.get("province")).name
 
     about = draft.get("about_you") or {}
     variables["city"] = about.get("city", "")

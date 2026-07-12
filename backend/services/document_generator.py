@@ -13,6 +13,8 @@ from html.parser import HTMLParser
 from datetime import date
 from typing import Optional
 
+from services.jurisdictions import resolve as resolve_jurisdiction
+
 from docx import Document
 from docx.shared import Inches, Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -1040,7 +1042,7 @@ class DocumentGenerator:
             or variables.get("city_name")
             or "[City]"
         )
-        province = variables.get("province", "Ontario")
+        province = resolve_jurisdiction(variables.get("province")).name
 
         # Heading
         p = doc.add_paragraph()

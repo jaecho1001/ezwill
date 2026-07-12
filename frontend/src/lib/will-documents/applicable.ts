@@ -19,6 +19,7 @@
 
 import type { WillClauseTemplate } from '@/types/will-document'
 import type { WillVault } from '@/types/will-vault'
+import { resolveJurisdiction } from '@/lib/jurisdictions/registry'
 
 export type Applicability = 'yes' | 'no' | 'unknown'
 
@@ -65,10 +66,12 @@ function evaluateFlag(key: string, v: WillVault): boolean | 'unknown' {
   }
 }
 
-function isMinor(dob?: string): boolean {
+function isMinor(dob?: string, province?: string): boolean {
   if (!dob) return false
   const d = new Date(dob)
   if (Number.isNaN(d.getTime())) return false
   const years = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  return years < 18
+  // Age of majority comes from the jurisdiction registry (18 in ON, 19 in BC…),
+  // so a future province is a config change, not an edit here.
+  return years < resolveJurisdiction(province).ageOfMajority
 }
