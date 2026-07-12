@@ -219,8 +219,8 @@ _PRIVATE_ASSET_KEYWORDS = (
 def _has_business_assets(client_data: dict) -> bool:
     """True only for private-company / business interests (dual-will territory).
     Publicly-traded shares do not qualify — see the constants above."""
-    assets = client_data.get("assets", [])
-    estate = client_data.get("your_estate", {})
+    assets = client_data.get("assets") or []
+    estate = client_data.get("your_estate") or {}
 
     for asset in assets:
         asset_type = (asset.get("assetType") or asset.get("asset_type") or "").lower()
@@ -244,7 +244,7 @@ def _build_client_summary(client_data: dict) -> str:
     last = client_data.get("lastName", client_data.get("client_last_name", ""))
     parts.append(f"Client Name: {first} {last}".strip())
 
-    about = client_data.get("about_you", {})
+    about = client_data.get("about_you") or {}
     if about:
         if about.get("city"):
             parts.append(f"City: {about['city']}")
@@ -253,11 +253,11 @@ def _build_client_summary(client_data: dict) -> str:
         if about.get("address"):
             parts.append(f"Address: {about['address']}")
 
-    family = client_data.get("your_family", {})
+    family = client_data.get("your_family") or {}
     if family:
         if family.get("spouseFullName"):
             parts.append(f"Spouse: {family['spouseFullName']}")
-        children = family.get("children", [])
+        children = family.get("children") or []
         if children:
             child_names = [
                 c.get("name", f"{c.get('firstName', '')} {c.get('lastName', '')}").strip()
@@ -268,14 +268,14 @@ def _build_client_summary(client_data: dict) -> str:
             if minors:
                 parts.append(f"Minor children: {len(minors)}")
 
-    estate = client_data.get("your_estate", {})
+    estate = client_data.get("your_estate") or {}
     if estate:
         if estate.get("survivalDays"):
             parts.append(f"Survival Period: {estate['survivalDays']} days")
         if estate.get("trustDistributionAge"):
             parts.append(f"Trust Distribution Age: {estate['trustDistributionAge']}")
 
-    assets = client_data.get("assets", [])
+    assets = client_data.get("assets") or []
     if assets:
         parts.append(f"Assets ({len(assets)}):")
         for a in assets:
@@ -283,7 +283,7 @@ def _build_client_summary(client_data: dict) -> str:
             val = a.get("estimatedValue", "N/A")
             parts.append(f"  - {desc}: ${val}")
 
-    liabilities = client_data.get("liabilities", [])
+    liabilities = client_data.get("liabilities") or []
     if liabilities:
         parts.append(f"Liabilities ({len(liabilities)}):")
         for li in liabilities:
@@ -291,7 +291,7 @@ def _build_client_summary(client_data: dict) -> str:
             val = li.get("amount", li.get("estimatedValue", "N/A"))
             parts.append(f"  - {desc}: ${val}")
 
-    people = client_data.get("people", [])
+    people = client_data.get("people") or []
     if people:
         parts.append("Named People:")
         for p in people:
@@ -299,11 +299,11 @@ def _build_client_summary(client_data: dict) -> str:
             name = f"{p.get('firstName', p.get('first_name', ''))} {p.get('lastName', p.get('last_name', ''))}".strip()
             parts.append(f"  - {role}: {name}")
 
-    poa_prop = client_data.get("poa_property", {})
+    poa_prop = client_data.get("poa_property") or {}
     if poa_prop:
         parts.append(f"POA Property preferences: {json.dumps(poa_prop, default=str)}")
 
-    poa_pc = client_data.get("poa_personal_care", {})
+    poa_pc = client_data.get("poa_personal_care") or {}
     if poa_pc:
         parts.append(f"POA Personal Care preferences: {json.dumps(poa_pc, default=str)}")
 
