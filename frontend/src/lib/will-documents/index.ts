@@ -197,6 +197,29 @@ export function buildDefaultSelections(docType: WillDocumentType): SelectedWillC
   })
 }
 
+/**
+ * Merge persisted selections with the current default set.
+ *
+ * Persisted rows always win, including an explicit `included: false`. Defaults
+ * that were introduced after a draft was last saved are appended so the Will
+ * Editor never opens with an incomplete legacy default set.
+ */
+export function mergeSelectionsWithDefaults(
+  docType: WillDocumentType,
+  stored: SelectedWillClause[]
+): SelectedWillClause[] {
+  const defaults = buildDefaultSelections(docType)
+  const storedById = new Map(stored.map((clause) => [clause.clauseId, clause]))
+  const merged = defaults.map((defaultClause) => storedById.get(defaultClause.clauseId) ?? defaultClause)
+  const defaultIds = new Set(defaults.map((clause) => clause.clauseId))
+
+  for (const clause of stored) {
+    if (!defaultIds.has(clause.clauseId)) merged.push(clause)
+  }
+
+  return merged.map((clause, index) => ({ ...clause, sortOrder: clause.sortOrder ?? index }))
+}
+
 /** Find a clause template by ID */
 export function getClauseTemplate(clauseId: string): WillClauseTemplate | undefined {
   return willClauseLibrary.find((c) => c.id === clauseId)

@@ -274,6 +274,22 @@ a {
   margin-bottom: 0.3em;
 }
 
+/* Will Editor navigation: the full-document preview is an interactive map
+   back to the clause editor. Keep the treatment subtle so it never resembles
+   formatting that will be emitted into the generated legal document. */
+.will-editor-clickable [data-clause-id] {
+  cursor: pointer;
+  border-radius: 0.2rem;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+.will-editor-clickable [data-clause-id]:hover {
+  background: rgba(201, 168, 76, 0.08);
+}
+.will-editor-clickable .clause-editor-active {
+  background: rgba(201, 168, 76, 0.16);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.12);
+}
+
 /* ── Manus landing design system (scoped; does not affect other pages) ── */
 @theme {
   --animate-accordion-down: accordion-down 0.2s ease-out;

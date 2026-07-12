@@ -9,6 +9,7 @@ import { getAuthHeaders } from '@/lib/auth'
 import {
   willDocumentTypes,
   buildDefaultSelections,
+  mergeSelectionsWithDefaults,
 } from '@/lib/will-documents/index'
 import {
   serializeSelectionsForSave,
@@ -54,7 +55,10 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
             for (const docType of willDocumentTypes) {
               const rows = stored[docType.id]
               if (Array.isArray(rows) && rows.length > 0) {
-                initial[docType.id] = deserializeStoredClauses(rows)
+                initial[docType.id] = mergeSelectionsWithDefaults(
+                  docType.id,
+                  deserializeStoredClauses(rows)
+                )
               } else {
                 initial[docType.id] = buildDefaultSelections(docType.id)
               }

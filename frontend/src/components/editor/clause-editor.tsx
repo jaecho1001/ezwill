@@ -58,12 +58,24 @@ export function ClauseEditor({
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [applicabilityFilter, setApplicabilityFilter] = useState<'all' | 'applicable'>('applicable')
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null)
+  const treeScrollRef = useRef<HTMLDivElement | null>(null)
+  const previewScrollRef = useRef<HTMLDivElement | null>(null)
+  const recentlyAddedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const docConfig = getDocumentTypeConfig(documentType)
   const clauseTree = useMemo(() => getClauseTree(documentType), [documentType])
 
   // All leaf clauses for counting
   const allClauses = useMemo(() => getClausesForDocumentType(documentType).filter((c) => !c.isFolder), [documentType])
+  const documentClauseIds = useMemo(
+    () => new Set(getClausesForDocumentType(documentType).map((clause) => clause.id)),
+    [documentType]
+  )
+  const defaultClauseIds = useMemo(
+    () => new Set(docConfig?.defaultClauseIds ?? []),
+    [docConfig]
+  )
 
   // Auto-expand folders whose children match the search query so results
   // are visible without the user manually opening each folder.
@@ -224,15 +236,78 @@ export function ClauseEditor({
     })
   }, [])
 
+  const selectClause = useCallback((clauseId: string, openEditor = true) => {
+    const template = getClauseTemplate(clauseId)
+    if (!template || !documentClauseIds.has(clauseId)) return
+    if (template.parentId) {
+      setExpandedFolders((prev) => new Set([...prev, template.parentId!]))
+    }
+    setSelectedClauseId(clauseId)
+    if (openEditor) setViewMode('clause')
+  }, [documentClauseIds])
+
+  const flashAddedClause = useCallback((clauseId: string) => {
+    setRecentlyAddedId(clauseId)
+    if (recentlyAddedTimerRef.current) clearTimeout(recentlyAddedTimerRef.current)
+    recentlyAddedTimerRef.current = setTimeout(() => setRecentlyAddedId(null), 1800)
+  }, [])
+
+  // Keep the editor anchored to a clause that belongs to the active document.
+  // New documents open on their first included leaf clause and its section is
+  // expanded automatically.
+  useEffect(() => {
+    if (selectedClauseId && documentClauseIds.has(selectedClauseId)) return
+    const firstIncluded = selectedClauses.find(
+      (clause) => clause.included && !getClauseTemplate(clause.clauseId)?.isFolder
+    )
+    const firstAvailable = allClauses[0]
+    const nextId = firstIncluded?.clauseId ?? firstAvailable?.id ?? null
+    if (nextId) selectClause(nextId, viewMode !== 'full')
+    else setSelectedClauseId(null)
+  }, [allClauses, documentClauseIds, selectedClauseId, selectedClauses, selectClause, viewMode])
+
+  // Selection from any entry point (tree, add checkbox, or full preview) keeps
+  // the navigator synchronized and visibly highlights the corresponding row.
+  useEffect(() => {
+    if (!selectedClauseId) return
+    requestAnimationFrame(() => {
+      const row = treeScrollRef.current?.querySelector<HTMLElement>(
+        `[data-clause-tree-id="${selectedClauseId}"]`
+      )
+      row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+  }, [selectedClauseId, expandedFolders])
+
+  // In full-document mode, highlight and scroll to the currently selected
+  // clause. Clicking a different preview clause uses the reverse path below.
+  useEffect(() => {
+    const preview = previewScrollRef.current
+    if (!preview) return
+    preview.querySelectorAll('.clause-editor-active').forEach((node) => {
+      node.classList.remove('clause-editor-active')
+    })
+    if (!selectedClauseId || viewMode !== 'full') return
+    const matches = preview.querySelectorAll<HTMLElement>(
+      `[data-clause-id="${selectedClauseId}"]`
+    )
+    matches.forEach((node) => node.classList.add('clause-editor-active'))
+    matches[0]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [selectedClauseId, viewMode, fullDocumentHtml])
+
   const toggleInclude = useCallback(
     (clauseId: string) => {
       const existing = selectedClauses.find((sc) => sc.clauseId === clauseId)
       if (existing) {
+        const willInclude = !existing.included
         onClausesChange(
           selectedClauses.map((sc) =>
-            sc.clauseId === clauseId ? { ...sc, included: !sc.included } : sc
+            sc.clauseId === clauseId ? { ...sc, included: willInclude } : sc
           )
         )
+        if (willInclude) {
+          selectClause(clauseId)
+          flashAddedClause(clauseId)
+        }
       } else {
         const template = getClauseTemplate(clauseId)
         if (template) {
@@ -247,10 +322,12 @@ export function ClauseEditor({
               sortOrder: selectedClauses.length,
             },
           ])
+          selectClause(clauseId)
+          flashAddedClause(clauseId)
         }
       }
     },
-    [selectedClauses, onClausesChange]
+    [selectedClauses, onClausesChange, selectClause, flashAddedClause]
   )
 
   const markSaved = useCallback(() => {
@@ -264,6 +341,7 @@ export function ClauseEditor({
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (recentlyAddedTimerRef.current) clearTimeout(recentlyAddedTimerRef.current)
   }, [])
 
   const handleEditorChange = useCallback(
@@ -516,7 +594,7 @@ export function ClauseEditor({
         </div>
 
         {/* Tree */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div ref={treeScrollRef} className="flex-1 overflow-y-auto p-2">
           {filteredTree.length === 0 ? (
             <p className="py-8 text-center text-sm text-gray-400">No clauses match your search.</p>
           ) : (
@@ -550,15 +628,17 @@ export function ClauseEditor({
                   {/* Children */}
                   {expandedFolders.has(folder.id) &&
                     (folder.children ?? []).map((clause) => (
-                      <div key={clause.id} className="relative">
+                      <div key={clause.id} data-clause-tree-id={clause.id} className="relative scroll-m-3">
                         <ClauseTreeItem
                           clause={clause}
                           isSelected={selectedClauseId === clause.id}
                           isIncluded={includedSet.has(clause.id)}
-                          onSelect={() => setSelectedClauseId(clause.id)}
+                          onSelect={() => selectClause(clause.id)}
                           onToggleInclude={() => toggleInclude(clause.id)}
                           depth={1}
                           hasCustomText={!!customTextMap[clause.id]}
+                          isDefault={defaultClauseIds.has(clause.id)}
+                          isRecentlyAdded={recentlyAddedId === clause.id}
                           applicability={applicabilityById.get(clause.id)}
                           draggable
                           isDragTarget={dragOverId === clause.id && dragId !== clause.id}
@@ -624,14 +704,31 @@ export function ClauseEditor({
       {/* Right Panel — Clause Detail / Editor / Full-document preview */}
       <div className="flex w-[65%] flex-col">
         {viewMode === 'full' ? (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div
+            ref={previewScrollRef}
+            className="flex-1 overflow-y-auto p-6"
+            onClick={(event) => {
+              const target = event.target as HTMLElement
+              const clauseNode = target.closest<HTMLElement>('[data-clause-id]')
+              const clauseId = clauseNode?.dataset.clauseId
+              if (!clauseId) return
+              const template = getClauseTemplate(clauseId)
+              const editableClauseId = template?.isFolder
+                ? selectedClauses.find((selection) => {
+                    const child = getClauseTemplate(selection.clauseId)
+                    return selection.included && child?.parentId === clauseId
+                  })?.clauseId
+                : clauseId
+              if (editableClauseId) selectClause(editableClauseId)
+            }}
+          >
             {includedCount === 0 ? (
               <div className="flex h-full items-center justify-center text-center text-sm text-gray-500">
                 No clauses included yet. Toggle inclusion checkboxes on the left to build the document.
               </div>
             ) : (
               <div
-                className="will-editor mx-auto max-w-3xl rounded border border-gray-100 bg-white p-8 shadow-inner"
+                className="will-editor will-editor-clickable mx-auto max-w-3xl rounded border border-gray-100 bg-white p-8 shadow-inner"
                 dangerouslySetInnerHTML={{ __html: fullDocumentHtml }}
               />
             )}
@@ -642,7 +739,8 @@ export function ClauseEditor({
             <div className="border-b border-gray-200 px-5 py-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-base font-semibold text-gray-900">{selectedTemplate.name}</h3>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8a6a1e]">Clause heading</p>
+                  <h3 className="mt-0.5 text-base font-semibold text-gray-900">{selectedTemplate.name}</h3>
                   <p className="mt-0.5 text-sm text-gray-500">{selectedTemplate.section}{selectedTemplate.subsection ? ` / ${selectedTemplate.subsection}` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -652,6 +750,9 @@ export function ClauseEditor({
                   <Badge variant={selectedTemplate.tier === 1 ? 'secondary' : 'warning'}>
                     Tier {selectedTemplate.tier}
                   </Badge>
+                  {defaultClauseIds.has(selectedTemplate.id) && (
+                    <Badge variant="outline">Default clause</Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -664,7 +765,7 @@ export function ClauseEditor({
                   onClick={() => setInfoExpanded((prev) => !prev)}
                   className="flex w-full items-center justify-between px-5 py-2 text-left text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors"
                 >
-                  <span>Reference &amp; Annotations</span>
+                  <span>Firm Reference &amp; Drafting Notes</span>
                   <svg
                     className={cn('h-3.5 w-3.5 transition-transform', infoExpanded && 'rotate-180')}
                     fill="none"
@@ -690,7 +791,7 @@ export function ClauseEditor({
                     )}
                     {selectedTemplate.annotation && (
                       <div className="flex items-start gap-2">
-                        <span className="shrink-0 text-xs font-medium text-gray-500 w-16">Note:</span>
+                        <span className="shrink-0 text-xs font-medium text-gray-500 w-16">Purpose:</span>
                         <span className="text-xs text-gray-600 leading-relaxed">{selectedTemplate.annotation}</span>
                       </div>
                     )}
@@ -727,6 +828,10 @@ export function ClauseEditor({
 
             {/* Editor */}
             <div className="flex-1 overflow-y-auto p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Clause text</p>
+                <p className="text-[11px] text-gray-400">Firm-authored template · editable for this client</p>
+              </div>
               <RichTextEditor
                 content={selectedClauseText}
                 onChange={handleEditorChange}

@@ -3,6 +3,7 @@ import {
   willDocumentTypes,
   getClausesForDocumentType,
   buildDefaultSelections,
+  mergeSelectionsWithDefaults,
   getClauseTree,
   resolveTemplateText,
   getClauseTemplate,
@@ -72,6 +73,44 @@ describe('buildDefaultSelections', () => {
       'res', 'res-spouse', 'res-children-stirpes',
       'fla', 'fla-exclusion',
     ])
+  })
+})
+
+describe('mergeSelectionsWithDefaults', () => {
+  it('adds missing current defaults while preserving saved exclusions and edits', () => {
+    const merged = mergeSelectionsWithDefaults('single_will', [
+      {
+        clauseId: 'rev-single',
+        section: 'Revocation',
+        included: false,
+        customText: '<p>Firm-approved client edit</p>',
+        aiGenerated: false,
+        sortOrder: 7,
+      },
+    ])
+
+    const revocation = merged.find((clause) => clause.clauseId === 'rev-single')
+    expect(revocation).toMatchObject({
+      included: false,
+      customText: '<p>Firm-approved client edit</p>',
+      sortOrder: 7,
+    })
+    expect(merged.map((clause) => clause.clauseId)).toContain('fla-exclusion')
+    expect(merged.find((clause) => clause.clauseId === 'fla-exclusion')?.included).toBe(true)
+  })
+
+  it('retains saved optional clauses after the default set', () => {
+    const optional = {
+      clauseId: 'trust-henson',
+      section: 'Trusts',
+      included: true,
+      aiGenerated: false,
+      sortOrder: 99,
+    }
+    const merged = mergeSelectionsWithDefaults('single_will', [optional])
+
+    expect(merged.filter((clause) => clause.clauseId === optional.clauseId)).toHaveLength(1)
+    expect(merged.at(-1)?.clauseId).toBe(optional.clauseId)
   })
 })
 

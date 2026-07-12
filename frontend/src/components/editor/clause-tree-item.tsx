@@ -12,6 +12,8 @@ interface ClauseTreeItemProps {
   onToggleInclude: () => void
   depth: number
   hasCustomText?: boolean
+  isDefault?: boolean
+  isRecentlyAdded?: boolean
   draggable?: boolean
   isDragTarget?: boolean
   applicability?: 'yes' | 'no' | 'unknown'
@@ -29,6 +31,8 @@ export function ClauseTreeItem({
   onToggleInclude,
   depth,
   hasCustomText,
+  isDefault,
+  isRecentlyAdded,
   draggable,
   isDragTarget,
   applicability,
@@ -66,7 +70,8 @@ export function ClauseTreeItem({
             ? 'border-[#7BA68C] hover:bg-gray-50'
             : 'border-transparent hover:bg-gray-50',
         !isIncluded && !clause.isFolder && 'opacity-60 hover:opacity-100',
-        isDragTarget && 'ring-2 ring-[#1B2A4A] ring-inset'
+        isDragTarget && 'ring-2 ring-[#1B2A4A] ring-inset',
+        isRecentlyAdded && 'bg-[#C9A84C]/15 ring-2 ring-[#C9A84C]/50 ring-inset'
       )}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
       onClick={onSelect}
@@ -126,6 +131,14 @@ export function ClauseTreeItem({
 
       {/* Badges */}
       <div className="flex shrink-0 items-center gap-1">
+        {isDefault && (
+          <span
+            className="rounded bg-[#1B2A4A]/8 px-1.5 py-0 text-[10px] font-medium text-[#1B2A4A]"
+            title="Included in the default clause set for this document"
+          >
+            Default
+          </span>
+        )}
         {applicability === 'unknown' && (
           <span
             className="rounded bg-[#C9A84C]/15 px-1.5 py-0 text-[10px] font-medium text-[#8a6a1e]"
