@@ -5,6 +5,7 @@ generated will documents via magic link tokens.
 """
 
 import os
+import html
 import logging
 from typing import Optional
 
@@ -328,6 +329,10 @@ async def get_review_preview(draft_id: str, document_type: str, token: str = Que
         clause_rows = [dict(c) for c in clause_rows] if clause_rows else []
 
     variables = _build_variables(draft)
+    # The clause "html" fields are rendered client-side via dangerouslySetInnerHTML.
+    # The template markup is trusted, but variable VALUES are client-supplied — escape
+    # them so a malicious name/address can't inject script into the review portal.
+    html_variables = {k: html.escape(str(v)) for k, v in variables.items()}
 
     # Build structured clause data
     title = DOCUMENT_TITLES.get(document_type, document_type)
@@ -346,12 +351,12 @@ async def get_review_preview(draft_id: str, document_type: str, token: str = Que
             or clause.get("template_text")
             or ""
         )
-        resolved_text = resolve_variables(text, variables)
+        resolved_text = resolve_variables(text, html_variables)
 
         meta = clause_meta.get(clause_id, {})
         clause_title = clause.get("title", meta.get("name", ""))
         if clause_title:
-            clause_title = resolve_variables(clause_title, variables)
+            clause_title = resolve_variables(clause_title, html_variables)
 
         clauses.append({
             "clause_id": clause_id,

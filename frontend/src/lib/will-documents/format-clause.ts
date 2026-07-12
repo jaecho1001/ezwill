@@ -149,8 +149,16 @@ export function generateWillContent(
   let sectionNum = 0
   let html = ''
 
+  // HTML-escape substituted values: the template is trusted, but variable
+  // values come from client input and are rendered via dangerouslySetInnerHTML
+  // in the Will Editor / review portal. Escaping here prevents stored XSS
+  // (e.g. a `<img onerror>` in a name field) from executing in the lawyer's
+  // (non-HttpOnly) dashboard origin.
   const substituteVariables = (text: string) =>
-    text.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? `[${key}]`)
+    text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+      const v = variables[key]
+      return v != null ? escapeAttr(v) : `[${key}]`
+    })
 
   const addParagraphs = (
     clauseId: string,

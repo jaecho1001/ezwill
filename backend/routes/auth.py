@@ -1,6 +1,6 @@
 """Simple password-based auth for the EZWill lawyer dashboard."""
 
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel
 from dataclasses import dataclass
 from typing import Optional
@@ -104,12 +104,12 @@ def _verify_password(password: str, stored: str | None) -> bool:
 def _session_secret() -> bytes:
     secret = os.getenv("AUTH_SESSION_SECRET")
     if not secret:
-        # The configured password is still preferable to an ephemeral or known
-        # default, and password changes automatically invalidate old sessions.
-        password = os.getenv("DASHBOARD_PASSWORD")
-        if not password:
-            raise ValueError("AUTH_SESSION_SECRET is not configured")
-        secret = password
+        # Fail closed — never fall back to the (guessable/known-default) dashboard
+        # password, which would let anyone knowing it forge valid admin sessions.
+        raise ValueError(
+            "AUTH_SESSION_SECRET is not configured — set a strong random secret "
+            "(e.g. `openssl rand -hex 32`)"
+        )
     return secret.encode()
 
 
@@ -243,12 +243,23 @@ async def login(req: LoginRequest, request: Request):
 
 
 @router.post("/change-password")
-async def change_password(req: ChangePasswordRequest):
+async def change_password(
+    req: ChangePasswordRequest,
+    request: Request,
+    _token: str = Depends(verify_dashboard_token),
+):
+    # Require a valid dashboard session AND throttle by client so this endpoint
+    # can't be used as an unauthenticated, unlimited password-verification oracle
+    # that bypasses the login rate limiter.
+    client = request.client.host if request.client else "unknown"
+    _check_rate_limit(client)
     configured = _configured_password()
     if not _verify_password(req.current_password, configured):
+        _record_failed_login(client)
         raise HTTPException(status_code=401, detail="Current password is incorrect")
     if len(req.new_password) < 12:
         raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
+    _login_attempts.pop(client, None)
     from services.db import EWDbWriter
     with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
         settings = db.get_firm_settings() or {}

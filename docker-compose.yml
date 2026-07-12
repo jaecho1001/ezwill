@@ -3,7 +3,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: ezwill
-      POSTGRES_PASSWORD: ezwill_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: caselawvision
     ports:
       - "5432:5432"
@@ -24,7 +24,7 @@ services:
     restart: "no"
     command: ["python", "scripts/run_migrations.py"]
     environment:
-      DATABASE_URL: postgresql://ezwill:ezwill_dev@db:5432/caselawvision
+      DATABASE_URL: postgresql://ezwill:${POSTGRES_PASSWORD}@db:5432/caselawvision
       DEFAULT_SCHEMA: ${DEFAULT_SCHEMA:-firm_demo}
     depends_on:
       db:
@@ -36,7 +36,7 @@ services:
     ports:
       - "8003:8003"
     environment:
-      DATABASE_URL: postgresql://ezwill:ezwill_dev@db:5432/caselawvision
+      DATABASE_URL: postgresql://ezwill:${POSTGRES_PASSWORD}@db:5432/caselawvision
       DEFAULT_SCHEMA: ${DEFAULT_SCHEMA:-firm_demo}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -45,7 +45,8 @@ services:
       ANTHROPIC_INTAKE_MODEL: ${ANTHROPIC_INTAKE_MODEL:-claude-sonnet-4-5}
       AI_INTAKE_RATE_WINDOW_SECS: ${AI_INTAKE_RATE_WINDOW_SECS:-60}
       AI_INTAKE_RATE_MAX_REQS: ${AI_INTAKE_RATE_MAX_REQS:-20}
-      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-vaturi2026}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?set DASHBOARD_PASSWORD in .env}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?set AUTH_SESSION_SECRET in .env — openssl rand -hex 32}
       FIRM_EMAIL: ${FIRM_EMAIL:-lawyers@vaturicho.com}
       FIRM_NAME: ${FIRM_NAME:-Vaturi & Cho LLP}
       FIRM_PHONE: ${FIRM_PHONE:-+14166614529}
