@@ -35,24 +35,33 @@ class TestHasBusinessAssets:
         data = {"assets": [{"assetType": "private_corp", "description": "Holdco"}]}
         assert _has_business_assets(data) is True
 
-    def test_asset_type_shares(self):
+    def test_bare_shares_type_not_flagged(self):
+        # 'shares' alone is ambiguous (could be publicly traded) — not auto dual-will.
         data = {"assets": [{"assetType": "shares", "description": "Corp shares"}]}
-        assert _has_business_assets(data) is True
+        assert _has_business_assets(data) is False
 
-    def test_asset_type_corporation(self):
+    def test_bare_corporation_type_not_flagged(self):
         data = {"assets": [{"assetType": "corporation", "description": "Opco"}]}
-        assert _has_business_assets(data) is True
+        assert _has_business_assets(data) is False
 
     def test_description_contains_private_company(self):
         data = {"assets": [{"assetType": "other", "description": "Shares in private company XYZ"}]}
         assert _has_business_assets(data) is True
 
-    def test_description_contains_corporation(self):
+    def test_description_generic_corporation_not_flagged(self):
         data = {"assets": [{"assetType": "other", "description": "My corporation holdings"}]}
-        assert _has_business_assets(data) is True
+        assert _has_business_assets(data) is False
 
-    def test_description_contains_business(self):
+    def test_description_generic_business_not_flagged(self):
         data = {"assets": [{"assetType": "other", "description": "Small business interest"}]}
+        assert _has_business_assets(data) is False
+
+    def test_publicly_traded_shares_not_flagged(self):
+        data = {"assets": [{"assetType": "shares", "description": "500 shares of a public company (TSX)"}]}
+        assert _has_business_assets(data) is False
+
+    def test_family_business_flagged(self):
+        data = {"assets": [{"assetType": "other", "description": "Interest in our family business (Holdco)"}]}
         assert _has_business_assets(data) is True
 
     def test_estate_has_business_assets_camel(self):

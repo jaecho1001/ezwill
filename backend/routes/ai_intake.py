@@ -533,27 +533,28 @@ async def intake_chat(
     # token leaks. Raises 429 — frontend already surfaces errors inline.
     _check_rate_limit(body.draft_id)
 
-    # Persist the latest vault snapshot so conversational-intake data reaches
-    # the document generator (best-effort; never break the chat on a DB error).
-    _persist_vault_snapshot(body.draft_id, body.vault)
-
     vault = dict(body.vault or {})  # shallow copy we mutate while streaming
 
     async def generator() -> AsyncIterator[bytes]:
         use_claude = bool(ANTHROPIC_API_KEY)
-        if use_claude:
-            try:
-                async for frame in _stream_with_claude(
-                    vault, body.messages, body.progress_summary or ""
-                ):
-                    yield frame
-                return
-            except Exception as exc:  # noqa: BLE001 — degrade to mock
-                logger.exception("claude intake stream failed; falling back to mock")
-                yield _sse("error", {"message": f"Claude error: {exc}. Falling back to pattern matcher."})
-        # Fallback path.
-        async for frame in _stream_with_mock(vault, body.messages, body.progress_summary or ""):
-            yield frame
+        try:
+            if use_claude:
+                try:
+                    async for frame in _stream_with_claude(
+                        vault, body.messages, body.progress_summary or ""
+                    ):
+                        yield frame
+                    return
+                except Exception as exc:  # noqa: BLE001 — degrade to mock
+                    logger.exception("claude intake stream failed; falling back to mock")
+                    yield _sse("error", {"message": f"Claude error: {exc}. Falling back to pattern matcher."})
+            # Fallback path.
+            async for frame in _stream_with_mock(vault, body.messages, body.progress_summary or ""):
+                yield frame
+        finally:
+            # Persist the vault AFTER this turn's streamed patches have mutated it,
+            # so the newest answers reach the server (not only on the next turn).
+            _persist_vault_snapshot(body.draft_id, vault)
 
     return StreamingResponse(
         generator(),

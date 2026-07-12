@@ -202,17 +202,32 @@ async def _capability_run_ai_flags(payload: dict, correlation_id: str) -> AgentI
 
 # ── Quick Draft: AI-powered clause selection ─────────────────────────────────
 
+# Asset types / descriptors that indicate a PRIVATE-company or business interest —
+# the case where an Ontario dual will can avoid probate on the non-probate estate.
+# Publicly-traded shares/stocks are deliberately excluded: they do NOT avoid
+# probate on their own, so they're a lawyer-review screening flag, not an
+# automatic dual-will conclusion.
+_PRIVATE_ASSET_TYPES = {
+    "business", "private_corp", "private_company", "sole_proprietorship", "partnership",
+}
+_PRIVATE_ASSET_KEYWORDS = (
+    "private company", "private corp", "closely held", "closely-held",
+    "family business", "holdco", "sole propriet", "partnership interest",
+)
+
+
 def _has_business_assets(client_data: dict) -> bool:
-    """Check if client has private corp shares or significant business assets."""
+    """True only for private-company / business interests (dual-will territory).
+    Publicly-traded shares do not qualify — see the constants above."""
     assets = client_data.get("assets", [])
     estate = client_data.get("your_estate", {})
 
     for asset in assets:
         asset_type = (asset.get("assetType") or asset.get("asset_type") or "").lower()
         description = (asset.get("description") or "").lower()
-        if asset_type in ("business", "private_corp", "shares", "corporation"):
+        if asset_type in _PRIVATE_ASSET_TYPES:
             return True
-        if any(kw in description for kw in ("private company", "corporation", "shares", "business")):
+        if any(kw in description for kw in _PRIVATE_ASSET_KEYWORDS):
             return True
 
     if estate.get("hasBusinessAssets") or estate.get("has_business_assets"):

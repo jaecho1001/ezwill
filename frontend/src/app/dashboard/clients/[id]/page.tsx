@@ -192,18 +192,27 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         // selections for each so the Will Editor opens populated and the docs
         // can generate immediately.
         const docTypes = result.saved_document_types ?? result.document_types ?? []
-        await Promise.all(
+        const saveResults = await Promise.all(
           docTypes.map(async (dt) => {
             const clauses = buildDefaultSelections(dt as WillDocumentType)
-            if (clauses.length === 0) return
-            await fetch(`/api/drafts/${id}/clauses/${dt}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-              body: JSON.stringify({ clauses: serializeSelectionsForSave(clauses) }),
-            })
+            if (clauses.length === 0) return true
+            try {
+              const r = await fetch(`/api/drafts/${id}/clauses/${dt}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ clauses: serializeSelectionsForSave(clauses) }),
+              })
+              return r.ok
+            } catch {
+              return false
+            }
           }),
         )
-        setAiDraftResult(result)
+        if (saveResults.every(Boolean)) {
+          setAiDraftResult(result)
+        } else {
+          setAiDraftError('AI recommended documents, but some clause selections failed to save. Please retry.')
+        }
       } else {
         setAiDraftError('AI draft failed. Please try again.')
       }

@@ -74,6 +74,12 @@ jobs:
   containers:
     name: containers (compose config · image builds)
     runs-on: ubuntu-latest
+    env:
+      # docker-compose.yml now requires these (no committed defaults, ${VAR:?}).
+      # Supply throwaway values so `compose config` / `build` resolve in CI.
+      POSTGRES_PASSWORD: ci_test
+      DASHBOARD_PASSWORD: ci_test
+      AUTH_SESSION_SECRET: ci_test_session_secret
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
