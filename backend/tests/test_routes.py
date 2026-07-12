@@ -104,6 +104,14 @@ class TestRouteRegistration:
         assert '/api/drafts/{draft_id}/documents' in paths
         assert '/api/drafts/{draft_id}/documents/{document_type}' in paths
 
+    def test_internal_legal_library_routes_registered(self):
+        paths = [r['path'] for r in get_routes()]
+        assert '/api/legal-library/sources' in paths
+        assert '/api/legal-library/sources/{source_id}/pages' in paths
+        assert '/api/legal-library/clauses' in paths
+        assert '/api/legal-library/clauses/{clause_key}' in paths
+        assert '/api/legal-library/versions/{version_id}/approve' in paths
+
 
 class TestRouteHTTPMethods:
     """Verify correct HTTP methods are assigned to routes."""

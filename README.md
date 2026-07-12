@@ -267,6 +267,34 @@ Token usage per turn is logged structured (`ai_intake.claude.usage model=… inp
 
 > **Multi-worker deployments:** the rate limiter is in-process. Move to Redis (or a sticky-session proxy) if you run >1 uvicorn worker.
 
+### Private legal-source library
+
+Migration 33 adds a versioned, internal legal-research library:
+
+- `ew_legal_source_documents` and `ew_legal_source_pages` retain authorized publications with immutable checksums and page provenance.
+- `ew_clause_templates` and `ew_clause_template_versions` hold firm-authored clause versions separately from licensed text.
+- `ew_clause_source_links` records lawyer-verified source/page relationships.
+- `ew_clause_review_decisions` and `ew_annual_source_reviews` provide approval and annual-review audit trails.
+- `client_explanation` and `client_qa` are separate lawyer-approved fields. Client APIs must never read `ew_legal_source_pages.source_text` or `internal_explanation`.
+
+Licensed files stay in approved private storage and must never be committed to Git. To import an authorized PDF and seed the current firm-authored library:
+
+```bash
+cd frontend
+node scripts/export-clause-library.mjs > /tmp/ezwill-clause-library.json
+
+cd ..
+DATABASE_URL='postgresql://...' DEFAULT_SCHEMA='firm_demo' \
+  backend/.venv/bin/python backend/scripts/import_legal_source.py \
+  --file '/private/path/annotated-will.pdf' \
+  --title 'The Annotated Will 2025' \
+  --publisher 'Law Society of Ontario' \
+  --edition 2025 \
+  --clause-library-json /tmp/ezwill-clause-library.json
+```
+
+The importer is idempotent by source SHA-256 and clause content hash. Imported firm clauses begin in `draft`/`under_review`; they are not made current until a lawyer approves a version through the authenticated `/api/legal-library` workflow.
+
 ---
 
 ## Pending — What's Not Done Yet

@@ -26,3 +26,7 @@ backend/.env
 # Misc
 *.log
 npm-debug.log*
+
+# Licensed legal publications must remain in approved private storage.
+private-legal-sources/
+legal-source-exports/
