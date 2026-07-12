@@ -44,6 +44,9 @@ app.add_middleware(
 app.include_router(drafts_router, prefix="/api/drafts", tags=["drafts"])
 app.include_router(links_router, prefix="/api/links", tags=["links"])
 app.include_router(agents_router, prefix="/agents", tags=["agents"])
+# Also under /api so the Next.js frontend (which proxies /api/* → backend) can
+# reach the agent capabilities; /agents stays for external orchestrator callers.
+app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
 app.include_router(clauses_router, prefix="/api/drafts", tags=["clauses"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
 app.include_router(review_router, prefix="/api/review", tags=["review"])

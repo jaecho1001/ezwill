@@ -1,4 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+import time
+from collections import deque
+
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from pydantic import BaseModel
 from models import CreateDraftRequest, UpdateDraftRequest
 from routes.auth import verify_dashboard_token, verify_client_or_dashboard_draft_access
 from services.db import EWDbWriter
@@ -8,6 +12,56 @@ import json
 router = APIRouter()
 
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+
+# --- Public self-serve draft creation (a client starts their own will online) ---
+# Rate-limited per client IP so the unauthenticated endpoint can't be used to
+# mass-create drafts.
+_self_serve_hits: dict[str, deque] = {}
+SELF_SERVE_WINDOW_SECONDS = 3600
+SELF_SERVE_MAX_PER_WINDOW = 10
+
+
+class SelfServeDraftRequest(BaseModel):
+    language: str = "en"
+    province: str = "ON"
+
+
+def _self_serve_rate_limit(client: str) -> None:
+    now = time.time()
+    hits = _self_serve_hits.setdefault(client, deque())
+    while hits and now - hits[0] > SELF_SERVE_WINDOW_SECONDS:
+        hits.popleft()
+    if len(hits) >= SELF_SERVE_MAX_PER_WINDOW:
+        raise HTTPException(429, "Too many wills started from this network; please try again later")
+    hits.append(now)
+
+
+@router.post("/self-serve")
+async def create_self_serve_draft(body: SelfServeDraftRequest, request: Request):
+    """Public: a client starts their own will without a lawyer. Creates an empty
+    draft plus a client link token bound to it, so the existing magic-token
+    autosave/submit path works. The lawyer sees the draft in the dashboard as it
+    fills in."""
+    client = request.client.host if request.client else "unknown"
+    _self_serve_rate_limit(client)
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        draft = db.create_draft(
+            client_first_name="",
+            client_last_name="",
+            language=body.language or "en",
+            province=body.province or "ON",
+        )
+        if not draft:
+            raise HTTPException(500, "Failed to create draft")
+        draft_id = str(dict(draft)["id"])
+        link = db.create_link(draft_id)
+        return {
+            "draft_id": draft_id,
+            "token": str(dict(link)["token"]),
+            "language": dict(draft)["language"],
+            "province": dict(draft)["province"],
+        }
+
 
 @router.post("")
 async def create_draft(body: CreateDraftRequest, _token: str = Depends(verify_dashboard_token)):
@@ -63,6 +117,16 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(ve
         # through the dedicated /clauses routes to avoid overwrites.
         if body.about_you is not None:
             updates['about_you'] = json.dumps(body.about_you)
+            # Keep the client_first/last_name columns (the document generator's
+            # testator-name source) in sync with the questionnaire's legal name,
+            # so self-serve drafts generate with the correct name.
+            ay = body.about_you or {}
+            fn = ay.get('legalFirstName') or ay.get('firstName')
+            ln = ay.get('legalLastName') or ay.get('lastName')
+            if fn:
+                updates['client_first_name'] = fn
+            if ln:
+                updates['client_last_name'] = ln
         if body.your_family is not None:
             updates['your_family'] = json.dumps(body.your_family)
         if body.your_estate is not None:

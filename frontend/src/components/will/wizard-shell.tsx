@@ -5,6 +5,7 @@ import { Check, X } from 'lucide-react'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
 import { useDraftSync } from '@/hooks/use-draft-sync'
+import { useEnsureSelfServeDraft } from '@/hooks/use-ensure-draft'
 import { WILL_STEPS } from '@/lib/constants/steps'
 import { BrandLockup } from '@/components/ui/brand'
 import { LanguageToggle } from './language-toggle'
@@ -14,6 +15,9 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
   const pathname = usePathname()
 
+  // A self-serve client (no magic link) gets a backend draft created on entry,
+  // so their answers persist and the lawyer sees them fill in live.
+  useEnsureSelfServeDraft()
   // Auto-sync draft to server (debounced 1.5s). No-op if no draftId in context.
   useDraftSync()
 

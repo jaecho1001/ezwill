@@ -191,9 +191,13 @@ class TestRoutePrefixes:
             assert r['path'].startswith('/api/links'), f"Route {r['path']} missing /api/links prefix"
 
     def test_agent_routes_have_agents_prefix(self):
+        # Agent capabilities are mounted at /agents (external orchestrator) and
+        # /api/agents (so the Next.js /api/* proxy can reach them).
         agent_routes = [r for r in get_routes() if 'invoke' in r['path']]
+        assert agent_routes, "expected at least one agent invoke route"
         for r in agent_routes:
-            assert r['path'].startswith('/agents'), f"Route {r['path']} missing /agents prefix"
+            assert r['path'].startswith('/agents') or r['path'].startswith('/api/agents'), \
+                f"Route {r['path']} missing /agents or /api/agents prefix"
 
 
 class TestAppConfiguration:

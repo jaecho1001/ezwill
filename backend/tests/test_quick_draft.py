@@ -275,8 +275,9 @@ class TestQuickDraftResponseStructure:
 
 
 @pytest.mark.asyncio
-async def test_capability_quick_draft_mocked():
+async def test_capability_quick_draft_mocked(monkeypatch):
     """End-to-end test of _capability_quick_draft with mocked OpenAI call."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")  # exercise the LLM path
     from routes.agents import _capability_quick_draft
 
     client_data = {
@@ -314,8 +315,9 @@ async def test_capability_quick_draft_mocked():
 
 
 @pytest.mark.asyncio
-async def test_capability_quick_draft_single_will():
+async def test_capability_quick_draft_single_will(monkeypatch):
     """When no business assets, AI summary should say single will is sufficient."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")  # exercise the LLM path
     from routes.agents import _capability_quick_draft
 
     client_data = {
@@ -359,3 +361,42 @@ async def test_capability_quick_draft_empty_client_data():
         await _capability_quick_draft({"client_data": {}}, correlation_id="test-err")
 
     assert exc_info.value.status_code == 400
+
+
+# ── Doc-type normalization + deterministic (no-key) engine ──────────────────
+
+def test_normalize_doc_type_maps_legacy_and_dual_vocab():
+    from routes.agents import _normalize_doc_type
+    assert _normalize_doc_type("primary_will", needs_dual=True) == "probate_will"
+    assert _normalize_doc_type("primary_will", needs_dual=False) == "single_will"
+    assert _normalize_doc_type("secondary_will", needs_dual=True) == "non_probate_will"
+    assert _normalize_doc_type("poa_property", needs_dual=False) == "poa_property"
+    assert _normalize_doc_type("not_a_real_type", needs_dual=False) is None
+
+
+def test_deterministic_quick_draft_dual_vs_single():
+    from routes.agents import _deterministic_quick_draft
+    dual = _deterministic_quick_draft({}, needs_dual=True)
+    assert dual["needs_dual_will"] is True
+    assert set(dual["document_types"]) == {
+        "probate_will", "non_probate_will", "poa_property", "poa_personal_care"
+    }
+    assert dual["engine"] == "rules"
+
+    single = _deterministic_quick_draft({}, needs_dual=False)
+    assert single["needs_dual_will"] is False
+    assert "single_will" in single["document_types"]
+    assert "non_probate_will" not in single["document_types"]
+
+
+@pytest.mark.asyncio
+async def test_quick_draft_falls_back_to_rules_without_key(monkeypatch):
+    """Without OPENAI_API_KEY, quick_draft uses the deterministic engine, and a
+    client with business assets is steered to a dual will."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from routes.agents import _capability_quick_draft
+    client_data = {"assets": [{"assetType": "business", "description": "Private Corp shares"}]}
+    resp = await _capability_quick_draft({"client_data": client_data}, correlation_id="t")
+    assert resp.result["engine"] == "rules"
+    assert resp.result["needs_dual_will"] is True
+    assert "non_probate_will" in resp.result["document_types"]

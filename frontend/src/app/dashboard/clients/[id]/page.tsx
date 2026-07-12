@@ -10,7 +10,11 @@ import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { AiFlagsSummary } from '@/components/dashboard/ai-flags-summary'
 import { EstateOverview } from '@/components/dashboard/estate-overview'
-import { getDraft, createReviewLink } from '@/lib/api/drafts'
+import { getDraft, createReviewLink, invokeQuickDraft, type QuickDraftResult } from '@/lib/api/drafts'
+import { getAuthHeaders } from '@/lib/auth'
+import { buildDefaultSelections } from '@/lib/will-documents/index'
+import { serializeSelectionsForSave } from '@/lib/will-documents/clause-serialization'
+import type { WillDocumentType } from '@/types/will-document'
 import { cn } from '@/lib/utils'
 
 const SECTION_LABELS = [
@@ -130,6 +134,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [reviewDeliveryStatus, setReviewDeliveryStatus] = useState<{ email: boolean; sms: boolean } | null>(null)
   const [reviewSendEmail, setReviewSendEmail] = useState(true)
   const [reviewSendSms, setReviewSendSms] = useState(true)
+  const [aiDrafting, setAiDrafting] = useState(false)
+  const [aiDraftResult, setAiDraftResult] = useState<QuickDraftResult | null>(null)
+  const [aiDraftError, setAiDraftError] = useState<string | null>(null)
 
   const handleSendReviewLink = useCallback(async () => {
     setReviewLinkLoading(true)
@@ -159,6 +166,51 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       setTimeout(() => setReviewLinkCopied(false), 2000)
     }
   }, [reviewLink])
+
+  const handleAiDraft = useCallback(async () => {
+    if (!draft) return
+    setAiDrafting(true)
+    setAiDraftResult(null)
+    setAiDraftError(null)
+    try {
+      const d = draft as unknown as Record<string, unknown>
+      const clientData: Record<string, unknown> = {
+        client_first_name: draft.client_first_name,
+        client_last_name: draft.client_last_name,
+        about_you: d.about_you,
+        your_family: d.your_family,
+        your_estate: d.your_estate,
+        your_arrangements: d.your_arrangements,
+        poa_property: d.poa_property,
+        poa_personal_care: d.poa_personal_care,
+        assets: d.assets,
+        people: d.people,
+      }
+      const result = await invokeQuickDraft(id, clientData)
+      if (result) {
+        // The engine enables the recommended documents; persist default clause
+        // selections for each so the Will Editor opens populated and the docs
+        // can generate immediately.
+        const docTypes = result.saved_document_types ?? result.document_types ?? []
+        await Promise.all(
+          docTypes.map(async (dt) => {
+            const clauses = buildDefaultSelections(dt as WillDocumentType)
+            if (clauses.length === 0) return
+            await fetch(`/api/drafts/${id}/clauses/${dt}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+              body: JSON.stringify({ clauses: serializeSelectionsForSave(clauses) }),
+            })
+          }),
+        )
+        setAiDraftResult(result)
+      } else {
+        setAiDraftError('AI draft failed. Please try again.')
+      }
+    } finally {
+      setAiDrafting(false)
+    }
+  }, [id, draft])
 
   useEffect(() => {
     getDraft(id)
@@ -284,7 +336,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       </Card>
 
       {/* Action Buttons */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={handleAiDraft} disabled={aiDrafting} className="bg-[#C9A84C] text-white hover:bg-[#b8973f]">
+          {aiDrafting ? (
+            <svg className="mr-1.5 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+          )}
+          {aiDrafting ? 'Drafting…' : 'AI Draft'}
+        </Button>
         <Link href={`/dashboard/clients/${id}/design-sheet`}>
           <Button variant="outline">
             <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -320,6 +385,40 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           {reviewLinkLoading ? 'Generating...' : 'Send Review Link'}
         </Button>
       </div>
+
+      {/* AI Draft result */}
+      {aiDraftError && (
+        <div className="rounded-xl border border-[#C9A84C]/40 bg-[#C9A84C]/10 p-4 text-sm text-[#8a6a1e]">{aiDraftError}</div>
+      )}
+      {aiDraftResult && (
+        <Card className="border-[#C9A84C]/40">
+          <CardContent className="space-y-3 p-6">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-[#C9A84C]/15 px-2.5 py-1 text-xs font-semibold text-[#8a6a1e]">
+                AI Draft · {aiDraftResult.needs_dual_will ? 'Dual Will recommended' : 'Single Will'}
+              </span>
+              {aiDraftResult.engine === 'rules' && (
+                <span className="text-xs text-gray-400">rules engine</span>
+              )}
+            </div>
+            <p className="text-sm leading-relaxed text-[#2D2D2D]/80">{aiDraftResult.reasoning}</p>
+            {aiDraftResult.saved_document_types && aiDraftResult.saved_document_types.length > 0 && (
+              <p className="text-sm text-gray-600">
+                <span className="font-medium text-[#1B2A4A]">Documents prepared:</span>{' '}
+                {aiDraftResult.saved_document_types.map((t) => t.replace(/_/g, ' ')).join(', ')}
+              </p>
+            )}
+            <Link href={`/dashboard/clients/${id}/tier2`}>
+              <Button className="mt-1">
+                Review in Will Editor
+                <svg className="ml-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Review Link Delivery Options */}
       <Card>

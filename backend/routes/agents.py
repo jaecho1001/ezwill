@@ -32,9 +32,10 @@ ONTARIO DUAL WILL STRATEGY:
 - A dual will is recommended when the client owns shares in a private corporation
   or has significant personal property / business assets.
 
-DOCUMENT TYPES:
-- "primary_will": The Probate Will (Last Will and Testament - Primary)
-- "secondary_will": The Non-Probate Will (Last Will and Testament - Secondary)
+DOCUMENT TYPES (use these EXACT keys — the generator only recognizes these):
+- "single_will": A single Last Will and Testament (use when a dual will is NOT needed)
+- "probate_will": The Probate Will (primary will in a dual-will structure)
+- "non_probate_will": The Non-Probate Will (secondary will in a dual-will structure)
 - "poa_property": Continuing Power of Attorney for Property
 - "poa_personal_care": Power of Attorney for Personal Care
 
@@ -61,7 +62,7 @@ Given the client data below, return a JSON object with the following structure:
 {
   "needs_dual_will": true/false,
   "reasoning": "Brief explanation of why dual will is or isn't needed",
-  "document_types": ["primary_will", "secondary_will", "poa_property", "poa_personal_care"],
+  "document_types": ["single_will", "poa_property", "poa_personal_care"],   // or ["probate_will", "non_probate_will", "poa_property", "poa_personal_care"] if dual
   "clause_selections": {
     "<document_type>": [
       {
@@ -84,9 +85,31 @@ IMPORTANT:
   "executor_appointment", "residue_to_spouse", "survival_clause", "guardian",
   "trust_provisions", "poa_property_powers", "poa_personal_care_wishes", etc.)
 - Fill in {{placeholder}} variables from client data where possible.
-- If dual will is NOT needed, omit "secondary_will" from document_types.
+- If dual will is NOT needed, use "single_will" (do not emit probate_will/non_probate_will).
 - Return ONLY valid JSON, no markdown fences or extra text.
 """
+
+# The generator only accepts these document-type keys (DOCUMENT_TITLES). Map any
+# legacy/dual-will vocabulary the model might still emit onto them, else the
+# saved selections are unusable and the will can't be generated.
+_DOC_TYPE_ALIASES = {
+    "primary_will": "probate_will",
+    "secondary_will": "non_probate_will",
+    "will": "single_will",
+    "last_will": "single_will",
+}
+_VALID_DOC_TYPES = {
+    "simple_will_short", "single_will", "probate_will", "non_probate_will",
+    "poa_property", "poa_personal_care",
+}
+
+
+def _normalize_doc_type(doc_type: str, needs_dual: bool) -> str | None:
+    dt = _DOC_TYPE_ALIASES.get(doc_type, doc_type)
+    # A primary/probate will for a non-dual client is just a single will.
+    if dt == "probate_will" and not needs_dual:
+        dt = "single_will"
+    return dt if dt in _VALID_DOC_TYPES else None
 
 
 @router.post("/will/invoke", response_model=AgentInvokeResponse)
@@ -274,14 +297,15 @@ def _build_client_summary(client_data: dict) -> str:
 
 async def _call_openai_quick_draft(client_summary: str) -> dict:
     """Call OpenAI chat completions to generate clause selections."""
-    if not OPENAI_API_KEY:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
         raise HTTPException(503, "OPENAI_API_KEY not configured. Cannot run quick_draft.")
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
@@ -302,6 +326,40 @@ async def _call_openai_quick_draft(client_summary: str) -> dict:
     result = response.json()
     content = result["choices"][0]["message"]["content"]
     return json.loads(content)
+
+
+def _deterministic_quick_draft(client_data: dict, needs_dual: bool) -> dict:
+    """Rules-based document recommendation used when no LLM key is configured.
+
+    Decides the highest-value Ontario question — single vs dual will — plus the
+    two standard Powers of Attorney, and gives the lawyer a plain-language
+    rationale. Individual clause bodies are filled by the Will Editor's per-
+    document defaults, so this works without a backend clause library.
+    """
+    if needs_dual:
+        document_types = ["probate_will", "non_probate_will", "poa_property", "poa_personal_care"]
+        reasoning = (
+            "The client holds private-corporation shares or significant business / "
+            "personal-property assets, so an Ontario dual-will structure is "
+            "recommended: a Probate Will for assets that require probate and a "
+            "Non-Probate Will for the rest, reducing Estate Administration Tax "
+            "(~1.5% above $50,000) on the non-probate estate."
+        )
+    else:
+        document_types = ["single_will", "poa_property", "poa_personal_care"]
+        reasoning = (
+            "No private-corporation or significant business assets were detected, "
+            "so a single Last Will and Testament plus a Continuing POA for Property "
+            "and a POA for Personal Care is sufficient."
+        )
+    return {
+        "needs_dual_will": needs_dual,
+        "reasoning": reasoning,
+        "document_types": document_types,
+        "clause_selections": {},
+        "warnings": [],
+        "engine": "rules",
+    }
 
 
 async def _capability_quick_draft(payload: dict, correlation_id: str) -> AgentInvokeResponse:
@@ -333,28 +391,48 @@ async def _capability_quick_draft(payload: dict, correlation_id: str) -> AgentIn
     else:
         client_summary += "\n\nNOTE: Client does not appear to have private corporation assets. Single primary will is likely sufficient."
 
-    # Step 3: Call OpenAI for clause selection and customization
-    ai_result = await _call_openai_quick_draft(client_summary)
+    # Step 3: Select documents/clauses — LLM when configured, else deterministic
+    # rules so the flow works without an API key. (Read at call time so it's
+    # runtime-configurable and testable.)
+    if os.getenv("OPENAI_API_KEY"):
+        ai_result = await _call_openai_quick_draft(client_summary)
+        ai_result.setdefault("engine", "openai")
+    else:
+        ai_result = _deterministic_quick_draft(client_data, needs_dual)
 
-    # Step 4: Optionally save clause selections to an existing draft
+    # Step 4: Optionally save document config + clause selections to an existing draft
     if draft_id:
         try:
+            needs_dual = ai_result.get("needs_dual_will", needs_dual)
             clause_selections = ai_result.get("clause_selections", {})
+            document_types = ai_result.get("document_types", [])
             with EWDbWriter(DEFAULT_SCHEMA) as db:
                 draft = db.get_draft(draft_id)
                 if not draft:
                     raise HTTPException(404, f"Draft {draft_id} not found")
 
+                saved_types: list[str] = []
+                # Enable the recommended documents (clause bodies default in the editor).
+                for dt in document_types:
+                    norm = _normalize_doc_type(dt, needs_dual)
+                    if norm and norm not in saved_types:
+                        db.save_document_config(draft_id, norm, True)
+                        saved_types.append(norm)
+                # Save any explicit clause selections the LLM provided.
                 for doc_type, clauses in clause_selections.items():
-                    db.save_clause_selections(draft_id, doc_type, clauses)
+                    norm = _normalize_doc_type(doc_type, needs_dual)
+                    if not norm:
+                        continue
+                    db.save_clause_selections(draft_id, norm, clauses)
+                    db.save_document_config(draft_id, norm, True)
+                    if norm not in saved_types:
+                        saved_types.append(norm)
 
-                    # Ensure document config is enabled
-                    db.save_document_config(draft_id, doc_type, True)
+                # If dual will is not needed, ensure the non-probate will is disabled.
+                if not needs_dual:
+                    db.save_document_config(draft_id, "non_probate_will", False)
 
-                # If dual will is not needed, disable secondary_will
-                if not ai_result.get("needs_dual_will", False):
-                    db.save_document_config(draft_id, "secondary_will", False)
-
+            ai_result["saved_document_types"] = saved_types
             ai_result["draft_id"] = draft_id
             ai_result["saved"] = True
         except HTTPException:
