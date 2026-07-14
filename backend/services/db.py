@@ -255,6 +255,149 @@ class EWDbWriter:
             result.append(row)
         return result
 
+    # ── AI Usage ─────────────────────────────────────────────────────────────
+
+    def record_ai_usage(
+        self,
+        *,
+        provider: str,
+        model: str,
+        feature: str,
+        draft_id: str = None,
+        request_count: int = 1,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cache_read_input_tokens: int = 0,
+        cache_creation_input_tokens: int = 0,
+        latency_ms: int = None,
+        correlation_id: str = None,
+        metadata: dict = None,
+    ) -> dict:
+        """Persist one metered AI feature invocation.
+
+        Token fields are non-overlapping: cached input is removed from a
+        provider's general input count before this method is called.
+        """
+        return self.fetchone("""
+            INSERT INTO ew_ai_usage_events
+                (draft_id, provider, model, feature, request_count,
+                 input_tokens, output_tokens, cache_read_input_tokens,
+                 cache_creation_input_tokens, latency_ms, correlation_id,
+                 metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (
+            draft_id,
+            provider,
+            model,
+            feature,
+            max(1, int(request_count or 1)),
+            max(0, int(input_tokens or 0)),
+            max(0, int(output_tokens or 0)),
+            max(0, int(cache_read_input_tokens or 0)),
+            max(0, int(cache_creation_input_tokens or 0)),
+            max(0, int(latency_ms)) if latency_ms is not None else None,
+            correlation_id,
+            psycopg2.extras.Json(metadata or {}),
+        ))
+
+    def get_ai_usage_totals(self, since=None) -> dict:
+        where = "WHERE created_at >= %s" if since is not None else ""
+        params = (since,) if since is not None else None
+        return self.fetchone(f"""
+            SELECT
+                COUNT(*) AS events,
+                COALESCE(SUM(request_count), 0) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+                COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+                COALESCE(SUM(
+                    input_tokens + output_tokens + cache_read_input_tokens +
+                    cache_creation_input_tokens
+                ), 0) AS total_tokens
+            FROM ew_ai_usage_events
+            {where}
+        """, params)
+
+    def get_ai_usage_tracked_since(self):
+        row = self.fetchone(
+            "SELECT MIN(created_at) AS tracked_since FROM ew_ai_usage_events"
+        )
+        return row.get("tracked_since") if row else None
+
+    def get_ai_usage_by_model(self, since=None) -> list:
+        where = "WHERE created_at >= %s" if since is not None else ""
+        params = (since,) if since is not None else None
+        return self.fetchall(f"""
+            SELECT
+                COUNT(*) AS events,
+                provider,
+                model,
+                COALESCE(SUM(request_count), 0) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+                COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+                COALESCE(SUM(
+                    input_tokens + output_tokens + cache_read_input_tokens +
+                    cache_creation_input_tokens
+                ), 0) AS total_tokens
+            FROM ew_ai_usage_events
+            {where}
+            GROUP BY provider, model
+            ORDER BY total_tokens DESC, provider, model
+        """, params)
+
+    def get_ai_usage_daily(self, since=None) -> list:
+        where = "WHERE created_at >= %s" if since is not None else ""
+        params = (since,) if since is not None else None
+        return self.fetchall(f"""
+            SELECT
+                COUNT(*) AS events,
+                (created_at AT TIME ZONE 'America/Toronto')::date AS date,
+                COALESCE(SUM(request_count), 0) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+                COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+                COALESCE(SUM(
+                    input_tokens + output_tokens + cache_read_input_tokens +
+                    cache_creation_input_tokens
+                ), 0) AS total_tokens
+            FROM ew_ai_usage_events
+            {where}
+            GROUP BY (created_at AT TIME ZONE 'America/Toronto')::date
+            ORDER BY date
+        """, params)
+
+    def list_ai_usage_events(self, since=None, limit: int = 50) -> list:
+        where = "WHERE u.created_at >= %s" if since is not None else ""
+        params = (since, limit) if since is not None else (limit,)
+        return self.fetchall(f"""
+            SELECT
+                u.id,
+                u.draft_id,
+                u.provider,
+                u.model,
+                u.feature,
+                u.request_count,
+                u.input_tokens,
+                u.output_tokens,
+                u.cache_read_input_tokens,
+                u.cache_creation_input_tokens,
+                (u.input_tokens + u.output_tokens + u.cache_read_input_tokens +
+                 u.cache_creation_input_tokens) AS total_tokens,
+                u.latency_ms,
+                u.created_at,
+                NULLIF(TRIM(CONCAT_WS(' ', d.client_first_name, d.client_last_name)), '') AS client_name
+            FROM ew_ai_usage_events u
+            LEFT JOIN ew_will_drafts d ON d.id = u.draft_id
+            {where}
+            ORDER BY u.created_at DESC
+            LIMIT %s
+        """, params)
+
     # ── Client Links ─────────────────────────────────────────────────────────
 
     def create_link(self, draft_id: str, client_email: str = None, client_name: str = None) -> dict:

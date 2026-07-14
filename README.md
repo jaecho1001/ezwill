@@ -72,7 +72,7 @@ frontend origin used by CORS.
 | Review | `/will/review` | Full review of all sections with Submit button |
 | Submitted | `/will/submitted` | Bilingual thank-you with SLRA signing notice |
 
-**Lawyer Dashboard (`/dashboard/*`) — 10 pages**
+**Lawyer Dashboard (`/dashboard/*`) — 12 pages**
 
 | Page | Route | What it does |
 |------|-------|-------------|
@@ -84,6 +84,9 @@ frontend origin used by CORS.
 | Tier 2 Config | `/dashboard/clients/[id]/tier2` | Tiptap clause editor — tree sidebar + rich text editor panel |
 | Design Sheet | `/dashboard/clients/[id]/design-sheet` | Will type, beneficiary %, trusts, executor chain, POA assignments |
 | Documents | `/dashboard/clients/[id]/documents` | Generate/preview/download per document type |
+| Signing | `/dashboard/clients/[id]/signing` | Record document execution method, witnesses, date, and location |
+| Legal Library | `/dashboard/legal-library` | Manage internal legal sources and approved clause versions |
+| AI Usage | `/dashboard/usage` | Tracked Anthropic/OpenAI requests, tokens, trends, models, and client attribution |
 | Settings | `/dashboard/settings` | Firm info, will defaults, notifications, branding, change password |
 
 **Client Review Portal (`/review/*`) — 3 pages**
@@ -135,6 +138,7 @@ frontend origin used by CORS.
 | Review | `/api/review` | token-resolve, status, preview, approve, comment, create-link (6) | No (client-facing) |
 | Export | `/api/export` | assets CSV, liabilities CSV, estate summary CSV (3) | Bearer token |
 | Agent | `/agents/will/invoke` | 4 capabilities (draft_will, get_draft_status, run_ai_flags, quick_draft) | No (internal) |
+| AI Usage | `/api/usage` | date-filtered totals, daily trend, model breakdown, recent events | Dashboard Bearer token |
 | OpenAPI | `/docs`, `/redoc`, `/openapi.json` | 3 | No |
 
 **Services**
@@ -156,6 +160,7 @@ frontend origin used by CORS.
 | 26 | `ew_clause_selections`, `ew_document_configs` |
 | 27 | `ew_review_approvals`, `ew_review_comments`, `ew_liabilities` + draft liabilities JSONB column |
 | 28–32 | Clause template text, questionnaire sections, intake vault, firm settings, reminder preferences |
+| 36 | `ew_ai_usage_events` — persistent provider/model/feature token usage |
 
 ### Clause Library — 60+ Clauses, 15 Sections
 
@@ -263,7 +268,7 @@ SMTP mode uses:
 | `FROM_EMAIL` | `noreply@ezwill.app` | Sender email address. |
 | `FROM_NAME` | `EZWill` | Sender display name. |
 
-Token usage per turn is logged structured (`ai_intake.claude.usage model=… input=N output=N …`) and surfaced to the client on the `done` SSE frame — the chat header shows `N in / M out` in real time.
+Token usage per turn is logged structured (`ai_intake.claude.usage model=… input=N output=N …`), surfaced to the client on the `done` SSE frame, and persisted for the lawyer-only `/dashboard/usage` report. OpenAI quick-draft usage is persisted there too. Tracking begins with migration 36; provider dashboards remain the source of truth for billing.
 
 > **Multi-worker deployments:** the rate limiter is in-process. Move to Redis (or a sticky-session proxy) if you run >1 uvicorn worker.
 

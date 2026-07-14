@@ -5,6 +5,8 @@ from services.db import EWDbWriter
 import os
 import json
 import logging
+import time
+from uuid import UUID
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -310,12 +312,20 @@ def _build_client_summary(client_data: dict) -> str:
     return "\n".join(parts)
 
 
-async def _call_openai_quick_draft(client_summary: str) -> dict:
+async def _call_openai_quick_draft(
+    client_summary: str,
+    *,
+    draft_id: str | None = None,
+    correlation_id: str | None = None,
+) -> dict:
     """Call OpenAI chat completions to generate clause selections."""
+    from services.ai_usage import record_ai_usage_event
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(503, "OPENAI_API_KEY not configured. Cannot run quick_draft.")
 
+    started = time.time()
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
             "https://api.openai.com/v1/chat/completions",
@@ -339,6 +349,33 @@ async def _call_openai_quick_draft(client_summary: str) -> dict:
         raise HTTPException(502, f"OpenAI API error: {response.status_code}")
 
     result = response.json()
+    usage = result.get("usage") or {}
+    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    cached_tokens = min(
+        prompt_tokens,
+        max(0, int(prompt_details.get("cached_tokens") or 0)),
+    )
+    # OpenAI reports cached input as a subset of prompt_tokens. Store only the
+    # uncached remainder in input_tokens so cross-provider totals do not double
+    # count the cached portion.
+    try:
+        record_ai_usage_event(
+            provider="openai",
+            model=result.get("model") or "gpt-4o",
+            feature="quick_draft",
+            draft_id=draft_id,
+            request_count=1,
+            input_tokens=max(0, prompt_tokens - cached_tokens),
+            output_tokens=completion_tokens,
+            cache_read_input_tokens=cached_tokens,
+            latency_ms=int((time.time() - started) * 1000),
+            correlation_id=correlation_id,
+            metadata={"provider_response_id": result.get("id")},
+        )
+    except Exception:  # noqa: BLE001 - metering cannot discard a valid result
+        logger.exception("unexpected OpenAI usage recorder failure")
     content = result["choices"][0]["message"]["content"]
     return json.loads(content)
 
@@ -396,6 +433,17 @@ async def _capability_quick_draft(payload: dict, correlation_id: str) -> AgentIn
     if not client_data:
         raise HTTPException(400, "client_data is required for quick_draft")
 
+    # Reject a stale/typoed target before making a paid provider call. The
+    # draft is checked again when saving to handle deletion during the call.
+    if draft_id:
+        try:
+            UUID(str(draft_id))
+        except (TypeError, ValueError, AttributeError):
+            raise HTTPException(400, "draft_id must be a valid UUID")
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            if not db.get_draft(draft_id):
+                raise HTTPException(404, f"Draft {draft_id} not found")
+
     # Step 1: Determine if dual will is needed (quick local check)
     needs_dual = _has_business_assets(client_data)
 
@@ -410,7 +458,11 @@ async def _capability_quick_draft(payload: dict, correlation_id: str) -> AgentIn
     # rules so the flow works without an API key. (Read at call time so it's
     # runtime-configurable and testable.)
     if os.getenv("OPENAI_API_KEY"):
-        ai_result = await _call_openai_quick_draft(client_summary)
+        ai_result = await _call_openai_quick_draft(
+            client_summary,
+            draft_id=draft_id,
+            correlation_id=correlation_id,
+        )
         ai_result.setdefault("engine", "openai")
     else:
         ai_result = _deterministic_quick_draft(client_data, needs_dual)

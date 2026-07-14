@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: 'home' },
   { href: '/dashboard/clients', label: 'Clients', icon: 'users' },
   { href: '/dashboard/legal-library', label: 'Legal Library', icon: 'library' },
+  { href: '/dashboard/usage', label: 'AI Usage', icon: 'usage' },
   { href: '/dashboard/settings', label: 'Settings', icon: 'settings' },
 ]
 
@@ -38,6 +39,12 @@ function NavIcon({ icon }: { icon: string }) {
       return (
         <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5.5A2.5 2.5 0 016.5 3H11v16H6.5A2.5 2.5 0 004 21.5v-16zM20 5.5A2.5 2.5 0 0017.5 3H13v16h4.5a2.5 2.5 0 012.5 2.5v-16z" />
+        </svg>
+      )
+    case 'usage':
+      return (
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 19V9m5 10V5m5 14v-7m5 7V3" />
         </svg>
       )
     default:

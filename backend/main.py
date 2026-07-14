@@ -19,6 +19,7 @@ from routes.reminders import router as reminders_router
 from routes.signing import router as signing_router
 from routes.payments import router as payments_router
 from routes.legal_library import router as legal_library_router
+from routes.usage import router as usage_router
 
 load_dotenv()
 
@@ -60,6 +61,7 @@ app.include_router(reminders_router, prefix="/api/reminders", tags=["reminders"]
 app.include_router(signing_router, prefix="/api/signing", tags=["signing"])
 app.include_router(payments_router, prefix="/api/payments", tags=["payments"])
 app.include_router(legal_library_router, prefix="/api/legal-library", tags=["legal-library"])
+app.include_router(usage_router, prefix="/api/usage", tags=["usage"])
 
 @app.get("/")
 async def health():
