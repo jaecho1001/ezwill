@@ -1,43 +1,23 @@
-// Simple auth for EZWill lawyer dashboard
-// Lawyer logs in with firm password -> session cookie + in-memory token
-// All /dashboard/* routes check for valid session
+// Auth for the EZWill lawyer dashboard.
+//
+// The session token lives in an HttpOnly cookie set by the backend on login, so
+// JavaScript (and any XSS payload) can never read or exfiltrate it. A separate,
+// non-sensitive `ew_authed` flag cookie lets the client-side route guard know a
+// session exists without exposing the token. All /api/* calls are same-origin
+// (next.config rewrites proxy them to the backend), so the cookie is sent
+// automatically — no Authorization header, nothing kept in localStorage.
 
-const AUTH_COOKIE = 'ezwill_session'
-const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
-
-// In-memory token for Authorization header
-let _authToken: string | null = null
+const AUTHED_FLAG = 'ew_authed'
 
 export function isAuthenticated(): boolean {
   if (typeof document === 'undefined') return false
-  // Check in-memory first, fall back to cookie
-  if (_authToken) return true
-  const match = document.cookie.match(new RegExp(`(?:^|; )${AUTH_COOKIE}=([^;]+)`))
-  if (match) {
-    _authToken = match[1]
-    return true
-  }
-  return false
+  return new RegExp(`(?:^|; )${AUTHED_FLAG}=1(?:;|$)`).test(document.cookie)
 }
 
+// Retained for the ~40 API call sites. The session now travels in the HttpOnly
+// cookie (sent automatically on same-origin requests), so no header is needed.
 export function getAuthHeaders(): Record<string, string> {
-  // Restore from cookie if needed
-  if (!_authToken && typeof document !== 'undefined') {
-    const match = document.cookie.match(new RegExp(`(?:^|; )${AUTH_COOKIE}=([^;]+)`))
-    if (match) _authToken = match[1]
-  }
-  if (!_authToken) return {}
-  return { Authorization: `Bearer ${_authToken}` }
-}
-
-export function setSession(token: string) {
-  _authToken = token
-  document.cookie = `${AUTH_COOKIE}=${token}; path=/dashboard; max-age=${SESSION_DURATION / 1000}; samesite=strict`
-}
-
-export function clearSession() {
-  _authToken = null
-  document.cookie = `${AUTH_COOKIE}=; path=/dashboard; max-age=0`
+  return {}
 }
 
 export async function login(password: string): Promise<boolean> {
@@ -46,13 +26,20 @@ export async function login(password: string): Promise<boolean> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
   })
-  if (!res.ok) return false
-  const { token } = await res.json()
-  setSession(token)
-  return true
+  // On success the backend sets the HttpOnly session cookie + readable flag.
+  return res.ok
 }
 
 export async function logout() {
-  clearSession()
-  window.location.href = '/dashboard/login'
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' })
+  } catch {
+    // Network failure shouldn't strand the user — clear local state regardless.
+  }
+  if (typeof document !== 'undefined') {
+    document.cookie = `${AUTHED_FLAG}=; path=/; max-age=0`
+  }
+  if (typeof window !== 'undefined') {
+    window.location.href = '/dashboard/login'
+  }
 }

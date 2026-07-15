@@ -14,6 +14,9 @@ services:
       # Frontend is exposed on :3010 here, so magic-link / review / notification
       # URLs the backend generates must point there (not the :3000 default).
       BASE_URL: http://localhost:3010
+      # Local dev is http, so the Secure session cookie must not be flagged
+      # Secure (browsers/curl won't send Secure cookies over http). Prod = true.
+      SESSION_COOKIE_SECURE: "false"
   frontend:
     ports: !override
       - "3010:3000"
