@@ -1,12 +1,13 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
 import { useDraftSync } from '@/hooks/use-draft-sync'
+import { useEnsureSelfServeDraft } from '@/hooks/use-ensure-draft'
 import { WILL_STEPS } from '@/lib/constants/steps'
-import { Progress } from '@/components/ui/progress'
+import { BrandLockup } from '@/components/ui/brand'
 import { LanguageToggle } from './language-toggle'
 
 export function WizardShell({ children }: { children: React.ReactNode }) {
@@ -14,76 +15,88 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
   const pathname = usePathname()
 
+  // A self-serve client (no magic link) gets a backend draft created on entry,
+  // so their answers persist and the lawyer sees them fill in live.
+  useEnsureSelfServeDraft()
   // Auto-sync draft to server (debounced 1.5s). No-op if no draftId in context.
   useDraftSync()
 
-  const currentStepConfig = WILL_STEPS.find(s => pathname.includes(s.key))
-  const currentStepIndex = currentStepConfig ? WILL_STEPS.indexOf(currentStepConfig) : 0
   const progressPct = ((will.completedSteps.length) / WILL_STEPS.length) * 100
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#FAF8F5] text-[#2D2D2D]">
       {/* Top bar */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-amber-500">EZWill</span>
-            <span className="text-xs text-gray-400 hidden sm:block">Ontario</span>
-          </Link>
-          <div className="flex-1 max-w-xs hidden sm:block">
-            <Progress value={progressPct} className="h-1.5" />
-          </div>
-          <LanguageToggle />
-        </div>
-      </header>
-
-      {/* Step tabs — horizontal scroll on mobile */}
-      <div className="bg-white border-b border-gray-200 overflow-x-auto">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="flex gap-0 min-w-max">
-            {WILL_STEPS.map((step, i) => {
-              const isComplete = will.completedSteps.includes(step.id)
-              const isCurrent = pathname.includes(step.key)
-              const isAccessible = i === 0 || will.completedSteps.includes(WILL_STEPS[i - 1].id) || isCurrent
-              return (
-                <Link
-                  key={step.id}
-                  href={isAccessible ? step.path : '#'}
-                  className={`flex items-center gap-1.5 px-3 py-3 text-xs font-medium border-b-2 transition-all whitespace-nowrap ${
-                    isCurrent
-                      ? 'border-amber-500 text-amber-700'
-                      : isComplete
-                      ? 'border-green-500 text-green-700'
-                      : isAccessible
-                      ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      : 'border-transparent text-gray-300 cursor-not-allowed'
-                  }`}
-                >
-                  <span>{step.icon}</span>
-                  <span className="hidden md:block">{step.title}</span>
-                  <span className="md:hidden">{step.id}</span>
-                  {isComplete && <Check className="h-3 w-3 text-green-500" />}
-                </Link>
-              )
-            })}
+      <header className="sticky top-0 z-40 border-b border-[#E8E4DF] bg-[#FAF8F5]/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4">
+          <BrandLockup />
+          <div className="flex items-center gap-2 sm:gap-4">
+            <LanguageToggle />
             <Link
-              href="/will/review"
-              className={`flex items-center gap-1.5 px-3 py-3 text-xs font-medium border-b-2 transition-all whitespace-nowrap ${
-                pathname.includes('review')
-                  ? 'border-amber-500 text-amber-700'
-                  : will.completedSteps.length === WILL_STEPS.length
-                  ? 'border-transparent text-gray-500 hover:text-gray-700'
-                  : 'border-transparent text-gray-300 cursor-not-allowed'
-              }`}
+              href="/"
+              className="flex items-center gap-1.5 text-sm font-medium text-[#2D2D2D]/60 transition-colors hover:text-[#1B2A4A]"
             >
-              📄 <span className="hidden md:block">{t.reviewWill}</span>
+              <X className="h-4 w-4" />
+              <span className="hidden sm:inline">Save &amp; Exit</span>
             </Link>
           </div>
         </div>
-      </div>
+
+        {/* Step tabs — horizontal scroll on mobile */}
+        <div className="overflow-x-auto border-t border-[#E8E4DF]/60">
+          <div className="mx-auto max-w-5xl px-4">
+            <div className="flex min-w-max gap-0">
+              {WILL_STEPS.map((step, i) => {
+                const isComplete = will.completedSteps.includes(step.id)
+                const isCurrent = pathname.includes(step.key)
+                const isAccessible = i === 0 || will.completedSteps.includes(WILL_STEPS[i - 1].id) || isCurrent
+                return (
+                  <Link
+                    key={step.id}
+                    href={isAccessible ? step.path : '#'}
+                    className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-medium transition-all ${
+                      isCurrent
+                        ? 'border-[#1B2A4A] text-[#1B2A4A]'
+                        : isComplete
+                        ? 'border-[#7BA68C] text-[#7BA68C]'
+                        : isAccessible
+                        ? 'border-transparent text-[#2D2D2D]/50 hover:border-[#E8E4DF] hover:text-[#1B2A4A]'
+                        : 'cursor-not-allowed border-transparent text-[#2D2D2D]/25'
+                    }`}
+                  >
+                    <span>{step.icon}</span>
+                    <span className="hidden md:block">{step.title}</span>
+                    <span className="md:hidden">{step.id}</span>
+                    {isComplete && <Check className="h-3 w-3 text-[#7BA68C]" />}
+                  </Link>
+                )
+              })}
+              <Link
+                href="/will/review"
+                className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-medium transition-all ${
+                  pathname.includes('review')
+                    ? 'border-[#1B2A4A] text-[#1B2A4A]'
+                    : will.completedSteps.length === WILL_STEPS.length
+                    ? 'border-transparent text-[#2D2D2D]/50 hover:text-[#1B2A4A]'
+                    : 'cursor-not-allowed border-transparent text-[#2D2D2D]/25'
+                }`}
+              >
+                📄 <span className="hidden md:block">{t.reviewWill}</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-1 w-full bg-[#E8E4DF]">
+          <div
+            className="h-full bg-[#1B2A4A] transition-all duration-500"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      </header>
 
       {/* Main content */}
-      <main className="max-w-2xl mx-auto px-4 py-8">
+      <main className="mx-auto max-w-2xl px-4 py-10 md:py-14">
         {children}
       </main>
     </div>

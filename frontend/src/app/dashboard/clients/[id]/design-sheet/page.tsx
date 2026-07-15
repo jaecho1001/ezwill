@@ -86,7 +86,7 @@ export default function DesignSheetPage({ params }: { params: Promise<{ id: stri
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
       </div>
     )
   }
@@ -143,7 +143,7 @@ export default function DesignSheetPage({ params }: { params: Promise<{ id: stri
               onClick={() => setWillType('single')}
               className={`flex-1 rounded-lg border-2 p-4 text-left transition-colors ${
                 willType === 'single'
-                  ? 'border-amber-400 bg-amber-50'
+                  ? 'border-[#1B2A4A] bg-[#1B2A4A]/5'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
@@ -154,7 +154,7 @@ export default function DesignSheetPage({ params }: { params: Promise<{ id: stri
               onClick={() => setWillType('dual')}
               className={`flex-1 rounded-lg border-2 p-4 text-left transition-colors ${
                 willType === 'dual'
-                  ? 'border-amber-400 bg-amber-50'
+                  ? 'border-[#1B2A4A] bg-[#1B2A4A]/5'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
@@ -209,7 +209,7 @@ export default function DesignSheetPage({ params }: { params: Promise<{ id: stri
               <div className="space-y-1 text-sm">
                 {estate.includeFLAExclusion ? <p className="text-green-600">FLA Exclusion included</p> : null}
                 {estate.includeGREClause ? <p className="text-green-600">GRE clause included</p> : null}
-                {estate.hasTrusts ? <p className="text-amber-600">Has trust provisions</p> : null}
+                {estate.hasTrusts ? <p className="text-[#8a6a1e]">Has trust provisions</p> : null}
               </div>
             </div>
           </div>
@@ -270,7 +270,7 @@ export default function DesignSheetPage({ params }: { params: Promise<{ id: stri
                     <div className="flex items-center gap-2">
                       <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                         <div
-                          className="h-full rounded-full bg-amber-500"
+                          className="h-full rounded-full bg-[#1B2A4A]"
                           style={{ width: `${b.percentage}%` }}
                         />
                       </div>

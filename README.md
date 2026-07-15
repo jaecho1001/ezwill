@@ -45,6 +45,12 @@ docker-compose up
 # PostgreSQL :5432, Backend :8003, Frontend :3000
 ```
 
+The one-shot `migrate` service applies every unapplied SQL migration before the
+backend starts. This also runs for existing PostgreSQL volumes; recreating the
+database is not required. Set `DEFAULT_SCHEMA=firm_yourfirm` to use a tenant
+schema other than the development default, and set `FRONTEND_URL` to the public
+frontend origin used by CORS.
+
 ---
 
 ## What's Built
@@ -66,7 +72,7 @@ docker-compose up
 | Review | `/will/review` | Full review of all sections with Submit button |
 | Submitted | `/will/submitted` | Bilingual thank-you with SLRA signing notice |
 
-**Lawyer Dashboard (`/dashboard/*`) — 10 pages**
+**Lawyer Dashboard (`/dashboard/*`) — 12 pages**
 
 | Page | Route | What it does |
 |------|-------|-------------|
@@ -78,6 +84,9 @@ docker-compose up
 | Tier 2 Config | `/dashboard/clients/[id]/tier2` | Tiptap clause editor — tree sidebar + rich text editor panel |
 | Design Sheet | `/dashboard/clients/[id]/design-sheet` | Will type, beneficiary %, trusts, executor chain, POA assignments |
 | Documents | `/dashboard/clients/[id]/documents` | Generate/preview/download per document type |
+| Signing | `/dashboard/clients/[id]/signing` | Record document execution method, witnesses, date, and location |
+| Legal Library | `/dashboard/legal-library` | Manage internal legal sources and approved clause versions |
+| AI Usage | `/dashboard/usage` | Tracked Anthropic/OpenAI requests, tokens, trends, models, and client attribution |
 | Settings | `/dashboard/settings` | Firm info, will defaults, notifications, branding, change password |
 
 **Client Review Portal (`/review/*`) — 3 pages**
@@ -129,6 +138,7 @@ docker-compose up
 | Review | `/api/review` | token-resolve, status, preview, approve, comment, create-link (6) | No (client-facing) |
 | Export | `/api/export` | assets CSV, liabilities CSV, estate summary CSV (3) | Bearer token |
 | Agent | `/agents/will/invoke` | 4 capabilities (draft_will, get_draft_status, run_ai_flags, quick_draft) | No (internal) |
+| AI Usage | `/api/usage` | date-filtered totals, daily trend, model breakdown, recent events | Dashboard Bearer token |
 | OpenAPI | `/docs`, `/redoc`, `/openapi.json` | 3 | No |
 
 **Services**
@@ -140,7 +150,7 @@ docker-compose up
 | PDF Converter | `services/pdf_converter.py` | LibreOffice headless (graceful degradation) |
 | Draft Service | `services/draft_service.py` | get_full_draft() |
 | Link Service | `services/link_service.py` | Magic link generation |
-| Notification Service | `services/notification_service.py` | SendGrid / stdout email on submission |
+| Notification Service | `services/notification_service.py` | GHL / SMTP / stdout notifications on submission and review links |
 
 **Database Migrations**
 
@@ -149,6 +159,8 @@ docker-compose up
 | 25 | `ew_will_drafts`, `ew_people`, `ew_assets`, `ew_ai_flags`, `ew_client_links`, `ew_design_sheets`, `ew_trusts`, `ew_signing_events`, `ew_document_generations` + `ix_cross_client_map` amendment |
 | 26 | `ew_clause_selections`, `ew_document_configs` |
 | 27 | `ew_review_approvals`, `ew_review_comments`, `ew_liabilities` + draft liabilities JSONB column |
+| 28–32 | Clause template text, questionnaire sections, intake vault, firm settings, reminder preferences |
+| 36 | `ew_ai_usage_events` — persistent provider/model/feature token usage |
 
 ### Clause Library — 60+ Clauses, 15 Sections
 
@@ -219,6 +231,75 @@ Based on Law Society of Ontario Annotated Will 2026 (199 pages) + firm precedent
 - `frontend/Dockerfile` — Node 22-alpine + Next.js build
 - `.env.example` — all required environment variables
 
+### AI Intake (conversational mode)
+
+Conversational intake at `/intake/{willId}?mode=chat` streams from `POST /api/ai/intake/chat` (SSE, Claude tool-use loop, max 5 iterations per turn).
+
+Environment variables (see `backend/.env.example`):
+
+| Var | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | *(empty)* | If set, route uses Claude. If empty or the SDK call fails, route falls back to a regex extractor automatically — UX stays intact. |
+| `ANTHROPIC_INTAKE_MODEL` | `claude-sonnet-4-5` | Override for cost/quality trade-off. Use `claude-haiku-4-5-20251001` for cheaper intake. |
+| `AI_INTAKE_RATE_WINDOW_SECS` | `60` | Sliding-window seconds. |
+| `AI_INTAKE_RATE_MAX_REQS` | `20` | Max requests per window per `draft_id`. Returns HTTP 429 with `Retry-After`. |
+
+### Outbound Notifications
+
+`backend/services/notification_service.py` supports four modes via `NOTIFICATION_MODE`:
+
+| Mode | Purpose |
+|---|---|
+| `stdout` | Local/dev default. Logs email/SMS content without delivery. |
+| `ghl` | Sends email/SMS through GoHighLevel Conversations API using `GHL_API_KEY` and `GHL_LOCATION_ID`. |
+| `smtp` | Sends notification emails through your SMTP provider. SMS/reminder workflow tags remain GHL-only. |
+| `disabled` | Suppresses notification delivery. |
+
+SMTP mode uses:
+
+| Var | Default | Purpose |
+|---|---|---|
+| `SMTP_HOST` | *(empty)* | SMTP server host. Required for `NOTIFICATION_MODE=smtp`. |
+| `SMTP_PORT` | `587` or `465` | Defaults to `587`, or `465` when `SMTP_USE_SSL=true`. |
+| `SMTP_USERNAME` | *(empty)* | Optional SMTP username. |
+| `SMTP_PASSWORD` | *(empty)* | Optional SMTP password. Must be set when `SMTP_USERNAME` is set. |
+| `SMTP_USE_TLS` | `true` | Use STARTTLS when not using SSL. |
+| `SMTP_USE_SSL` | `false` | Connect with SMTP over SSL. |
+| `FROM_EMAIL` | `noreply@ezwill.app` | Sender email address. |
+| `FROM_NAME` | `EZWill` | Sender display name. |
+
+Token usage per turn is logged structured (`ai_intake.claude.usage model=… input=N output=N …`), surfaced to the client on the `done` SSE frame, and persisted for the lawyer-only `/dashboard/usage` report. OpenAI quick-draft usage is persisted there too. Tracking begins with migration 36; provider dashboards remain the source of truth for billing.
+
+> **Multi-worker deployments:** the rate limiter is in-process. Move to Redis (or a sticky-session proxy) if you run >1 uvicorn worker.
+
+### Private legal-source library
+
+Migration 33 adds a versioned, internal legal-research library:
+
+- `ew_legal_source_documents` and `ew_legal_source_pages` retain authorized publications with immutable checksums and page provenance.
+- `ew_clause_templates` and `ew_clause_template_versions` hold firm-authored clause versions separately from licensed text.
+- `ew_clause_source_links` records lawyer-verified source/page relationships.
+- `ew_clause_review_decisions` and `ew_annual_source_reviews` provide approval and annual-review audit trails.
+- `client_explanation` and `client_qa` are separate lawyer-approved fields. Client APIs must never read `ew_legal_source_pages.source_text` or `internal_explanation`.
+
+Licensed files stay in approved private storage and must never be committed to Git. To import an authorized PDF and seed the current firm-authored library:
+
+```bash
+cd frontend
+node scripts/export-clause-library.mjs > /tmp/ezwill-clause-library.json
+
+cd ..
+DATABASE_URL='postgresql://...' DEFAULT_SCHEMA='firm_demo' \
+  backend/.venv/bin/python backend/scripts/import_legal_source.py \
+  --file '/private/path/annotated-will.pdf' \
+  --title 'The Annotated Will 2025' \
+  --publisher 'Law Society of Ontario' \
+  --edition 2025 \
+  --clause-library-json /tmp/ezwill-clause-library.json
+```
+
+The importer is idempotent by source SHA-256 and clause content hash. Imported firm clauses begin in `draft`/`under_review`; they are not made current until a lawyer approves a version through the authenticated `/api/legal-library` workflow.
+
 ---
 
 ## Pending — What's Not Done Yet
@@ -227,17 +308,16 @@ Based on Law Society of Ontario Annotated Will 2026 (199 pages) + firm precedent
 
 | # | Task | Description |
 |---|------|-------------|
-| 1 | **Run PostgreSQL + apply migrations** | Migrations 25-27 exist but haven't been executed. Need to create `firm_demo` schema and run all 3 migrations. |
-| 2 | **End-to-end flow test** | Create client via dashboard, send magic link, fill questionnaire, submit, lawyer reviews. Never tested against a real database. |
-| 3 | **WillFormProvider reducer** | Verify `ADD_LIABILITY`/`REMOVE_LIABILITY` actions are handled in the reducer (types exist, UI dispatches them). |
-| 4 | **Draft sync for liabilities** | The `use-draft-sync.ts` hook needs to include liabilities in the payload sent to server. |
+| 1 | **End-to-end flow test** | Create client via dashboard, send magic link, fill questionnaire, submit, lawyer reviews against a production-like environment. |
+| 2 | **WillFormProvider reducer** | Verify `ADD_LIABILITY`/`REMOVE_LIABILITY` actions are handled in the reducer (types exist, UI dispatches them). |
+| 3 | **Draft sync for liabilities** | The `use-draft-sync.ts` hook needs to include liabilities in the payload sent to server. |
 
 ### Nice to Have (polish)
 
 | # | Task | Description |
 |---|------|-------------|
 | 5 | Backend auth hardening | In-memory tokens don't survive server restart. Move to JWT or Redis. |
-| 6 | Email notifications | SendGrid integration — send on submission, review completion. |
+| 6 | Email notifications | Configure a production notification provider (`ghl` or `smtp`) and verify deliverability. |
 | 7 | PDF conversion | LibreOffice headless or alternative (wkhtmltopdf, WeasyPrint). |
 | 8 | Mobile responsiveness | Audit all pages on mobile viewports. |
 | 9 | Production deployment | Test Docker Compose end-to-end, configure HTTPS. |

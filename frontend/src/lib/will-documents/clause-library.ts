@@ -8,7 +8,7 @@ import type { WillClauseTemplate } from "@/types/will-document"
  *
  * Organized by document type:
  * - 'all' clauses appear in every will
- * - 'single_will' for Tier 1 simple wills
+ * - 'single_will' for Tier 1 standard/short-form simple wills
  * - 'probate_will' / 'non_probate_will' for Tier 2 dual will strategy
  * - 'poa_property' / 'poa_personal_care' for Powers of Attorney
  * - 'affidavit_*' for Affidavits of Execution

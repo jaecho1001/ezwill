@@ -32,7 +32,7 @@ interface DistributionChartProps {
 // ── Color Palette ────────────────────────────────────────────────────
 
 const COLORS = [
-  { bg: 'bg-amber-500', text: 'text-amber-500', light: 'bg-amber-100' },
+  { bg: 'bg-[#1B2A4A]', text: 'text-[#1B2A4A]', light: 'bg-[#1B2A4A]/10' },
   { bg: 'bg-blue-500', text: 'text-blue-500', light: 'bg-blue-100' },
   { bg: 'bg-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-100' },
   { bg: 'bg-purple-500', text: 'text-purple-500', light: 'bg-purple-100' },
@@ -80,7 +80,7 @@ export function DistributionChart({
         {onNavigate && (
           <button
             onClick={() => onNavigate('your_estate')}
-            className="mt-2 text-sm font-medium text-amber-600 hover:text-amber-700"
+            className="mt-2 text-sm font-medium text-[#1B2A4A] hover:text-[#16233d]"
           >
             Configure beneficiaries
           </button>

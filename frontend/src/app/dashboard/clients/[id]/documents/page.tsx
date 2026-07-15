@@ -28,7 +28,7 @@ interface DocumentEntry {
 
 const DOC_STATUS_STYLES: Record<DocStatus, { label: string; className: string }> = {
   pending: { label: 'Pending', className: 'bg-gray-100 text-gray-600' },
-  draft: { label: 'Draft', className: 'bg-amber-100 text-amber-700' },
+  draft: { label: 'Draft', className: 'bg-[#C9A84C]/15 text-[#8a6a1e]' },
   generated: { label: 'Generated', className: 'bg-green-100 text-green-700' },
   signed: { label: 'Signed', className: 'bg-teal-100 text-teal-700' },
 }
@@ -166,7 +166,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
       </div>
     )
   }
@@ -228,7 +228,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
           const isGenerating = generating === doc.docType
 
           return (
-            <Card key={doc.docType} className={previewDoc === doc.docType ? 'ring-2 ring-amber-400' : ''}>
+            <Card key={doc.docType} className={previewDoc === doc.docType ? 'ring-2 ring-[#1B2A4A]' : ''}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
                   <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gray-50 text-2xl">
@@ -329,9 +329,9 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
                     The generated HTML content from the clause templates will be displayed in this area,
                     preserving the proper legal document formatting.
                   </p>
-                  <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-center">
-                    <p className="text-sm text-amber-700">
-                      Connect the <code className="rounded bg-amber-100 px-1">/api/documents/:id/generate</code> endpoint to enable full document preview.
+                  <div className="rounded-md border border-[#C9A84C]/40 bg-[#C9A84C]/10 p-4 text-center">
+                    <p className="text-sm text-[#8a6a1e]">
+                      Connect the <code className="rounded bg-[#C9A84C]/20 px-1">/api/documents/:id/generate</code> endpoint to enable full document preview.
                     </p>
                   </div>
                 </div>

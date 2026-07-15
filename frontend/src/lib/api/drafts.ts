@@ -51,6 +51,60 @@ export interface DraftListItem {
   tier2_clauses: Record<string, unknown> | null
 }
 
+export interface QuickDraftResult {
+  needs_dual_will: boolean
+  reasoning: string
+  document_types: string[]
+  saved_document_types?: string[]
+  saved?: boolean
+  engine?: string
+}
+
+// AI Draft: analyze the client's answers and auto-select the documents (single
+// vs Ontario dual will + POAs), enabling them + any clause selections so the
+// Will Editor opens tailored. Uses the LLM when configured, else a deterministic
+// rules engine (so it works without an API key).
+export async function invokeQuickDraft(
+  draftId: string,
+  clientData: Record<string, unknown>,
+): Promise<QuickDraftResult | null> {
+  try {
+    const res = await fetch('/api/agents/will/invoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({
+        capability: 'quick_draft',
+        payload: { client_data: clientData, draft_id: draftId },
+        correlation_id: `quick-draft-${draftId}`,
+      }),
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    return (json.result ?? null) as QuickDraftResult | null
+  } catch {
+    return null
+  }
+}
+
+// Public self-serve: a client starts their own will online. Returns a draft_id
+// + client token (magic-token bound to the draft) so autosave/submit work.
+export async function createSelfServeDraft(
+  language?: string,
+  province?: string,
+): Promise<{ draft_id: string; token: string; language: string; province: string } | null> {
+  try {
+    const res = await fetch('/api/drafts/self-serve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: language ?? 'en', province: province ?? 'ON' }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
 // Resolve a magic link token → get draft_id and prefill data
 export async function resolveLink(token: string): Promise<ResolvedLink | null> {
   try {

@@ -13,6 +13,13 @@ from routes.documents import router as documents_router
 from routes.review import router as review_router
 from routes.auth import router as auth_router
 from routes.export import router as export_router
+from routes.ai_intake import router as ai_intake_router
+from routes.settings import router as settings_router
+from routes.reminders import router as reminders_router
+from routes.signing import router as signing_router
+from routes.payments import router as payments_router
+from routes.legal_library import router as legal_library_router
+from routes.usage import router as usage_router
 
 load_dotenv()
 
@@ -40,11 +47,21 @@ app.add_middleware(
 app.include_router(drafts_router, prefix="/api/drafts", tags=["drafts"])
 app.include_router(links_router, prefix="/api/links", tags=["links"])
 app.include_router(agents_router, prefix="/agents", tags=["agents"])
+# Also under /api so the Next.js frontend (which proxies /api/* → backend) can
+# reach the agent capabilities; /agents stays for external orchestrator callers.
+app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
 app.include_router(clauses_router, prefix="/api/drafts", tags=["clauses"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
 app.include_router(review_router, prefix="/api/review", tags=["review"])
 app.include_router(auth_router)
 app.include_router(export_router, prefix="/api/export", tags=["export"])
+app.include_router(ai_intake_router, prefix="/api/ai/intake", tags=["ai-intake"])
+app.include_router(settings_router, prefix="/api/settings", tags=["settings"])
+app.include_router(reminders_router, prefix="/api/reminders", tags=["reminders"])
+app.include_router(signing_router, prefix="/api/signing", tags=["signing"])
+app.include_router(payments_router, prefix="/api/payments", tags=["payments"])
+app.include_router(legal_library_router, prefix="/api/legal-library", tags=["legal-library"])
+app.include_router(usage_router, prefix="/api/usage", tags=["usage"])
 
 @app.get("/")
 async def health():

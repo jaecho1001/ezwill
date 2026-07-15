@@ -1,8 +1,8 @@
 """
 Notification Service for EZWill.
 
-Sends email and SMS via GoHighLevel (GHL) Conversations API.
-Replaces SendGrid — uses GHL as the unified messaging channel.
+Sends email and SMS via GoHighLevel (GHL) Conversations API, with optional
+SMTP email delivery for firms that want to use their own mail provider.
 
 Three notification types:
   1. Lawyer notification on client submission (email to firm)
@@ -20,13 +20,26 @@ Environment variables:
   FIRM_EMAIL        — firm email address for lawyer notifications
   FIRM_NAME         — firm display name in messages
   BASE_URL          — frontend base URL for dashboard links
-  NOTIFICATION_MODE — 'ghl' (default), 'stdout' (dev), or 'disabled'
+  NOTIFICATION_MODE — 'ghl' (default), 'smtp', 'stdout' (dev), or 'disabled'
+  SMTP_HOST        — SMTP server host (required for NOTIFICATION_MODE=smtp)
+  SMTP_PORT        — SMTP server port (defaults to 465 for SSL, 587 otherwise)
+  SMTP_USERNAME    — optional SMTP username
+  SMTP_PASSWORD    — optional SMTP password
+  SMTP_USE_TLS     — true/false, use STARTTLS (default true unless SSL is true)
+  SMTP_USE_SSL     — true/false, connect with SMTP_SSL (default false)
+  FROM_EMAIL       — sender address
+  FROM_NAME        — optional sender display name
 """
 from __future__ import annotations
 
 import os
 import logging
-from typing import Optional
+import re
+import smtplib
+from datetime import date, datetime, time, timezone
+from email.message import EmailMessage
+from email.utils import formataddr
+from typing import Optional, Any
 
 import httpx
 
@@ -40,7 +53,84 @@ FIRM_NAME = os.getenv("FIRM_NAME", "Vaturi & Cho LLP")
 FIRM_PHONE = os.getenv("FIRM_PHONE", "+14166614529")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@ezwill.app")
+FROM_NAME = os.getenv("FROM_NAME", "EZWill")
 NOTIFICATION_MODE = os.getenv("NOTIFICATION_MODE", "ghl")
+
+
+GHL_TAGS = {
+    "CHANNEL_EMAIL": "ezwill-channel-email",
+    "CHANNEL_SMS": "ezwill-channel-sms",
+    "REMINDER_QUARTERLY": "ezwill-reminder-quarterly",
+    "REMINDER_BIANNUAL": "ezwill-reminder-biannual",
+    "REMINDER_ANNUAL": "ezwill-reminder-annual",
+    "REMINDER_BIENNIAL": "ezwill-reminder-biennial",
+    "REMINDER_CUSTOM": "ezwill-reminder-custom",
+    "EVENT_MARRIAGE": "ezwill-event-marriage",
+    "EVENT_CHILD_BIRTH": "ezwill-event-child-birth",
+    "EVENT_HOME_PURCHASE": "ezwill-event-home-purchase",
+    "EVENT_BUSINESS": "ezwill-event-business",
+    "EVENT_RETIREMENT": "ezwill-event-retirement",
+    "EVENT_RELOCATION": "ezwill-event-relocation",
+    "EVENT_BENEFICIARY_DEATH": "ezwill-event-beneficiary-death",
+    "EVENT_HEALTH_CHANGE": "ezwill-event-health-change",
+    "STATUS_WILL_COMPLETE": "ezwill-status-will-complete",
+    "STATUS_WILL_SIGNED": "ezwill-status-will-signed",
+    "STATUS_PAID": "ezwill-status-paid",
+    "ENGAGEMENT_STARTED_QUIZ": "ezwill-engagement-started-quiz",
+    "ENGAGEMENT_COMPLETED_QUIZ": "ezwill-engagement-completed-quiz",
+    "ENGAGEMENT_ABANDONED_QUIZ": "ezwill-engagement-abandoned-quiz",
+}
+
+LIFE_EVENT_TAG_MAP = {
+    "marriage": GHL_TAGS["EVENT_MARRIAGE"],
+    "child-birth": GHL_TAGS["EVENT_CHILD_BIRTH"],
+    "home-purchase": GHL_TAGS["EVENT_HOME_PURCHASE"],
+    "business": GHL_TAGS["EVENT_BUSINESS"],
+    "retirement": GHL_TAGS["EVENT_RETIREMENT"],
+    "relocation": GHL_TAGS["EVENT_RELOCATION"],
+    "beneficiary-death": GHL_TAGS["EVENT_BENEFICIARY_DEATH"],
+    "health-change": GHL_TAGS["EVENT_HEALTH_CHANGE"],
+}
+
+FREQUENCY_TAG_MAP = {
+    "quarterly": GHL_TAGS["REMINDER_QUARTERLY"],
+    "biannual": GHL_TAGS["REMINDER_BIANNUAL"],
+    "yearly": GHL_TAGS["REMINDER_ANNUAL"],
+    "biennial": GHL_TAGS["REMINDER_BIENNIAL"],
+}
+
+MANAGED_REMINDER_TAGS = [
+    GHL_TAGS["CHANNEL_EMAIL"],
+    GHL_TAGS["CHANNEL_SMS"],
+    *FREQUENCY_TAG_MAP.values(),
+    GHL_TAGS["REMINDER_CUSTOM"],
+    *LIFE_EVENT_TAG_MAP.values(),
+]
+
+CUSTOM_REMINDER_MARKER_PREFIX = "EZWILL_CUSTOM_REMINDER:"
+
+ENGAGEMENT_TAG_MAP = {
+    "started-quiz": GHL_TAGS["ENGAGEMENT_STARTED_QUIZ"],
+    "completed-quiz": GHL_TAGS["ENGAGEMENT_COMPLETED_QUIZ"],
+    "abandoned-quiz": GHL_TAGS["ENGAGEMENT_ABANDONED_QUIZ"],
+    "paid": GHL_TAGS["STATUS_PAID"],
+    "will-signed": GHL_TAGS["STATUS_WILL_SIGNED"],
+}
+
+
+def _resolve_firm_name() -> str:
+    """Firm name from saved dashboard settings, falling back to the env/default,
+    so email + SMS branding reflects what the lawyer configured."""
+    try:
+        from services.db import EWDbWriter
+        schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+        with EWDbWriter(schema) as db:
+            name = (db.get_firm_settings().get("firm") or {}).get("firmName")
+            if name:
+                return name
+    except Exception:
+        pass
+    return FIRM_NAME
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -59,6 +149,96 @@ def _ghl_headers() -> dict:
 def _ghl_ready() -> bool:
     """Check GHL is configured."""
     return bool(os.getenv("GHL_API_KEY") and os.getenv("GHL_LOCATION_ID"))
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _smtp_config() -> dict[str, Any] | None:
+    """Read and validate SMTP settings from the environment."""
+    host = (os.getenv("SMTP_HOST") or "").strip()
+    if not host:
+        logger.error("SMTP delivery requested but SMTP_HOST is not configured")
+        return None
+
+    use_ssl = _env_bool("SMTP_USE_SSL", False)
+    use_tls = _env_bool("SMTP_USE_TLS", not use_ssl)
+    raw_port = (os.getenv("SMTP_PORT") or "").strip()
+    try:
+        port = int(raw_port) if raw_port else (465 if use_ssl else 587)
+    except ValueError:
+        logger.error("SMTP delivery requested but SMTP_PORT is invalid: %s", raw_port)
+        return None
+
+    username = (os.getenv("SMTP_USERNAME") or "").strip()
+    password = os.getenv("SMTP_PASSWORD") or ""
+    if bool(username) != bool(password):
+        logger.error("SMTP_USERNAME and SMTP_PASSWORD must either both be set or both be empty")
+        return None
+
+    from_email = (os.getenv("FROM_EMAIL") or FROM_EMAIL or "").strip()
+    if not from_email:
+        logger.error("SMTP delivery requested but FROM_EMAIL is not configured")
+        return None
+
+    return {
+        "host": host,
+        "port": port,
+        "username": username,
+        "password": password,
+        "use_tls": use_tls,
+        "use_ssl": use_ssl,
+        "from_email": from_email,
+        "from_name": (os.getenv("FROM_NAME") or FROM_NAME or "").strip(),
+    }
+
+
+def _smtp_ready() -> bool:
+    """Check whether SMTP has the minimum config needed to attempt delivery."""
+    return _smtp_config() is not None
+
+
+def _notification_mode() -> str:
+    return (NOTIFICATION_MODE or "").strip().lower()
+
+
+def _send_smtp_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    html: Optional[str] = None,
+) -> bool:
+    """Send one email via SMTP. Returns False on config or provider failure."""
+    config = _smtp_config()
+    if not config:
+        return False
+
+    message = EmailMessage()
+    from_name = config["from_name"]
+    message["From"] = formataddr((from_name, config["from_email"])) if from_name else config["from_email"]
+    message["To"] = to_email
+    message["Subject"] = subject
+    message.set_content(body)
+    if html:
+        message.add_alternative(html, subtype="html")
+
+    try:
+        smtp_cls = smtplib.SMTP_SSL if config["use_ssl"] else smtplib.SMTP
+        with smtp_cls(config["host"], config["port"], timeout=10) as smtp:
+            if config["use_tls"] and not config["use_ssl"]:
+                smtp.starttls()
+            if config["username"]:
+                smtp.login(config["username"], config["password"])
+            smtp.send_message(message)
+        logger.info("SMTP email sent to %s", to_email)
+        return True
+    except Exception as e:
+        logger.error("SMTP email send failed to %s: %s", to_email, e)
+        return False
 
 
 async def _find_or_create_contact(
@@ -168,13 +348,297 @@ async def _send_ghl_message(
         return False
 
 
+def _unique_tags(tags: list[str]) -> list[str]:
+    seen = set()
+    unique = []
+    for tag in tags:
+        if tag and tag not in seen:
+            seen.add(tag)
+            unique.append(tag)
+    return unique
+
+
+def _normalized_custom_reminders(preferences: dict[str, Any]) -> list[dict[str, Any]]:
+    reminders = []
+    for raw in preferences.get("custom_reminders") or []:
+        if not isinstance(raw, dict):
+            continue
+        label = str(raw.get("label") or "").strip()
+        date_text = str(raw.get("date") or "").strip()
+        if not label or not date_text:
+            continue
+        reminders.append({
+            "id": str(raw.get("id") or "").strip(),
+            "label": label,
+            "date": date_text,
+            "recurring": bool(raw.get("recurring")),
+        })
+    return reminders
+
+
+def _desired_reminder_tags(preferences: dict[str, Any]) -> list[str]:
+    """Translate app reminder preferences into managed GHL workflow tags."""
+    tags: list[str] = []
+    if preferences.get("email_enabled"):
+        tags.append(GHL_TAGS["CHANNEL_EMAIL"])
+    if preferences.get("sms_enabled"):
+        tags.append(GHL_TAGS["CHANNEL_SMS"])
+
+    if preferences.get("annual_reminder"):
+        frequency_tag = FREQUENCY_TAG_MAP.get(str(preferences.get("annual_frequency", "")))
+        if frequency_tag:
+            tags.append(frequency_tag)
+
+    if _normalized_custom_reminders(preferences):
+        tags.append(GHL_TAGS["REMINDER_CUSTOM"])
+
+    for event_id in preferences.get("enabled_life_events") or []:
+        event_tag = LIFE_EVENT_TAG_MAP.get(str(event_id))
+        if event_tag:
+            tags.append(event_tag)
+
+    return _unique_tags(tags)
+
+
+async def _add_ghl_tags(contact_id: str, tags: list[str]) -> bool:
+    tags = _unique_tags(tags)
+    if not tags:
+        return True
+    if not _ghl_ready() or not contact_id:
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.post(
+                f"{GHL_BASE_URL}/contacts/{contact_id}/tags",
+                headers=_ghl_headers(),
+                json={"tags": tags},
+            )
+            if res.status_code in (200, 201):
+                logger.info(f"GHL tags added to {contact_id}: {tags}")
+                return True
+            logger.warning(f"GHL add tags failed: {res.status_code} {res.text[:200]}")
+    except Exception as e:
+        logger.error(f"GHL add tags error: {e}")
+    return False
+
+
+async def _get_ghl_contact_tags(contact_id: str) -> list[str] | None:
+    if not _ghl_ready() or not contact_id:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{GHL_BASE_URL}/contacts/{contact_id}",
+                headers=_ghl_headers(),
+            )
+            if res.status_code == 200:
+                contact = res.json().get("contact") or {}
+                tags = contact.get("tags") or []
+                return [str(tag) for tag in tags if tag]
+            logger.warning(f"GHL contact fetch failed: {res.status_code} {res.text[:200]}")
+    except Exception as e:
+        logger.error(f"GHL contact fetch error: {e}")
+    return None
+
+
+async def _remove_ghl_tags(contact_id: str, tags: list[str]) -> bool:
+    tags = _unique_tags(tags)
+    if not tags:
+        return True
+    if not _ghl_ready() or not contact_id:
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.request(
+                "DELETE",
+                f"{GHL_BASE_URL}/contacts/{contact_id}/tags",
+                headers=_ghl_headers(),
+                json={"tags": tags},
+            )
+            if res.status_code in (200, 201, 204):
+                logger.info(f"GHL managed reminder tags removed from {contact_id}")
+                return True
+            logger.warning(f"GHL remove tags failed: {res.status_code} {res.text[:200]}")
+    except Exception as e:
+        logger.error(f"GHL remove tags error: {e}")
+    return False
+
+
+def _custom_reminder_key(reminder: dict[str, Any]) -> str:
+    raw_key = str(reminder.get("id") or "").strip()
+    if not raw_key:
+        raw_key = f"{reminder.get('date', '')}:{reminder.get('label', '')}"
+    key = re.sub(r"[^A-Za-z0-9_.:-]+", "-", raw_key).strip("-")
+    return key[:120] or "reminder"
+
+
+def _custom_reminder_marker(reminder: dict[str, Any]) -> str:
+    return f"{CUSTOM_REMINDER_MARKER_PREFIX}{_custom_reminder_key(reminder)}"
+
+
+def _custom_reminder_due_at(reminder: dict[str, Any]) -> str | None:
+    try:
+        reminder_date = date.fromisoformat(str(reminder.get("date", ""))[:10])
+    except ValueError:
+        return None
+    due_at = datetime.combine(reminder_date, time(hour=14), tzinfo=timezone.utc)
+    return due_at.isoformat().replace("+00:00", "Z")
+
+
+def _custom_reminder_body(user: dict[str, Any], reminder: dict[str, Any]) -> str:
+    recurring = "Yes" if reminder.get("recurring") else "No"
+    client = user.get("name") or "EZWill client"
+    return "\n".join([
+        _custom_reminder_marker(reminder),
+        f"Client: {client}",
+        f"Reminder: {reminder.get('label', '')}",
+        f"Date: {reminder.get('date', '')}",
+        f"Recurring yearly: {recurring}",
+        "Created from EZWill reminder preferences.",
+    ])
+
+
+def _extract_custom_reminder_key(task: dict[str, Any]) -> str | None:
+    marker_text = f"{task.get('body') or ''}\n{task.get('title') or ''}"
+    match = re.search(
+        rf"{re.escape(CUSTOM_REMINDER_MARKER_PREFIX)}([A-Za-z0-9_.:-]+)",
+        marker_text,
+    )
+    return match.group(1) if match else None
+
+
+async def _get_ghl_tasks(contact_id: str) -> list[dict[str, Any]] | None:
+    if not _ghl_ready() or not contact_id:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{GHL_BASE_URL}/contacts/{contact_id}/tasks",
+                headers=_ghl_headers(),
+            )
+            if res.status_code == 200:
+                tasks = res.json().get("tasks") or []
+                return [dict(task) for task in tasks if isinstance(task, dict)]
+            logger.warning(f"GHL task fetch failed: {res.status_code} {res.text[:200]}")
+    except Exception as e:
+        logger.error(f"GHL task fetch error: {e}")
+    return None
+
+
+async def _create_ghl_task(
+    contact_id: str,
+    user: dict[str, Any],
+    reminder: dict[str, Any],
+) -> str | None:
+    due_at = _custom_reminder_due_at(reminder)
+    if not due_at:
+        return None
+
+    title = f"EZWill review reminder: {reminder.get('label', '')}"[:120]
+    payload = {
+        "title": title,
+        "body": _custom_reminder_body(user, reminder),
+        "dueDate": due_at,
+        "completed": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.post(
+                f"{GHL_BASE_URL}/contacts/{contact_id}/tasks",
+                headers=_ghl_headers(),
+                json=payload,
+            )
+            if res.status_code in (200, 201):
+                task = res.json().get("task") or {}
+                logger.info(f"GHL custom reminder task created for {contact_id}: {title}")
+                return task.get("id") or _custom_reminder_key(reminder)
+            logger.warning(f"GHL task create failed: {res.status_code} {res.text[:200]}")
+    except Exception as e:
+        logger.error(f"GHL task create error: {e}")
+    return None
+
+
+async def _delete_ghl_task(contact_id: str, task_id: str) -> bool:
+    if not task_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.delete(
+                f"{GHL_BASE_URL}/contacts/{contact_id}/tasks/{task_id}",
+                headers=_ghl_headers(),
+            )
+            if res.status_code in (200, 204):
+                logger.info(f"GHL custom reminder task deleted: {task_id}")
+                return True
+            logger.warning(f"GHL task delete failed: {res.status_code} {res.text[:200]}")
+    except Exception as e:
+        logger.error(f"GHL task delete error: {e}")
+    return False
+
+
+async def _sync_custom_reminder_tasks(
+    contact_id: str,
+    user: dict[str, Any],
+    preferences: dict[str, Any],
+) -> dict[str, Any]:
+    desired_reminders = _normalized_custom_reminders(preferences)
+    result: dict[str, Any] = {
+        "success": True,
+        "created": [],
+        "deleted": [],
+        "skipped": [],
+        "desired": len(desired_reminders),
+    }
+
+    tasks = await _get_ghl_tasks(contact_id)
+    if tasks is None:
+        result["success"] = False
+        result["skipped"] = [_custom_reminder_key(r) for r in desired_reminders]
+        return result
+
+    existing: dict[str, dict[str, Any]] = {}
+    for task in tasks:
+        key = _extract_custom_reminder_key(task)
+        if key and key not in existing:
+            existing[key] = task
+
+    desired_by_key = {_custom_reminder_key(reminder): reminder for reminder in desired_reminders}
+
+    for key, task in existing.items():
+        if key in desired_by_key:
+            continue
+        task_id = str(task.get("id") or "")
+        if await _delete_ghl_task(contact_id, task_id):
+            result["deleted"].append(task_id)
+        else:
+            result["success"] = False
+            result["skipped"].append(key)
+
+    for key, reminder in desired_by_key.items():
+        if key in existing:
+            continue
+        task_id = await _create_ghl_task(contact_id, user, reminder)
+        if task_id:
+            result["created"].append(task_id)
+        else:
+            result["success"] = False
+            result["skipped"].append(key)
+
+    return result
+
+
 async def _send_firm_email(subject: str, body: str) -> bool:
     """Send email to the firm's own inbox (lawyer notification)."""
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return False
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        return _send_smtp_email(FIRM_EMAIL, subject, body)
+    if mode == "stdout" or not _ghl_ready():
         logger.info(f"[FIRM EMAIL] {subject}\n{body}")
-        return True
+        return False
 
     contact_id = await _find_or_create_contact(
         email=FIRM_EMAIL,
@@ -192,11 +656,115 @@ async def _send_firm_email(subject: str, body: str) -> bool:
 # Public API — used by routes
 # ──────────────────────────────────────────────────────────────────
 
+async def sync_reminder_preferences_to_ghl(
+    user: dict[str, Any],
+    preferences: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Sync review-reminder preferences to GHL using the tag -> workflow pattern.
+
+    The browser never calls GHL directly. This backend function calculates the
+    managed workflow tags, upserts the contact, clears stale managed tags, and
+    adds the current desired tags.
+    """
+    desired_tags = _desired_reminder_tags(preferences)
+    result: dict[str, Any] = {
+        "success": True,
+        "ghl_synced": False,
+        "contact_id": None,
+        "tags_added": desired_tags,
+        "tags_removed": [],
+        "custom_tasks": {
+            "success": True,
+            "created": [],
+            "deleted": [],
+            "skipped": [],
+            "desired": len(_normalized_custom_reminders(preferences)),
+        },
+    }
+
+    if _notification_mode() == "disabled":
+        result["success"] = False
+        return result
+
+    if _notification_mode() in {"stdout", "smtp"} or not _ghl_ready():
+        logger.info(
+            "[GHL REMINDER SYNC] %s <%s> tags=%s preferences=%s",
+            user.get("name", "").strip(),
+            preferences.get("email") or user.get("email") or "",
+            desired_tags,
+            preferences,
+        )
+        return result
+
+    contact_id = await _find_or_create_contact(
+        email=preferences.get("email") or user.get("email"),
+        phone=preferences.get("phone") or user.get("phone"),
+        first_name=user.get("first_name"),
+        last_name=user.get("last_name"),
+    )
+    result["contact_id"] = contact_id
+    if not contact_id:
+        result["success"] = False
+        return result
+
+    current_tags = await _get_ghl_contact_tags(contact_id)
+    if current_tags is None:
+        tags_to_remove = MANAGED_REMINDER_TAGS
+        tags_to_add = desired_tags
+    else:
+        current = set(current_tags)
+        desired = set(desired_tags)
+        tags_to_remove = [
+            tag for tag in MANAGED_REMINDER_TAGS
+            if tag in current and tag not in desired
+        ]
+        tags_to_add = [tag for tag in desired_tags if tag not in current]
+
+    removed = await _remove_ghl_tags(contact_id, tags_to_remove)
+    added = await _add_ghl_tags(contact_id, tags_to_add)
+    custom_tasks = await _sync_custom_reminder_tasks(contact_id, user, preferences)
+    result["tags_removed"] = tags_to_remove if removed else []
+    result["tags_added"] = tags_to_add if added else []
+    result["custom_tasks"] = custom_tasks
+    result["ghl_synced"] = removed and added and custom_tasks["success"]
+    result["success"] = result["ghl_synced"]
+    return result
+
+
+async def track_ghl_engagement(
+    event: str,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+) -> bool:
+    """Tag a contact for a lightweight engagement workflow in GHL."""
+    tag = ENGAGEMENT_TAG_MAP.get(event)
+    if not tag:
+        return False
+    if _notification_mode() == "disabled":
+        return False
+    if _notification_mode() in {"stdout", "smtp"} or not _ghl_ready():
+        logger.info("[GHL ENGAGEMENT] %s -> %s", email or phone or "unknown", tag)
+        return True
+
+    contact_id = await _find_or_create_contact(
+        email=email,
+        phone=phone,
+        first_name=first_name,
+        last_name=last_name,
+    )
+    if not contact_id:
+        return False
+    return await _add_ghl_tags(contact_id, [tag])
+
 async def notify_lawyer_submission(draft: dict, flags: list) -> bool:
     """
     Notify the firm when a client submits their will questionnaire.
-    Sent via GHL email to FIRM_EMAIL.
+    Sent through the configured email provider to FIRM_EMAIL.
     """
+    FIRM_NAME = _resolve_firm_name()
     client_name = (
         f"{draft.get('client_first_name', '')} {draft.get('client_last_name', '')}".strip()
     )
@@ -247,12 +815,14 @@ async def send_magic_link_to_client(
 ) -> dict:
     """
     Send the client their will questionnaire magic link.
-    Delivered via GHL as both Email and SMS (if phone provided).
+    Email is delivered through the configured provider; SMS is GHL-only.
     Returns: {'email_sent': bool, 'sms_sent': bool, 'contact_id': str | None}
     """
+    FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False, "contact_id": None}
 
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return result
 
     # Build bilingual message
@@ -294,13 +864,18 @@ If you have any questions, please don't hesitate to contact us.
         sms_text = f"""{FIRM_NAME}: Hi {client_first_name}, here's your will questionnaire link: {magic_link_url}"""
 
     # Stdout fallback for dev
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        if send_email and client_email:
+            result["email_sent"] = _send_smtp_email(client_email, email_subject, body_text)
+        if send_sms and client_phone:
+            logger.info("[CLIENT SMS] SMTP notification mode does not send SMS; configure GHL for SMS delivery")
+        return result
+
+    if mode == "stdout" or not _ghl_ready():
         if send_email and client_email:
             logger.info(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}")
-            result["email_sent"] = True
         if send_sms and client_phone:
             logger.info(f"[CLIENT SMS] To: {client_phone}\n{sms_text}")
-            result["sms_sent"] = True
         return result
 
     # Send via GHL
@@ -340,11 +915,13 @@ async def send_review_link_to_client(
 ) -> dict:
     """
     Send the client their document review portal link.
-    Delivered via GHL as both Email and SMS (if phone provided).
+    Email is delivered through the configured provider; SMS is GHL-only.
     """
+    FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False, "contact_id": None}
 
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return result
 
     is_korean = language == "ko"
@@ -384,13 +961,18 @@ Please review at your convenience — there is no rush. If you have any question
 """
         sms_text = f"""{FIRM_NAME}: Hi {client_first_name}, your will is ready for review: {review_link_url}"""
 
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        if send_email and client_email:
+            result["email_sent"] = _send_smtp_email(client_email, email_subject, body_text)
+        if send_sms and client_phone:
+            logger.info("[CLIENT SMS] SMTP notification mode does not send SMS; configure GHL for SMS delivery")
+        return result
+
+    if mode == "stdout" or not _ghl_ready():
         if send_email and client_email:
             logger.info(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}")
-            result["email_sent"] = True
         if send_sms and client_phone:
             logger.info(f"[CLIENT SMS] To: {client_phone}\n{sms_text}")
-            result["sms_sent"] = True
         return result
 
     contact_id = await _find_or_create_contact(
@@ -426,10 +1008,12 @@ async def send_signing_reminder(
 ) -> dict:
     """
     Send a signing appointment reminder to the client.
-    Delivered via GHL.
+    Email is delivered through the configured provider; SMS is GHL-only.
     """
+    FIRM_NAME = _resolve_firm_name()
     result = {"email_sent": False, "sms_sent": False}
-    if NOTIFICATION_MODE == "disabled":
+    mode = _notification_mode()
+    if mode == "disabled":
         return result
 
     is_korean = language == "ko"
@@ -465,13 +1049,18 @@ Please bring government-issued photo ID.
 """
         sms_text = f"{FIRM_NAME}: Hi {client_first_name}, signing appointment: {signing_date} at {signing_address}"
 
-    if NOTIFICATION_MODE == "stdout" or not _ghl_ready():
+    if mode == "smtp":
+        if client_email:
+            result["email_sent"] = _send_smtp_email(client_email, email_subject, body_text)
+        if client_phone:
+            logger.info("[CLIENT SMS] SMTP notification mode does not send SMS; configure GHL for SMS delivery")
+        return result
+
+    if mode == "stdout" or not _ghl_ready():
         if client_email:
             logger.info(f"[CLIENT EMAIL] {email_subject}\n{body_text}")
-            result["email_sent"] = True
         if client_phone:
             logger.info(f"[CLIENT SMS] {sms_text}")
-            result["sms_sent"] = True
         return result
 
     contact_id = await _find_or_create_contact(

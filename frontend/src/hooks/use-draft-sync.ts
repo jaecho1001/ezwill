@@ -6,7 +6,7 @@ import { saveDraftToServer } from '@/lib/api/drafts'
 import type { WillDocument } from '@/lib/types/will'
 
 // Extracts people array from the will document for server sync
-function extractPeople(will: WillDocument): unknown[] {
+export function extractPeople(will: WillDocument): unknown[] {
   const people: unknown[] = []
   const { yourFamily, yourEstate, yourArrangements, poaProperty, poaPersonalCare } = will
 
@@ -20,8 +20,26 @@ function extractPeople(will: WillDocument): unknown[] {
   if (poaProperty.attorney) people.push({ ...poaProperty.attorney, role: 'attorney_property' })
   if (poaProperty.backupAttorney) people.push({ ...poaProperty.backupAttorney, role: 'backup_attorney' })
   if (poaPersonalCare.attorney) people.push({ ...poaPersonalCare.attorney, role: 'attorney_care' })
+  if (poaPersonalCare.backupAttorney) people.push({ ...poaPersonalCare.backupAttorney, role: 'backup_attorney' })
 
   return people
+}
+
+export function buildDraftSyncSnapshot(will: WillDocument): string {
+  return JSON.stringify({
+    aboutYou: will.aboutYou,
+    yourFamily: will.yourFamily,
+    yourEstate: will.yourEstate,
+    yourArrangements: will.yourArrangements,
+    poaProperty: will.poaProperty,
+    poaPersonalCare: will.poaPersonalCare,
+    assets: will.assets,
+    liabilities: will.liabilities,
+    aiFlags: will.aiFlags,
+    currentStep: will.currentStep,
+    completedSteps: will.completedSteps,
+    language: will.language,
+  })
 }
 
 export function useDraftSync() {
@@ -32,11 +50,7 @@ export function useDraftSync() {
 
   const sync = useCallback(async (w: WillDocument) => {
     if (!draftId) return
-    const snapshot = JSON.stringify({
-      step: w.currentStep,
-      steps: w.completedSteps,
-      lang: w.language,
-    })
+    const snapshot = buildDraftSyncSnapshot(w)
     if (snapshot === lastSyncedRef.current) return
     lastSyncedRef.current = snapshot
 

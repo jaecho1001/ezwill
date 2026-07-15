@@ -10,6 +10,7 @@ import { AIFlagBanner } from '@/components/will/ai-flag-banner'
 import { PersonForm } from '@/components/will/person-form'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
+import { householdPersonSuggestions } from '@/lib/person-suggestions'
 import type { PersonData } from '@/lib/types/will'
 
 function newPerson(role: PersonData['role']): PersonData {
@@ -37,20 +38,24 @@ export default function POAPersonalCarePage() {
     }
   }
 
+  // Only enforce an attorney once the client has opted into this POA.
+  const isCurrentValid = () =>
+    subStep !== 0 || !data.hasAttorney || !!data.attorney?.firstName?.trim()
+
   return (
     <div className="fade-in">
       <AIFlagBanner />
       <StepHeader
         section={t.poaPersonalCare}
         title={
-          subStep === 0 ? 'Attorney for Personal Care' :
-          subStep === 1 ? 'Health Care Wishes' :
-          'Organ Donation'
+          subStep === 0 ? t.poaCare_attorneyTitle :
+          subStep === 1 ? t.poaCare_wishesTitle :
+          t.poaCare_organTitle
         }
         description={
-          subStep === 0 ? 'This person makes health and personal care decisions if you cannot communicate.' :
-          subStep === 1 ? 'Guidance for your attorney on medical decisions.' :
-          'Your wishes regarding organ and tissue donation.'
+          subStep === 0 ? t.poaCare_attorneyDesc :
+          subStep === 1 ? t.poaCare_wishesDesc :
+          t.poaCare_organDesc
         }
         step={subStep}
         totalSteps={SUB_STEPS.length}
@@ -64,41 +69,45 @@ export default function POAPersonalCarePage() {
             showRelationship
             showEmail
             showPhone
-            title="Primary Attorney for Personal Care"
+            title={t.poaCare_primaryAttorney}
+            suggestions={householdPersonSuggestions(will, 'attorney_care', [data.backupAttorney])}
           />
-          <div className="border-t pt-4">
-            <p className="text-sm font-medium text-gray-700 mb-3">Backup Attorney (optional)</p>
+          {!!data.attorney?.firstName?.trim() && <div className="border-t pt-4">
+            <p className="text-sm font-medium text-gray-700 mb-3">{t.poaCare_backupAttorney}</p>
             <PersonForm
               value={data.backupAttorney ?? {}}
               onChange={updates => update({ backupAttorney: { ...newPerson('attorney_care'), ...data.backupAttorney, ...updates } })}
               showRelationship
+              showEmail
+              showPhone
+              suggestions={householdPersonSuggestions(will, 'attorney_care', [data.attorney])}
             />
-          </div>
+          </div>}
         </div>
       )}
 
       {subStep === 1 && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Life Support Wishes</Label>
+            <Label>{t.poaCare_lifeSupportLabel}</Label>
             <RadioGroup
               name="lifeSupport"
               columns={1}
               value={data.lifeSupport ?? 'attorney_decides'}
               onChange={v => update({ lifeSupport: v as typeof data.lifeSupport })}
               options={[
-                { value: 'maintain', title: 'Maintain life support', description: 'I wish all reasonable measures to be taken to maintain my life.' },
-                { value: 'withhold', title: 'Withhold extraordinary measures', description: 'If there is no reasonable hope of recovery, I do not want extraordinary measures.' },
-                { value: 'attorney_decides', title: "Leave to my attorney's judgment", description: 'My attorney knows my values and should decide based on the circumstances.' },
+                { value: 'maintain', title: t.poaCare_maintainTitle, description: t.poaCare_maintainDesc },
+                { value: 'withhold', title: t.poaCare_withholdTitle, description: t.poaCare_withholdDesc },
+                { value: 'attorney_decides', title: t.poaCare_attorneyDecidesTitle, description: t.poaCare_attorneyDecidesDesc },
               ]}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Additional Care Instructions (optional)</Label>
+            <Label>{t.poaCare_careInstructionsLabel}</Label>
             <Textarea
               value={data.careInstructions ?? ''}
               onChange={e => update({ careInstructions: e.target.value })}
-              placeholder="e.g. I prefer to remain at home rather than in a care facility if possible. I value pain management over life extension..."
+              placeholder={t.poaCare_careInstructionsPlaceholder}
             />
           </div>
         </div>
@@ -112,13 +121,13 @@ export default function POAPersonalCarePage() {
             value={data.organDonation === true ? 'yes' : data.organDonation === false ? 'no' : 'unspecified'}
             onChange={v => update({ organDonation: v === 'yes' ? true : v === 'no' ? false : undefined })}
             options={[
-              { value: 'yes', title: 'Yes, donate my organs', icon: '❤️', description: 'Any usable organs and tissues' },
-              { value: 'no', title: 'No organ donation', icon: '✗' },
-              { value: 'unspecified', title: "Leave to family's discretion", icon: '👨‍👩‍👧‍👦' },
+              { value: 'yes', title: t.poaCare_donateYesTitle, icon: '❤️', description: t.poaCare_donateYesDesc },
+              { value: 'no', title: t.poaCare_donateNoTitle, icon: '✗' },
+              { value: 'unspecified', title: t.poaCare_donateFamilyTitle, icon: '👨‍👩‍👧‍👦' },
             ]}
           />
           <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
-            Note: Also register with ServiceOntario at ontario.ca/organ-donor — registration in a Will alone may not be seen quickly enough. Your family will always be consulted.
+            {t.poaCare_organNote}
           </p>
         </div>
       )}
@@ -126,6 +135,7 @@ export default function POAPersonalCarePage() {
       <StepNavigation
         onBack={() => subStep > 0 ? setSubStep(s => s - 1) : router.push('/will/poa-property')}
         onContinue={handleContinue}
+        continueDisabled={!isCurrentValid()}
         showSkip={subStep >= 1}
         onSkip={() => subStep < SUB_STEPS.length - 1 ? setSubStep(s => s + 1) : (dispatch({ type: 'COMPLETE_STEP', payload: 6 }), router.push('/will/assets'))}
       />

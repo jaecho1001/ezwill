@@ -1,0 +1,19 @@
+# Local dev port remap — the default ports (3000 / 8003 / 5432) are occupied by
+# other projects on this machine, so the EZWill stack is exposed on +10/+10/+7.
+# `!override` REPLACES the base `ports:` list (compose otherwise appends, which
+# would double-bind the default port and clash with the other projects).
+# `docker compose up` merges this over docker-compose.yml automatically.
+services:
+  db:
+    ports: !override
+      - "5439:5432"
+  backend:
+    ports: !override
+      - "8013:8003"
+    environment:
+      # Frontend is exposed on :3010 here, so magic-link / review / notification
+      # URLs the backend generates must point there (not the :3000 default).
+      BASE_URL: http://localhost:3010
+  frontend:
+    ports: !override
+      - "3010:3000"

@@ -78,13 +78,13 @@ class EWDbWriter:
 
     def create_draft(self, client_first_name: str, client_last_name: str,
                      client_email: str = None, client_phone: str = None,
-                     language: str = 'en') -> dict:
+                     language: str = 'en', province: str = 'ON') -> dict:
         return self.fetchone("""
             INSERT INTO ew_will_drafts
-                (client_first_name, client_last_name, client_email, client_phone, language, status)
-            VALUES (%s, %s, %s, %s, %s, 'link_sent')
+                (client_first_name, client_last_name, client_email, client_phone, language, province, status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'link_sent')
             RETURNING *
-        """, (client_first_name, client_last_name, client_email, client_phone, language))
+        """, (client_first_name, client_last_name, client_email, client_phone, language, province))
 
     def get_draft(self, draft_id: str) -> dict:
         return self.fetchone(
@@ -99,7 +99,15 @@ class EWDbWriter:
             'lawyer_notes', 'design_decisions', 'submitted_at',
             'reviewed_at', 'approved_at',
             'client_first_name', 'client_last_name', 'client_email', 'client_phone',
-            'liabilities',
+            'liabilities', 'reminder_preferences', 'ghl_contact_id',
+            'reminders_synced_at',
+            # Questionnaire section answers (JSONB) — feed the document generator.
+            'about_you', 'your_family', 'your_estate', 'your_arrangements',
+            'poa_property', 'poa_personal_care',
+            # Conversational AI-intake snapshot (JSONB).
+            'vault',
+            # Payments.
+            'payment_status', 'payment_tier', 'paid_at', 'payment_ref',
         }
         safe = {k: v for k, v in updates.items() if k in allowed}
         if not safe:
@@ -114,6 +122,28 @@ class EWDbWriter:
             values
         )
 
+    def save_reminder_preferences(
+        self,
+        draft_id: str,
+        preferences: dict,
+        ghl_contact_id: str = None,
+        synced: bool = False,
+    ) -> dict:
+        return self.fetchone("""
+            UPDATE ew_will_drafts
+            SET reminder_preferences = %s,
+                ghl_contact_id = COALESCE(%s, ghl_contact_id),
+                reminders_synced_at = CASE WHEN %s THEN now() ELSE reminders_synced_at END,
+                updated_at = now()
+            WHERE id = %s
+            RETURNING *
+        """, (
+            psycopg2.extras.Json(preferences),
+            ghl_contact_id,
+            synced,
+            draft_id,
+        ))
+
     def list_drafts(self, limit: int = 50, offset: int = 0, status: str = None) -> list:
         if status:
             return self.fetchall(
@@ -124,6 +154,17 @@ class EWDbWriter:
             "SELECT * FROM ew_will_drafts ORDER BY updated_at DESC LIMIT %s OFFSET %s",
             (limit, offset)
         )
+
+    def count_drafts(self, status: str = None) -> int:
+        """Return the full filtered count, independent of pagination."""
+        if status:
+            row = self.fetchone(
+                "SELECT COUNT(*) AS total FROM ew_will_drafts WHERE status = %s",
+                (status,),
+            )
+        else:
+            row = self.fetchone("SELECT COUNT(*) AS total FROM ew_will_drafts")
+        return int(row["total"])
 
     def submit_draft(self, draft_id: str) -> dict:
         return self.fetchone("""
@@ -214,6 +255,149 @@ class EWDbWriter:
             result.append(row)
         return result
 
+    # ── AI Usage ─────────────────────────────────────────────────────────────
+
+    def record_ai_usage(
+        self,
+        *,
+        provider: str,
+        model: str,
+        feature: str,
+        draft_id: str = None,
+        request_count: int = 1,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cache_read_input_tokens: int = 0,
+        cache_creation_input_tokens: int = 0,
+        latency_ms: int = None,
+        correlation_id: str = None,
+        metadata: dict = None,
+    ) -> dict:
+        """Persist one metered AI feature invocation.
+
+        Token fields are non-overlapping: cached input is removed from a
+        provider's general input count before this method is called.
+        """
+        return self.fetchone("""
+            INSERT INTO ew_ai_usage_events
+                (draft_id, provider, model, feature, request_count,
+                 input_tokens, output_tokens, cache_read_input_tokens,
+                 cache_creation_input_tokens, latency_ms, correlation_id,
+                 metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (
+            draft_id,
+            provider,
+            model,
+            feature,
+            max(1, int(request_count or 1)),
+            max(0, int(input_tokens or 0)),
+            max(0, int(output_tokens or 0)),
+            max(0, int(cache_read_input_tokens or 0)),
+            max(0, int(cache_creation_input_tokens or 0)),
+            max(0, int(latency_ms)) if latency_ms is not None else None,
+            correlation_id,
+            psycopg2.extras.Json(metadata or {}),
+        ))
+
+    def get_ai_usage_totals(self, since=None) -> dict:
+        where = "WHERE created_at >= %s" if since is not None else ""
+        params = (since,) if since is not None else None
+        return self.fetchone(f"""
+            SELECT
+                COUNT(*) AS events,
+                COALESCE(SUM(request_count), 0) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+                COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+                COALESCE(SUM(
+                    input_tokens + output_tokens + cache_read_input_tokens +
+                    cache_creation_input_tokens
+                ), 0) AS total_tokens
+            FROM ew_ai_usage_events
+            {where}
+        """, params)
+
+    def get_ai_usage_tracked_since(self):
+        row = self.fetchone(
+            "SELECT MIN(created_at) AS tracked_since FROM ew_ai_usage_events"
+        )
+        return row.get("tracked_since") if row else None
+
+    def get_ai_usage_by_model(self, since=None) -> list:
+        where = "WHERE created_at >= %s" if since is not None else ""
+        params = (since,) if since is not None else None
+        return self.fetchall(f"""
+            SELECT
+                COUNT(*) AS events,
+                provider,
+                model,
+                COALESCE(SUM(request_count), 0) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+                COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+                COALESCE(SUM(
+                    input_tokens + output_tokens + cache_read_input_tokens +
+                    cache_creation_input_tokens
+                ), 0) AS total_tokens
+            FROM ew_ai_usage_events
+            {where}
+            GROUP BY provider, model
+            ORDER BY total_tokens DESC, provider, model
+        """, params)
+
+    def get_ai_usage_daily(self, since=None) -> list:
+        where = "WHERE created_at >= %s" if since is not None else ""
+        params = (since,) if since is not None else None
+        return self.fetchall(f"""
+            SELECT
+                COUNT(*) AS events,
+                (created_at AT TIME ZONE 'America/Toronto')::date AS date,
+                COALESCE(SUM(request_count), 0) AS requests,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+                COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+                COALESCE(SUM(
+                    input_tokens + output_tokens + cache_read_input_tokens +
+                    cache_creation_input_tokens
+                ), 0) AS total_tokens
+            FROM ew_ai_usage_events
+            {where}
+            GROUP BY (created_at AT TIME ZONE 'America/Toronto')::date
+            ORDER BY date
+        """, params)
+
+    def list_ai_usage_events(self, since=None, limit: int = 50) -> list:
+        where = "WHERE u.created_at >= %s" if since is not None else ""
+        params = (since, limit) if since is not None else (limit,)
+        return self.fetchall(f"""
+            SELECT
+                u.id,
+                u.draft_id,
+                u.provider,
+                u.model,
+                u.feature,
+                u.request_count,
+                u.input_tokens,
+                u.output_tokens,
+                u.cache_read_input_tokens,
+                u.cache_creation_input_tokens,
+                (u.input_tokens + u.output_tokens + u.cache_read_input_tokens +
+                 u.cache_creation_input_tokens) AS total_tokens,
+                u.latency_ms,
+                u.created_at,
+                NULLIF(TRIM(CONCAT_WS(' ', d.client_first_name, d.client_last_name)), '') AS client_name
+            FROM ew_ai_usage_events u
+            LEFT JOIN ew_will_drafts d ON d.id = u.draft_id
+            {where}
+            ORDER BY u.created_at DESC
+            LIMIT %s
+        """, params)
+
     # ── Client Links ─────────────────────────────────────────────────────────
 
     def create_link(self, draft_id: str, client_email: str = None, client_name: str = None) -> dict:
@@ -245,12 +429,16 @@ class EWDbWriter:
         for c in clauses:
             self.execute("""
                 INSERT INTO ew_clause_selections
-                    (draft_id, document_type, clause_id, included, custom_text, ai_generated, sort_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (draft_id, document_type, clause_id, included, custom_text,
+                     template_text, title, is_folder, ai_generated, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 draft_id, document_type,
                 c['clause_id'], c.get('included', True),
-                c.get('custom_text'), c.get('ai_generated', False),
+                c.get('custom_text'),
+                c.get('template_text'), c.get('title'),
+                c.get('is_folder', False),
+                c.get('ai_generated', False),
                 c.get('sort_order', 0)
             ))
         return True
@@ -284,6 +472,31 @@ class EWDbWriter:
         )
         return True
 
+    # ── Firm Settings ─────────────────────────────────────────────────────────
+
+    def get_firm_settings(self) -> dict:
+        """Return the firm's settings blob (single row per schema), or {}."""
+        row = self.fetchone(
+            "SELECT settings FROM ew_firm_settings ORDER BY updated_at DESC LIMIT 1"
+        )
+        return dict(row).get("settings") or {} if row else {}
+
+    def upsert_firm_settings(self, settings: dict) -> dict:
+        """Persist the firm settings blob (single row per schema)."""
+        existing = self.fetchone("SELECT id FROM ew_firm_settings LIMIT 1")
+        if existing:
+            row = self.fetchone(
+                "UPDATE ew_firm_settings SET settings = %s, updated_at = now() "
+                "WHERE id = %s RETURNING settings",
+                (psycopg2.extras.Json(settings), existing["id"]),
+            )
+        else:
+            row = self.fetchone(
+                "INSERT INTO ew_firm_settings (settings) VALUES (%s) RETURNING settings",
+                (psycopg2.extras.Json(settings),),
+            )
+        return dict(row).get("settings") or {}
+
     # ── Document Configs ──────────────────────────────────────────────────────
 
     def save_document_config(self, draft_id: str, document_type: str, enabled: bool) -> bool:
@@ -312,6 +525,50 @@ class EWDbWriter:
             WHERE draft_id = %s AND document_type = %s
         """, (file_path, draft_id, document_type))
         return True
+
+    # ── Signing / execution events ───────────────────────────────────────────
+
+    def upsert_signing_event(self, draft_id: str, document_type: str, data: dict) -> dict:
+        """Record (or update) how a document was executed — Ontario SLRA s.4
+        (in person) or s.21.1 (remote video), witnesses, date and location."""
+        w1 = data.get('witness1') or {}
+        w2 = data.get('witness2') or {}
+        return self.fetchone("""
+            INSERT INTO ew_signing_events
+                (draft_id, document_type, signing_method, signed_at, location,
+                 witness1_name, witness1_address, witness1_occupation, witness1_is_lso,
+                 witness2_name, witness2_address, witness2_occupation, witness2_is_lso,
+                 platform, recording_url)
+            VALUES (%s,%s,%s,%s,%s, %s,%s,%s,%s, %s,%s,%s,%s, %s,%s)
+            ON CONFLICT (draft_id, document_type) DO UPDATE SET
+                signing_method = EXCLUDED.signing_method,
+                signed_at = EXCLUDED.signed_at,
+                location = EXCLUDED.location,
+                witness1_name = EXCLUDED.witness1_name,
+                witness1_address = EXCLUDED.witness1_address,
+                witness1_occupation = EXCLUDED.witness1_occupation,
+                witness1_is_lso = EXCLUDED.witness1_is_lso,
+                witness2_name = EXCLUDED.witness2_name,
+                witness2_address = EXCLUDED.witness2_address,
+                witness2_occupation = EXCLUDED.witness2_occupation,
+                witness2_is_lso = EXCLUDED.witness2_is_lso,
+                platform = EXCLUDED.platform,
+                recording_url = EXCLUDED.recording_url
+            RETURNING *
+        """, (
+            draft_id, document_type, data.get('signing_method', 'in_person'),
+            data.get('signed_at'), data.get('location'),
+            w1.get('name'), w1.get('address'), w1.get('occupation'), bool(w1.get('is_lso', False)),
+            w2.get('name'), w2.get('address'), w2.get('occupation'), bool(w2.get('is_lso', False)),
+            data.get('platform'), data.get('recording_url'),
+        ))
+
+    def get_signing_events(self, draft_id: str) -> list:
+        """All recorded signing/execution events for a draft."""
+        return self.fetchall(
+            "SELECT * FROM ew_signing_events WHERE draft_id = %s ORDER BY document_type",
+            (draft_id,)
+        )
 
     # ── Client Links ─────────────────────────────────────────────────────────
 

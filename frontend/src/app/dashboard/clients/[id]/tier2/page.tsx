@@ -9,17 +9,26 @@ import { getAuthHeaders } from '@/lib/auth'
 import {
   willDocumentTypes,
   buildDefaultSelections,
+  mergeSelectionsWithDefaults,
 } from '@/lib/will-documents/index'
+import {
+  serializeSelectionsForSave,
+  deserializeStoredClauses,
+} from '@/lib/will-documents/clause-serialization'
 import type { WillDocumentType, SelectedWillClause } from '@/types/will-document'
 import { ClauseEditor } from '@/components/editor/clause-editor'
+import { useWillVault } from '@/stores/will-vault-store'
+import { vaultToVariables } from '@/lib/will-documents/vault-to-variables'
 
 export default function Tier2Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const vaultStore = useWillVault(id)
+  const vault = vaultStore((s) => s.vault)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
-  const [selectedDocType, setSelectedDocType] = useState<WillDocumentType>('single_will')
+  const [selectedDocType, setSelectedDocType] = useState<WillDocumentType>('simple_will_short')
   const [clausesByDocType, setClausesByDocType] = useState<Record<string, SelectedWillClause[]>>({})
   const [draftData, setDraftData] = useState<Record<string, unknown>>({})
 
@@ -40,10 +49,16 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
             headers: { ...getAuthHeaders() },
           })
           if (clauseRes.ok) {
-            const stored = await clauseRes.json() as Record<string, SelectedWillClause[]>
+            // API returns { selections: { [docType]: storedRow[] } } in snake_case.
+            const payload = await clauseRes.json() as { selections?: Record<string, unknown[]> }
+            const stored = payload.selections ?? {}
             for (const docType of willDocumentTypes) {
-              if (stored[docType.id] && Array.isArray(stored[docType.id])) {
-                initial[docType.id] = stored[docType.id]
+              const rows = stored[docType.id]
+              if (Array.isArray(rows) && rows.length > 0) {
+                initial[docType.id] = mergeSelectionsWithDefaults(
+                  docType.id,
+                  deserializeStoredClauses(rows)
+                )
               } else {
                 initial[docType.id] = buildDefaultSelections(docType.id)
               }
@@ -68,12 +83,15 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
     loadData()
   }, [id])
 
-  // Build variables from draft data for placeholder resolution
+  // Build variables from the vault first (canonical source once intake is
+  // complete), falling back to legacy draft fields for any keys the vault
+  // doesn't cover. Empty vault values are skipped so legacy data can fill
+  // the gap without being overwritten by blanks.
   const variables = useMemo(() => {
     const d = draftData as Record<string, unknown>
     const aboutYou = (d.about_you ?? d.aboutYou ?? {}) as Record<string, string>
     const yourFamily = (d.your_family ?? d.yourFamily ?? {}) as Record<string, string>
-    return {
+    const legacy: Record<string, string> = {
       testatorFullName: [aboutYou.firstName, aboutYou.lastName].filter(Boolean).join(' ') || '[Full Name]',
       city: aboutYou.city || 'City',
       cityName: aboutYou.cityName || aboutYou.city || '[City]',
@@ -84,7 +102,13 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
       guardianFullName: '[Guardian Name]',
       date: new Date().toLocaleDateString('en-CA'),
     }
-  }, [draftData])
+    const fromVault = vaultToVariables(vault)
+    const merged: Record<string, string> = { ...legacy }
+    for (const [k, v] of Object.entries(fromVault)) {
+      if (v) merged[k] = v
+    }
+    return merged
+  }, [draftData, vault])
 
   const handleClausesChange = useCallback(
     (clauses: SelectedWillClause[]) => {
@@ -104,7 +128,9 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
         fetch(`/api/drafts/${id}/clauses/${docType}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ clauses }),
+          // Enrich with library text (template_text/title/is_folder) so the
+          // backend generator can render a complete document.
+          body: JSON.stringify({ clauses: serializeSelectionsForSave(clauses) }),
         })
       )
       const results = await Promise.all(promises)
@@ -123,7 +149,7 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
       </div>
     )
   }
@@ -156,8 +182,8 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Clause Editor</h2>
-          <p className="mt-1 text-sm text-gray-500">Edit and configure document clauses for each document type.</p>
+          <h2 className="text-2xl font-bold text-gray-900">Will Editor</h2>
+          <p className="mt-1 text-sm text-gray-500">Review and edit the clauses for each document — Will and Powers of Attorney.</p>
         </div>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? (
@@ -186,7 +212,7 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
             onClick={() => setSelectedDocType(docType.id)}
             className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
               selectedDocType === docType.id
-                ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-400'
+                ? 'border-[#1B2A4A] bg-[#1B2A4A]/5 ring-1 ring-[#1B2A4A]'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
           >
@@ -205,6 +231,8 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
         selectedClauses={currentClauses}
         onClausesChange={handleClausesChange}
         variables={variables}
+        willId={id}
+        vault={vault}
       />
     </div>
   )

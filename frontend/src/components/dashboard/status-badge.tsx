@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   link_sent:   { label: 'Link Sent',   className: 'bg-gray-100 text-gray-600' },
   opened:      { label: 'Opened',      className: 'bg-blue-100 text-blue-700' },
-  in_progress: { label: 'In Progress', className: 'bg-amber-100 text-amber-700' },
+  in_progress: { label: 'In Progress', className: 'bg-[#C9A84C]/15 text-[#8a6a1e]' },
   submitted:   { label: 'Submitted',   className: 'bg-green-100 text-green-700 font-semibold' },
   in_review:   { label: 'In Review',   className: 'bg-purple-100 text-purple-700' },
   approved:    { label: 'Approved',    className: 'bg-emerald-100 text-emerald-700' },

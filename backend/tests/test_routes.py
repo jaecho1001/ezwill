@@ -71,6 +71,10 @@ class TestRouteRegistration:
         paths = [r['path'] for r in get_routes()]
         assert '/ready' in paths
 
+    def test_reminders_routes_registered(self):
+        paths = [r['path'] for r in get_routes()]
+        assert '/api/reminders/{draft_id}' in paths
+
     def test_drafts_routes_registered(self):
         paths = [r['path'] for r in get_routes()]
         assert '/api/drafts' in paths
@@ -100,6 +104,18 @@ class TestRouteRegistration:
         assert '/api/drafts/{draft_id}/documents' in paths
         assert '/api/drafts/{draft_id}/documents/{document_type}' in paths
 
+    def test_internal_legal_library_routes_registered(self):
+        paths = [r['path'] for r in get_routes()]
+        assert '/api/legal-library/sources' in paths
+        assert '/api/legal-library/sources/{source_id}/pages' in paths
+        assert '/api/legal-library/clauses' in paths
+        assert '/api/legal-library/clauses/{clause_key}' in paths
+        assert '/api/legal-library/versions/{version_id}/approve' in paths
+
+    def test_usage_route_registered(self):
+        paths = [r['path'] for r in get_routes()]
+        assert '/api/usage' in paths
+
 
 class TestRouteHTTPMethods:
     """Verify correct HTTP methods are assigned to routes."""
@@ -116,6 +132,11 @@ class TestRouteHTTPMethods:
 
     def test_ready_is_get(self):
         assert 'GET' in self._methods_for_path('/ready')
+
+    def test_reminders_support_get_and_post(self):
+        methods = self._methods_for_path('/api/reminders/{draft_id}')
+        assert 'GET' in methods
+        assert 'POST' in methods
 
     def test_create_draft_is_post(self):
         assert 'POST' in self._methods_for_path('/api/drafts')
@@ -156,6 +177,9 @@ class TestRouteHTTPMethods:
     def test_update_document_config_is_put(self):
         assert 'PUT' in self._methods_for_path('/api/drafts/{draft_id}/documents/{document_type}')
 
+    def test_usage_report_is_get(self):
+        assert 'GET' in self._methods_for_path('/api/usage')
+
 
 class TestRoutePrefixes:
     """Verify route prefix structure is correct."""
@@ -168,14 +192,19 @@ class TestRoutePrefixes:
             assert r['path'].startswith('/api/drafts'), f"Route {r['path']} missing /api/drafts prefix"
 
     def test_all_link_routes_have_api_prefix(self):
-        link_routes = [r for r in get_routes() if 'token' in r['path']]
+        link_routes = [r for r in get_routes() if r['path'].startswith('/api/links')]
+        assert len(link_routes) > 0, "No routes under /api/links"
         for r in link_routes:
             assert r['path'].startswith('/api/links'), f"Route {r['path']} missing /api/links prefix"
 
     def test_agent_routes_have_agents_prefix(self):
+        # Agent capabilities are mounted at /agents (external orchestrator) and
+        # /api/agents (so the Next.js /api/* proxy can reach them).
         agent_routes = [r for r in get_routes() if 'invoke' in r['path']]
+        assert agent_routes, "expected at least one agent invoke route"
         for r in agent_routes:
-            assert r['path'].startswith('/agents'), f"Route {r['path']} missing /agents prefix"
+            assert r['path'].startswith('/agents') or r['path'].startswith('/api/agents'), \
+                f"Route {r['path']} missing /agents or /api/agents prefix"
 
 
 class TestAppConfiguration:

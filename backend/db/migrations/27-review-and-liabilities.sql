@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS ew_review_comments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_ew_review_comments_draft ON ew_review_comments(draft_id);
+CREATE INDEX IF NOT EXISTS idx_ew_review_comments_draft ON ew_review_comments(draft_id);
 
 -- Liabilities table
 CREATE TABLE IF NOT EXISTS ew_liabilities (
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS ew_liabilities (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_ew_liabilities_draft ON ew_liabilities(draft_id);
+CREATE INDEX IF NOT EXISTS idx_ew_liabilities_draft ON ew_liabilities(draft_id);
 
 -- Add review_token column to ew_client_links for review portal access
 ALTER TABLE ew_client_links ADD COLUMN IF NOT EXISTS link_type TEXT DEFAULT 'questionnaire';

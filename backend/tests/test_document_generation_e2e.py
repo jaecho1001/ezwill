@@ -11,7 +11,7 @@ import io
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from docx import Document as DocxDocument
-from services.document_generator import DocumentGenerator, resolve_variables
+from services.document_generator import DocumentGenerator, resolve_variables, firm_variables
 
 # ── Output directory ─────────────────────────────────────────────────────────
 
@@ -153,6 +153,83 @@ def _build_will_clauses():
                 "beneficiary had predeceased me."
             ),
             "sortOrder": 10,
+        },
+    ]
+
+
+def _build_short_will_clauses():
+    """Build the intentionally small clause set used by the short-form will."""
+    return [
+        {
+            "clause_id": "revocation",
+            "isFolder": True,
+            "included": True,
+            "title": "REVOCATION",
+            "sortOrder": 1,
+        },
+        {
+            "clause_id": "revocation_clause",
+            "isFolder": False,
+            "included": True,
+            "title": "Revocation",
+            "templateText": (
+                "I, {{testatorFullName}}, revoke all former Wills and Codicils "
+                "made by me."
+            ),
+            "sortOrder": 2,
+        },
+        {
+            "clause_id": "executor",
+            "isFolder": True,
+            "included": True,
+            "title": "ESTATE TRUSTEE",
+            "sortOrder": 3,
+        },
+        {
+            "clause_id": "executor_clause",
+            "isFolder": False,
+            "included": True,
+            "title": "Appointment",
+            "templateText": (
+                "I appoint {{primaryExecutorFullName}} to be the Estate Trustee "
+                "of this my Will. If {{primaryExecutorFullName}} is unable or "
+                "unwilling to act, I appoint {{backupExecutorFullName}} instead."
+            ),
+            "sortOrder": 4,
+        },
+        {
+            "clause_id": "debts",
+            "isFolder": False,
+            "included": True,
+            "title": "Debts and Taxes",
+            "templateText": (
+                "I direct my Estate Trustee to pay my just debts, funeral and "
+                "testamentary expenses, and taxes payable because of my death."
+            ),
+            "sortOrder": 5,
+        },
+        {
+            "clause_id": "residue",
+            "isFolder": False,
+            "included": True,
+            "title": "Residue",
+            "templateText": (
+                "I give the residue of my estate to {{spouseFullName}}, if my "
+                "spouse survives me, and otherwise to my children, {{childNames}}, "
+                "in equal shares per stirpes."
+            ),
+            "sortOrder": 6,
+        },
+        {
+            "clause_id": "fla_exclusion",
+            "isFolder": False,
+            "included": True,
+            "title": "Family Law Act Exclusion",
+            "templateText": (
+                "I declare that property passing under this Will, and income from "
+                "it, is excluded from a beneficiary's net family property."
+            ),
+            "sortOrder": 7,
         },
     ]
 
@@ -334,6 +411,65 @@ class TestGenerateSingleWill:
         assert "MOONYOUNG LEE" in text
 
 
+class TestDefaultWitnesses:
+    """Default firm witnesses (from settings) pre-fill the will/POA witness blocks."""
+
+    _WITNESS_SETTINGS = {
+        "witnesses": [
+            {"name": "Jane Doe", "occupation": "Law Clerk", "address": "200 Bay St, Toronto"},
+            {"name": "John Roe", "occupation": "Paralegal", "address": "200 Bay St, Toronto"},
+        ]
+    }
+
+    def test_will_prefills_both_witnesses(self, generator):
+        variables = {**MOCK_VARIABLES, **firm_variables(self._WITNESS_SETTINGS)}
+        docx_bytes = generator.generate_document(
+            document_type="probate_will", clauses=_build_will_clauses(), variables=variables
+        )
+        doc = _save_and_validate(docx_bytes, "will_with_witnesses.docx")
+        text = _all_text(doc)
+        assert "Jane Doe" in text
+        assert "John Roe" in text
+        assert "First witness signature" in text
+        assert "Second witness signature" in text
+
+        signing_table = next(
+            table for table in doc.tables if "First witness signature" in table.cell(1, 0).text
+        )
+        assert "Jane Doe" in signing_table.cell(1, 0).text
+        assert "John Roe" in signing_table.cell(2, 0).text
+        assert "Testator" in signing_table.cell(0, 1).text
+
+    def test_will_without_witnesses_keeps_blank_lines(self, generator):
+        docx_bytes = generator.generate_document(
+            document_type="probate_will", clauses=_build_will_clauses(), variables=MOCK_VARIABLES
+        )
+        text = _all_text(_save_and_validate(docx_bytes, "will_no_witnesses.docx"))
+        assert "Jane Doe" not in text
+        assert "_____" in text  # blank underscore witness lines remain
+
+
+class TestGenerateShortFormWill:
+    """Generate the compact short-form will without the standard cover page."""
+
+    def test_generate_short_form_will(self, generator):
+        clauses = _build_short_will_clauses()
+        docx_bytes = generator.generate_document(
+            document_type="simple_will_short",
+            clauses=clauses,
+            variables=MOCK_VARIABLES,
+        )
+        doc = _save_and_validate(docx_bytes, "simple_will_short_kim.docx")
+        text = _all_text(doc)
+
+        assert "SHORT FORM LAST WILL AND TESTAMENT" in text
+        assert "HYUN JUNG KIM" in text
+        assert "MOONYOUNG LEE" in text
+        assert "TESTIMONIUM" in text
+        assert "VATURI & CHO LLP" not in text
+        assert "SCHEDULE" not in text
+
+
 class TestGenerateProbateWill:
     """Generate a full probate will with all Tier 2 clauses."""
 
@@ -425,6 +561,23 @@ class TestGeneratePOAProperty:
         assert "MOONYOUNG LEE" in text
         assert "EXECUTION" in text
 
+    def test_execution_has_two_complete_witness_blocks(self, generator):
+        variables = {
+            **MOCK_VARIABLES,
+            **firm_variables(TestDefaultWitnesses._WITNESS_SETTINGS),
+        }
+        docx_bytes = generator.generate_document(
+            document_type="poa_property",
+            clauses=_build_poa_property_clauses(),
+            variables=variables,
+        )
+        doc = _save_and_validate(docx_bytes, "poa_property_two_witnesses.docx")
+        text = _all_text(doc)
+        assert "First witness signature" in text
+        assert "Second witness signature" in text
+        assert "Jane Doe" in text
+        assert "John Roe" in text
+
 
 class TestGeneratePOAPersonalCare:
     """Generate POA Personal Care DOCX."""
@@ -440,22 +593,43 @@ class TestGeneratePOAPersonalCare:
         text = _all_text(doc)
         assert "POWER OF ATTORNEY FOR PERSONAL CARE" in text
         assert "HYUN JUNG KIM" in text
+        assert "First witness signature" in text
+        assert "Second witness signature" in text
 
 
-class TestSigningPageHasTable:
-    """Verify the signing page uses Word tables (not just plain text)."""
+class TestSigningPageStructure:
+    """Verify the signing page follows the precedent-style table structure."""
 
-    def test_signing_page_has_table(self, generator):
-        clauses = _build_will_clauses()
+    @pytest.mark.parametrize(
+        ("document_type", "expected_label"),
+        [
+            ("simple_will_short", "my Will"),
+            ("single_will", "my Will"),
+            ("probate_will", "my Probate Will"),
+            ("non_probate_will", "my Non-Probate Will"),
+        ],
+    )
+    def test_each_will_type_has_precedent_signing_sections(
+        self, generator, document_type, expected_label
+    ):
         docx_bytes = generator.generate_document(
-            document_type="probate_will",
-            clauses=clauses,
+            document_type=document_type,
+            clauses=_build_will_clauses(),
             variables=MOCK_VARIABLES,
         )
         doc = DocxDocument(io.BytesIO(docx_bytes))
-        # The document should have tables (attestation + witness blocks)
-        assert len(doc.tables) >= 2, (
-            f"Expected at least 2 tables for signing page, found {len(doc.tables)}"
+        text = _all_text(doc)
+        assert "TESTIMONIUM" in text
+        assert f"I have signed this, {expected_label}" in text
+        assert "First witness signature" in text
+        assert "Second witness signature" in text
+        assert any(
+            len(table.rows) == 3
+            and len(table.columns) == 2
+            and "Testator" in table.cell(0, 1).text
+            and "First witness signature" in table.cell(1, 0).text
+            and "Second witness signature" in table.cell(2, 0).text
+            for table in doc.tables
         )
 
 

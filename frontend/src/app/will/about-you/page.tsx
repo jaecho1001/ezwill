@@ -67,13 +67,13 @@ export default function AboutYouPage() {
           subStep === 0 ? t.legalName :
           subStep === 1 ? t.dateOfBirth :
           subStep === 2 ? `${t.province} & ${t.city}` :
-          'Contact Information'
+          t.about_contactInfo
         }
         description={
-          subStep === 0 ? 'Enter your full legal name as it appears on your government-issued ID.' :
-          subStep === 1 ? 'Your date of birth is required to confirm you are 18+ (Ontario age of majority).' :
-          subStep === 2 ? 'Ontario law applies to this Will. Confirm your province and city.' :
-          'Optional — used to notify your executor.'
+          subStep === 0 ? t.about_legalNameDesc :
+          subStep === 1 ? t.about_dobDesc :
+          subStep === 2 ? t.about_locationDesc :
+          t.about_contactDesc
         }
         step={subStep}
         totalSteps={SUB_STEPS.length}
@@ -87,7 +87,7 @@ export default function AboutYouPage() {
               id="firstName"
               value={data.legalFirstName}
               onChange={e => update({ legalFirstName: e.target.value })}
-              placeholder="e.g. John"
+              placeholder={t.about_firstNamePlaceholder}
               autoFocus
             />
           </div>
@@ -97,7 +97,7 @@ export default function AboutYouPage() {
               id="lastName"
               value={data.legalLastName}
               onChange={e => update({ legalLastName: e.target.value })}
-              placeholder="e.g. Kim"
+              placeholder={t.about_lastNamePlaceholder}
             />
           </div>
           <div className="space-y-1.5">
@@ -106,7 +106,7 @@ export default function AboutYouPage() {
               id="preferred"
               value={data.preferredName ?? ''}
               onChange={e => update({ preferredName: e.target.value })}
-              placeholder="Name you go by day-to-day"
+              placeholder={t.about_preferredNamePlaceholder}
             />
           </div>
         </div>
@@ -125,7 +125,7 @@ export default function AboutYouPage() {
           </div>
           {data.dateOfBirth && (
             <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              ✓ You must be at least 18 years old to make a Will in Ontario (Succession Law Reform Act s.8)
+              ✓ {t.about_ageConfirmNote}
             </p>
           )}
         </div>
@@ -144,8 +144,8 @@ export default function AboutYouPage() {
               </SelectContent>
             </Select>
             {data.province !== 'ON' && (
-              <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2 mt-1">
-                ⚠️ This questionnaire is optimized for Ontario law. Other provinces may have different requirements.
+              <p className="text-xs text-[#8a6a1e] bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-lg p-2 mt-1">
+                ⚠️ {t.about_nonOntarioWarning}
               </p>
             )}
           </div>
@@ -155,7 +155,7 @@ export default function AboutYouPage() {
               id="city"
               value={data.city}
               onChange={e => update({ city: e.target.value })}
-              placeholder="e.g. Toronto"
+              placeholder={t.about_cityPlaceholder}
             />
           </div>
         </div>

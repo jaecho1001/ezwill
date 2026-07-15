@@ -1,0 +1,94 @@
+name: CI
+
+# Enforce on every PR (any base branch) and on pushes to main what was
+# previously only run locally by hand: frontend typecheck/tests/build + backend tests.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: frontend (typecheck · vitest · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://backend:8003
+
+  backend:
+    name: backend (migrations · pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ezwill
+          POSTGRES_PASSWORD: ezwill_test
+          POSTGRES_DB: caselawvision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ezwill -d caselawvision"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Apply migrations twice (fresh and existing database smoke test)
+        env:
+          DATABASE_URL: postgresql://ezwill:ezwill_test@localhost:5432/caselawvision
+          DEFAULT_SCHEMA: firm_ci
+        run: |
+          python scripts/run_migrations.py
+          python scripts/run_migrations.py
+      - run: pytest -q
+      # The main suite globally mocks psycopg2 (tests/test_routes.py), so the app
+      # imports without a driver. The real-DB usage test must run in its OWN
+      # process, where psycopg2 is real, against the migrated firm_ci schema.
+      - name: Real-DB usage integration test
+        env:
+          DATABASE_URL: postgresql://ezwill:ezwill_test@localhost:5432/caselawvision
+          DEFAULT_SCHEMA: firm_ci
+        run: pytest tests/test_ai_usage_realdb.py -q
+
+  containers:
+    name: containers (compose config · image builds)
+    runs-on: ubuntu-latest
+    env:
+      # docker-compose.yml now requires these (no committed defaults, ${VAR:?}).
+      # Supply throwaway values so `compose config` / `build` resolve in CI.
+      POSTGRES_PASSWORD: ci_test
+      DASHBOARD_PASSWORD: ci_test
+      AUTH_SESSION_SECRET: ci_test_session_secret
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose build backend frontend migrate

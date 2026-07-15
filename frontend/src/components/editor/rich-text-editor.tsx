@@ -12,6 +12,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { EditorToolbar } from './editor-toolbar'
 import { PlaceholderHighlight } from './placeholder-highlight'
+import { ClauseParagraph, ClauseHeading } from './clause-paragraph'
 
 interface RichTextEditorProps {
   content: string
@@ -33,8 +34,13 @@ export function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [3, 4] },
+        // Disable built-in paragraph + heading so our custom extensions
+        // (which preserve data-indent / data-marker / data-num etc.) take over.
+        paragraph: false,
+        heading: false,
       }),
+      ClauseParagraph,
+      ClauseHeading,
       Highlight.configure({ multicolor: true }),
       Underline,
       Placeholder.configure({ placeholder }),

@@ -76,7 +76,7 @@ export default function ClientsListPage() {
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
         </div>
       )}
 
@@ -124,7 +124,7 @@ export default function ClientsListPage() {
                           <div className="flex items-center gap-2">
                             <div className="h-2 w-20 overflow-hidden rounded-full bg-gray-100">
                               <div
-                                className="h-full rounded-full bg-amber-500 transition-all"
+                                className="h-full rounded-full bg-[#1B2A4A] transition-all"
                                 style={{ width: `${Math.round((draft.completed_steps.length / 7) * 100)}%` }}
                               />
                             </div>

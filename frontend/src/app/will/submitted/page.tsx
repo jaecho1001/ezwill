@@ -1,15 +1,20 @@
 'use client'
 import Link from 'next/link'
-import { CheckCircle } from 'lucide-react'
+import { Bell, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
+import { useDraft } from '@/providers/draft-provider'
 
 export default function SubmittedPage() {
   const { will } = useWillForm()
   const { lang } = useTranslation()
+  const { draftId, token } = useDraft()
 
   const firstName = will.aboutYou.legalFirstName || (lang === 'ko' ? '안녕하세요' : 'Hello')
+  const remindersHref = draftId
+    ? `/reminders/${draftId}${token ? `?t=${encodeURIComponent(token)}` : ''}`
+    : null
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center px-4">
@@ -56,7 +61,7 @@ export default function SubmittedPage() {
           </ol>
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+        <div className="bg-[#C9A84C]/10 border border-[#C9A84C]/40 rounded-xl p-4 text-sm text-[#8a6a1e]">
           <p className="font-semibold mb-1">
             {lang === 'ko' ? '중요: 온타리오 유언장 서명 요건' : 'Important: Ontario Will Signing Requirements'}
           </p>
@@ -67,12 +72,20 @@ export default function SubmittedPage() {
           </p>
         </div>
 
-        <div className="pt-2">
-          <Link href="/">
-            <Button variant="outline" className="w-full sm:w-auto">
-              {lang === 'ko' ? '홈으로 돌아가기' : 'Return to Home'}
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-center">
+          {remindersHref && (
+            <Button asChild className="w-full sm:w-auto">
+              <Link href={remindersHref}>
+                <Bell className="h-4 w-4" />
+                {lang === 'ko' ? '검토 알림 설정' : 'Set Review Reminders'}
+              </Link>
             </Button>
-          </Link>
+          )}
+          <Button asChild variant="outline" className="w-full sm:w-auto">
+            <Link href="/">
+              {lang === 'ko' ? '홈으로 돌아가기' : 'Return to Home'}
+            </Link>
+          </Button>
         </div>
 
         <p className="text-xs text-gray-400">

@@ -10,6 +10,7 @@ import { PeopleRolesGrid } from '@/components/dashboard/people-roles-grid'
 import { AssetSummary } from '@/components/dashboard/asset-summary'
 import { DistributionChart } from '@/components/dashboard/distribution-chart'
 import { determineRequiredDocuments, getDocumentTypeConfig } from '@/lib/will-documents/index'
+import { getAuthHeaders } from '@/lib/auth'
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -64,7 +65,26 @@ const SECTION_IDS = {
 // ── Component ────────────────────────────────────────────────────────
 
 export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
-  const [lawyerNotes, setLawyerNotes] = useState('')
+  const draftRecord = draft as unknown as { id?: string; lawyer_notes?: string }
+  const [lawyerNotes, setLawyerNotes] = useState(draftRecord.lawyer_notes ?? '')
+  const [notesSaved, setNotesSaved] = useState(false)
+
+  async function saveNotes() {
+    if (!draftRecord.id) return
+    try {
+      const res = await fetch(`/api/drafts/${draftRecord.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ lawyer_notes: lawyerNotes }),
+      })
+      if (res.ok) {
+        setNotesSaved(true)
+        setTimeout(() => setNotesSaved(false), 2000)
+      }
+    } catch {
+      // Keep the typed text; the lawyer can retry by editing again.
+    }
+  }
 
   const estate = (draft.your_estate ?? {}) as Record<string, unknown>
   const family = (draft.your_family ?? {}) as Record<string, unknown>
@@ -339,7 +359,7 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
                           Generated
                         </span>
                       ) : status === 'pending' ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-[#8a6a1e]">
                           <svg className="h-4 w-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
@@ -409,7 +429,7 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
                       <div
                         className={`mt-1 h-3 w-3 rounded-full border-2 ${
                           event.done
-                            ? 'border-amber-500 bg-amber-500'
+                            ? 'border-[#7BA68C] bg-[#7BA68C]'
                             : 'border-gray-300 bg-white'
                         }`}
                       />
@@ -448,11 +468,12 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
                 placeholder="Add internal notes about this estate plan..."
                 value={lawyerNotes}
                 onChange={(e) => setLawyerNotes(e.target.value)}
+                onBlur={saveNotes}
                 rows={8}
                 className="resize-none text-sm"
               />
               <p className="mt-2 text-xs text-gray-400">
-                Notes are saved locally and not visible to the client.
+                {notesSaved ? 'Saved.' : 'Notes save automatically when you click away. Not visible to the client.'}
               </p>
             </CardContent>
           </Card>

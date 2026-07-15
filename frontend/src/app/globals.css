@@ -1,40 +1,41 @@
 @import "tailwindcss";
 
+/* ── EZWill brand palette (Manus design system) ──────────────────────────
+ * navy #1B2A4A · sage #7BA68C · gold #C9A84C · cream #FAF8F5 · line #E8E4DF
+ * Applied app-wide so every page inherits the Manus look. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --primary: #f59e0b;
+  --background: #FAF8F5;
+  --foreground: #2D2D2D;
+  --primary: #1B2A4A;
   --primary-foreground: #ffffff;
   --secondary: #f3f4f6;
-  --secondary-foreground: #111827;
-  --muted: #f9fafb;
+  --secondary-foreground: #1B2A4A;
+  --muted: #f6f5f2;
   --muted-foreground: #6b7280;
-  --accent: #fef3c7;
-  --accent-foreground: #92400e;
+  --accent: #C9A84C;
+  --accent-foreground: #1B2A4A;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #f59e0b;
+  --border: #E8E4DF;
+  --input: #E8E4DF;
+  --ring: #1B2A4A;
   --radius: 0.5rem;
-  --step-active: #f59e0b;
-  --step-complete: #10b981;
+  --step-active: #1B2A4A;
+  --step-complete: #7BA68C;
   --step-pending: #d1d5db;
-  --selection-highlight: #fef3c7;
-  --selection-border: #f59e0b;
+  --selection-highlight: rgba(123, 166, 140, 0.12);
+  --selection-border: #7BA68C;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Always render in the warm cream theme — no OS-dark inversion for a legal
+ * document app (a black will-editor would be wrong). */
 
+/* NOTE: do NOT add a blanket `* { margin:0; padding:0 }` reset here — being
+ * unlayered, it overrides every Tailwind margin/padding utility app-wide
+ * (mx-auto, px-4, py-20 all silently become 0). Tailwind v4 preflight already
+ * resets margins/padding correctly within @layer base. */
 * {
   box-sizing: border-box;
-  padding: 0;
-  margin: 0;
 }
 
 html, body {
@@ -48,9 +49,59 @@ body {
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+/* Playfair Display for headings app-wide (Manus). The legal document editor
+ * keeps its own Calibri stack — overridden below so wills never render serif. */
+h1, h2, h3 {
+  font-family: var(--font-playfair), 'Playfair Display', Georgia, serif;
+  letter-spacing: -0.02em;
+}
+.will-editor h1,
+.will-editor h2,
+.will-editor h3,
+.will-editor h4 {
+  font-family: inherit;
+  letter-spacing: normal;
+}
+
 a {
   color: inherit;
   text-decoration: none;
+}
+
+.ezw-container {
+  width: 100%;
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.ezw-display {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.ezw-primary-button {
+  background-color: #20394f;
+  color: #ffffff !important;
+}
+
+.ezw-primary-button:hover {
+  background-color: #172a3c;
+}
+
+@media (min-width: 640px) {
+  .ezw-container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ezw-container {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
 }
 
 @keyframes slideInRight {
@@ -71,3 +122,229 @@ a {
 .step-enter { animation: slideInRight 0.3s ease forwards; }
 .step-exit { animation: slideOutLeft 0.3s ease forwards; }
 .fade-in { animation: fadeIn 0.25s ease forwards; }
+
+/* ── Will Clause Editor — Ontario precedent indentation ──────────────────
+ *
+ * Mirrors the DivorceMate .agreement-editor pattern adapted for EZWill.
+ * Three tab stops at 3.5em each (≈ 0.5 in at 12 pt):
+ *
+ *   1.    REVOCATION                              ← h2 data-num
+ *   1.1   I revoke all former wills...            ← p data-numbered + data-num
+ *         (a)  "Trustee" means...                 ← p data-indent="2" data-marker
+ *              (i)  any corporation...            ← p data-indent="3" data-marker
+ *
+ * Markers live in data-* attributes; CSS ::before renders them so the
+ * editor HTML stays clean (no leading span/text nodes with "(a)" etc.).
+ * ─────────────────────────────────────────────────────────────────────── */
+.will-editor {
+  font-family: "Calibri", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  /* Calibri 11pt is the print/DOCX target. On-screen we bump to 13px
+   * (~12.5pt) for legibility on HiDPI browsers; @media print restores. */
+  font-size: 13px;
+  line-height: 1.55;
+  color: #1a1a1a;
+}
+@media print {
+  .will-editor { font-size: 11pt; line-height: 1.5; }
+}
+
+.will-editor strong { font-weight: bold; }
+
+/* Document title (h1 — rare, used for the cover heading) */
+.will-editor h1 {
+  text-align: center;
+  font-size: 14pt;
+  font-weight: bold;
+  margin-top: 0;
+  margin-bottom: 2em;
+}
+
+/* Section heading: "1. REVOCATION" — number at left, title at tab 1 */
+.will-editor h2 {
+  font-size: 11pt;
+  font-weight: bold;
+  margin-top: 1.6em;
+  margin-bottom: 0.8em;
+  padding-left: 3.5em;
+  text-indent: -3.5em;
+}
+.will-editor h2[data-num]::before {
+  content: attr(data-num);
+  display: inline-block;
+  min-width: 3.5em;
+  font-weight: bold;
+}
+/* Suppress marker when data-num is empty (e.g. "SIGNATURES" block) */
+.will-editor h2[data-num=""] {
+  padding-left: 0;
+  text-indent: 0;
+}
+.will-editor h2[data-num=""]::before {
+  content: none;
+}
+
+/* Base paragraph — preamble / intro text, no extra indent */
+.will-editor p {
+  font-size: 11pt;
+  line-height: 1.5;
+  margin-top: 0;
+  margin-bottom: 0.8em;
+  padding-left: 0;
+  text-align: left;
+}
+
+/* Level 1 numbered sub-clause: "1.1  I hereby appoint..."
+   Number at left margin, body wraps at tab 1 (3.5em) */
+.will-editor p[data-numbered="1"] {
+  padding-left: 3.5em;
+  text-indent: -3.5em;
+  margin-bottom: 0.5em;
+}
+.will-editor p[data-numbered="1"]::before {
+  content: attr(data-num);
+  display: inline-block;
+  min-width: 3.5em;
+  font-weight: normal;
+}
+
+/* Level 1 continuation paragraph (no number, follows numbered clause)
+   Stays aligned with the numbered clause body at tab 1 */
+.will-editor p[data-indent="1"]:not([data-numbered="1"]) {
+  padding-left: 3.5em;
+  margin-bottom: 0.5em;
+}
+
+/* Level 2 lettered sub-item: "(a) ..."
+   Marker at tab 1 (3.5em), body wraps at tab 2 (7em) */
+.will-editor p[data-indent="2"] {
+  padding-left: 7em;
+  text-indent: -3.5em;
+  margin-bottom: 0.4em;
+}
+.will-editor p[data-indent="2"][data-marker]::before {
+  content: attr(data-marker);
+  display: inline-block;
+  min-width: 3.5em;
+}
+
+/* Level 3 roman sub-sub-item: "(i) ..."
+   Marker at tab 2 (7em), body wraps at tab 3 (10.5em) */
+.will-editor p[data-indent="3"] {
+  padding-left: 10.5em;
+  text-indent: -3.5em;
+  margin-bottom: 0.4em;
+}
+.will-editor p[data-indent="3"][data-marker]::before {
+  content: attr(data-marker);
+  display: inline-block;
+  min-width: 3.5em;
+}
+
+/* Alignment overrides — reset hanging-indent so centred/right preamble
+   lines don't inherit it, and hide the ::before marker */
+.will-editor p[style*="text-align: center"],
+.will-editor p[style*="text-align:center"] {
+  padding-left: 0 !important;
+  text-indent: 0 !important;
+  text-align: center !important;
+}
+.will-editor p[style*="text-align: center"]::before,
+.will-editor p[style*="text-align:center"]::before {
+  display: none !important;
+}
+.will-editor p[style*="text-align: right"],
+.will-editor p[style*="text-align:right"] {
+  padding-left: 0 !important;
+  text-indent: 0 !important;
+  text-align: right !important;
+}
+.will-editor p[style*="text-align: right"]::before,
+.will-editor p[style*="text-align:right"]::before {
+  display: none !important;
+}
+
+/* Native lists (rarely generated, but keep consistent) */
+.will-editor ol,
+.will-editor ul {
+  padding-left: 3.5em;
+  margin-bottom: 0.8em;
+}
+.will-editor li {
+  line-height: 1.5;
+  margin-bottom: 0.3em;
+}
+
+/* Will Editor navigation: the full-document preview is an interactive map
+   back to the clause editor. Keep the treatment subtle so it never resembles
+   formatting that will be emitted into the generated legal document. */
+.will-editor-clickable [data-clause-id] {
+  cursor: pointer;
+  border-radius: 0.2rem;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+.will-editor-clickable [data-clause-id]:hover {
+  background: rgba(201, 168, 76, 0.08);
+}
+.will-editor-clickable .clause-editor-active {
+  background: rgba(201, 168, 76, 0.16);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.12);
+}
+
+/* ── Manus landing design system (scoped; does not affect other pages) ── */
+@theme {
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  /* EZWill brand colors → Tailwind utilities (bg-navy, text-sage, border-line…) */
+  --color-navy: #1B2A4A;
+  --color-navy-dark: #16233d;
+  --color-sage: #7BA68C;
+  --color-gold: #C9A84C;
+  --color-gold-dark: #b8973f;
+  --color-cream: #FAF8F5;
+  --color-ink: #2D2D2D;
+  --color-line: #E8E4DF;
+}
+
+/* Manus primary button — navy, subtle lift on hover. Used app-wide. */
+.btn-primary {
+  background-color: #1B2A4A;
+  color: #fff;
+  transition: all 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.btn-primary:hover {
+  background-color: #16233d;
+  transform: scale(1.02);
+  box-shadow: 0 8px 25px rgba(27, 42, 74, 0.25);
+}
+.btn-primary:active { transform: scale(0.97); }
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+.text-display {
+  font-family: var(--font-playfair), 'Playfair Display', Georgia, serif;
+  letter-spacing: -0.02em;
+}
+
+.ezw-container {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+@media (min-width: 640px) {
+  .ezw-container { padding-inline: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .ezw-container { padding-inline: 2rem; max-width: 1280px; }
+}
+
+.gold-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #c9a84c, transparent);
+}

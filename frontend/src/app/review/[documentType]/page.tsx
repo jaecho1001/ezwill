@@ -348,7 +348,7 @@ function ClauseBlock({
           <h3 className="font-semibold text-stone-800">{clause.title}</h3>
           {hasAnnotation && (
             <span
-              className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xs cursor-help"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#C9A84C]/15 text-[#8a6a1e] text-xs cursor-help"
               title={annotation}
             >
               i
@@ -365,11 +365,11 @@ function ClauseBlock({
 
       {/* Annotation tooltip area */}
       {hasAnnotation && (
-        <div className="mt-3 rounded-md bg-amber-50 border border-amber-100 p-3">
-          <p className="text-xs font-medium text-amber-800">{t.annotationLabel}</p>
-          <p className="mt-1 text-xs text-amber-700">{annotation}</p>
+        <div className="mt-3 rounded-md bg-[#C9A84C]/10 border border-[#C9A84C]/40 p-3">
+          <p className="text-xs font-medium text-[#8a6a1e]">{t.annotationLabel}</p>
+          <p className="mt-1 text-xs text-[#8a6a1e]">{annotation}</p>
           {clause.statute && (
-            <p className="mt-1 text-xs text-amber-600">
+            <p className="mt-1 text-xs text-[#8a6a1e]/80">
               {t.statuteLabel}: {clause.statute}
             </p>
           )}

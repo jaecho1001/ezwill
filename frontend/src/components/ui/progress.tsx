@@ -13,7 +13,7 @@ function Progress({ value, max = 100, className, showLabel }: ProgressProps) {
   return (
     <div className={cn('relative h-2 w-full overflow-hidden rounded-full bg-gray-200', className)}>
       <div
-        className="h-full bg-amber-500 transition-all duration-500 ease-out rounded-full"
+        className="h-full bg-[#1B2A4A] transition-all duration-500 ease-out rounded-full"
         style={{ width: `${pct}%` }}
       />
       {showLabel && (

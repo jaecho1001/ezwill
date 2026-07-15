@@ -1,7 +1,7 @@
 """
 EZWill Document Generation Service
 Generates professional DOCX documents from clause selections using python-docx.
-Supports all 8 document types with table-based signing pages.
+Supports all built-in document types with table-based signing pages.
 """
 
 from __future__ import annotations
@@ -12,6 +12,8 @@ import logging
 from html.parser import HTMLParser
 from datetime import date
 from typing import Optional
+
+from services.jurisdictions import resolve as resolve_jurisdiction
 
 from docx import Document
 from docx.shared import Inches, Pt, Cm
@@ -30,6 +32,7 @@ FIRM_ADDRESS_LINE1 = "1110 Finch Avenue West, Suite 310"
 FIRM_ADDRESS_LINE2 = "Toronto, ON  M3J 2T2"
 
 DOCUMENT_TITLES: dict[str, str] = {
+    "simple_will_short": "SHORT FORM LAST WILL AND TESTAMENT",
     "single_will": "LAST WILL AND TESTAMENT",
     "probate_will": "LAST WILL AND TESTAMENT (PROBATE WILL)",
     "non_probate_will": "LAST WILL AND TESTAMENT (NON-PROBATE WILL)",
@@ -40,7 +43,8 @@ DOCUMENT_TITLES: dict[str, str] = {
     "affidavit_execution_non_probate": "AFFIDAVIT OF EXECUTION (NON-PROBATE WILL)",
 }
 
-WILL_TYPES = {"single_will", "probate_will", "non_probate_will"}
+WILL_TYPES = {"simple_will_short", "single_will", "probate_will", "non_probate_will"}
+COMPACT_WILL_TYPES = {"simple_will_short"}
 POA_TYPES = {"poa_property", "poa_personal_care"}
 AFFIDAVIT_TYPES = {
     "affidavit_execution", "affidavit_execution_probate",
@@ -86,6 +90,169 @@ class _SimpleHTMLParser(HTMLParser):
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
+# Maps a stored ew_people.role to the {{placeholder}} it fills. The keys are the
+# roles the frontend actually stores (see extractPeople + the ew_people_role_check
+# constraint: executor / attorney_property / attorney_care / …). The older
+# generator vocabulary (primary_executor / poa_*_attorney) is accepted too so a
+# mix of legacy rows still resolves. This is the single source of truth for both
+# the DOCX generator and the client review portal.
+_ROLE_TO_VARIABLE = {
+    "executor": "primaryExecutorFullName",
+    "primary_executor": "primaryExecutorFullName",
+    "backup_executor": "backupExecutorFullName",
+    "attorney_property": "poaPropertyAttorneyFullName",
+    "poa_property_attorney": "poaPropertyAttorneyFullName",
+    "attorney_care": "poaPersonalCareAttorneyFullName",
+    "poa_personal_care_attorney": "poaPersonalCareAttorneyFullName",
+    "backup_attorney": "backupAttorneyFullName",
+    "guardian": "guardianFullName",
+    "backup_guardian": "backupGuardianFullName",
+}
+
+
+def map_people_to_variables(people: list) -> dict:
+    """Resolve a draft's people list into executor/attorney/guardian name
+    variables. Person name fields are the snake_case columns stored by
+    upsert_people (first_name/last_name). First non-empty name per role wins."""
+    out: dict = {}
+    for person in people or []:
+        var = _ROLE_TO_VARIABLE.get(person.get("role", ""))
+        if not var or out.get(var):
+            continue
+        full_name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
+        if full_name:
+            out[var] = full_name
+    return out
+
+
+_PROVINCE_RE = re.compile(
+    r"\b(Ontario|ON|Quebec|QC|British Columbia|BC|Alberta|AB|Manitoba|MB|"
+    r"Saskatchewan|SK|Nova Scotia|NS|New Brunswick|NB|Newfoundland|NL|"
+    r"Prince Edward Island|PE|PEI)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_city(address: str) -> str:
+    parts = [p.strip() for p in address.split(",") if p.strip()]
+    if len(parts) >= 2:
+        return parts[-2]
+    return parts[0] if parts else ""
+
+
+def _extract_province(address: str) -> str:
+    m = _PROVINCE_RE.search(address)
+    if not m:
+        return ""
+    raw = m.group(1)
+    if raw.upper() == "ON" or raw.lower() == "ontario":
+        return "Ontario"
+    return raw
+
+
+def _list_names(names: list) -> str:
+    clean = [n for n in names if n]
+    if not clean:
+        return ""
+    if len(clean) == 1:
+        return clean[0]
+    if len(clean) == 2:
+        return f"{clean[0]} and {clean[1]}"
+    return f"{', '.join(clean[:-1])}, and {clean[-1]}"
+
+
+def vault_to_variables(vault: dict) -> dict:
+    """Project a conversational-intake WillVault into {{placeholder}} variables.
+
+    Python mirror of the frontend vaultToVariables (src/lib/will-documents/
+    vault-to-variables.ts). Only emits variables backed by real vault data, so
+    merging it over questionnaire-derived variables never clobbers a filled
+    field with a blank. Keep the two in sync when the vault schema changes.
+    """
+    if not vault:
+        return {}
+    v: dict = {}
+
+    testator = vault.get("testator") or {}
+    if testator.get("fullName"):
+        v["testatorFullName"] = testator["fullName"]
+    if testator.get("address"):
+        city = _extract_city(testator["address"])
+        if city:
+            v["city"] = city
+            v["cityName"] = city
+        province = _extract_province(testator["address"])
+        if province:
+            v["province"] = province
+
+    spouse = vault.get("spouse") or {}
+    if spouse.get("included") and spouse.get("fullName"):
+        v["spouseFullName"] = spouse["fullName"]
+
+    child_names = [c.get("fullName") for c in (vault.get("children") or [])]
+    names = _list_names(child_names)
+    if names:
+        v["childNames"] = names
+
+    executors = vault.get("executors") or []
+    primary = next((e for e in executors if not e.get("isBackup")), None)
+    backup = next((e for e in executors if e.get("isBackup")), None)
+    if primary and primary.get("fullName"):
+        v["primaryExecutorFullName"] = primary["fullName"]
+    if backup and backup.get("fullName"):
+        v["backupExecutorFullName"] = backup["fullName"]
+
+    primary_guardian = next(
+        (g for g in (vault.get("guardians") or []) if not g.get("isBackup")), None
+    )
+    if primary_guardian and primary_guardian.get("fullName"):
+        v["guardianFullName"] = primary_guardian["fullName"]
+        v["primaryGuardianFullName"] = primary_guardian["fullName"]
+
+    return v
+
+
+def firm_variables(settings: dict) -> dict:
+    """Project saved firm settings into document variables (firm identity that
+    the cover page + review portal render). Keys the frontend settings page
+    wrote in camelCase (firmName, address1, lsoNumber, ...)."""
+    if not settings:
+        return {}
+    firm = settings.get("firm") or {}
+    v: dict = {}
+    if firm.get("firmName"):
+        v["firmName"] = firm["firmName"]
+    line1 = ", ".join(p for p in (firm.get("address1"), firm.get("address2")) if p)
+    if line1:
+        v["firmAddressLine1"] = line1
+    line2 = ", ".join(p for p in (firm.get("city"), firm.get("province")) if p)
+    if firm.get("postalCode"):
+        line2 = (line2 + "  " + firm["postalCode"]).strip()
+    if line2:
+        v["firmAddressLine2"] = line2
+    if firm.get("lsoNumber"):
+        v["lsoNumber"] = firm["lsoNumber"]
+
+    # Default firm witnesses — pre-fill the witness attestation blocks so the
+    # same witnesses appear on every generated Will/POA. They must still sign
+    # in the testator's presence and cannot be beneficiaries (or a beneficiary's
+    # spouse); the settings page carries that caution.
+    witnesses = settings.get("witnesses") or []
+    for i, w in enumerate(witnesses[:2], start=1):
+        if not isinstance(w, dict):
+            continue
+        if w.get("name"):
+            v[f"witness{i}Name"] = w["name"]
+        if w.get("occupation"):
+            v[f"witness{i}Occupation"] = w["occupation"]
+        if w.get("address"):
+            v[f"witness{i}Address"] = w["address"]
+    # The affidavit of execution deponent defaults to the first witness.
+    if v.get("witness1Name") and not v.get("otherWitnessName"):
+        v["otherWitnessName"] = v["witness1Name"]
+    return v
+
 
 def resolve_variables(text: str, variables: dict) -> str:
     """
@@ -150,12 +317,202 @@ def _strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
 
 
+# ── Structured clause rendering ─────────────────────────────────────────────
+# A clause body carries hierarchy the flat run-based renderer lost: an intro
+# paragraph (level 1), lettered sub-items (a)/(b) (level 2), and roman
+# sub-sub-items (i)/(ii) (level 3), each hanging-indented under its marker.
+# It arrives in two shapes and both must render identically to the editor:
+#   - lawyer-edited  -> HTML: <p data-indent="2" data-marker="(a)">text</p>
+#   - untouched      -> raw template_text with literal "(a)"/"(i)" + blank lines
+# We normalize both into "blocks" ({indent, marker, align, runs, heading}) and
+# lay each out as its own docx paragraph. Indent levels mirror globals.css:
+# 3.5em/7em/10.5em tab stops == 0.5in per level, hanging indent 0.5in.
+
+_ROMAN_SEQUENCE = [
+    "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
+    "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx",
+]
+
+
+def _ends_with_colon(s: str) -> bool:
+    return bool(re.search(r":\s*$", s))
+
+
+def _inline_runs(text: str) -> list:
+    """Split a paragraph's (possibly inline-HTML) text into (text, b, i, u) runs."""
+    if not text:
+        return []
+    if "<" not in text:
+        return [(text, False, False, False)]
+    parser = _SimpleHTMLParser()
+    try:
+        parser.feed(text)
+    except Exception:
+        return [(_strip_html(text), False, False, False)]
+    return parser.runs or [(_strip_html(text), False, False, False)]
+
+
+def _format_clause_text(raw: str) -> list:
+    """Python port of the frontend formatClauseText (format-clause.ts): split
+    raw clause text into paragraphs with indent level + auto/explicit markers.
+    Kept in sync with the editor so the .docx matches the on-screen preview."""
+    if not raw:
+        return []
+    use_double = "\n\n" in raw
+    parts = re.split(r"\n\n+" if use_double else r"\n+", raw)
+    parts = [p.strip() for p in parts if p.strip()]
+    if not parts:
+        return []
+
+    result: list = []
+    mode = "body"
+    letter_counter = 0
+    roman_counter = 0
+
+    for i, text in enumerate(parts):
+        roman_match = re.match(r"^\(([ivx]+)\)\s+([\s\S]*)", text)
+        letter_match = re.match(r"^\(([a-z])\)\s+([\s\S]*)", text)
+
+        if roman_match:
+            body = roman_match.group(2).strip()
+            result.append({"text": body, "indent": 3, "marker": f"({roman_match.group(1)})"})
+            mode = "romans"
+            idx = _ROMAN_SEQUENCE.index(roman_match.group(1)) if roman_match.group(1) in _ROMAN_SEQUENCE else -1
+            roman_counter = idx + 1 if idx >= 0 else roman_counter + 1
+            continue
+
+        if letter_match:
+            body = letter_match.group(2).strip()
+            result.append({"text": body, "indent": 2, "marker": f"({letter_match.group(1)})"})
+            letter_counter = ord(letter_match.group(1)) - 0x61 + 1
+            mode = "romans" if _ends_with_colon(body) else "letters"
+            if mode == "romans":
+                roman_counter = 0
+            continue
+
+        if i == 0:
+            result.append({"text": text, "indent": 1, "marker": None})
+            if _ends_with_colon(text):
+                mode = "letters"
+                letter_counter = 0
+                roman_counter = 0
+            continue
+
+        if mode == "romans":
+            marker = f"({_ROMAN_SEQUENCE[roman_counter]})" if roman_counter < len(_ROMAN_SEQUENCE) else None
+            if marker:
+                roman_counter += 1
+            result.append({"text": text, "indent": 3, "marker": marker})
+        elif mode == "letters":
+            marker = f"({chr(0x61 + letter_counter)})"
+            letter_counter += 1
+            result.append({"text": text, "indent": 2, "marker": marker})
+            if _ends_with_colon(text):
+                mode = "romans"
+                roman_counter = 0
+        else:
+            result.append({"text": text, "indent": 1, "marker": None})
+
+    return result
+
+
+class _BlockHTMLParser(HTMLParser):
+    """Parse editor HTML into block paragraphs, preserving data-indent /
+    data-marker / data-num and inline b/i/u runs."""
+
+    _BLOCK_TAGS = ("p", "h3", "h4", "li")
+
+    def __init__(self):
+        super().__init__()
+        self.blocks: list = []
+        self._cur = None
+        self._bold = False
+        self._italic = False
+        self._underline = False
+
+    def _open(self, indent, marker, align, heading):
+        self._cur = {
+            "indent": indent, "marker": marker, "align": align,
+            "heading": heading, "runs": [],
+        }
+
+    def _close(self):
+        if self._cur is not None:
+            if self._cur["runs"] or self._cur["marker"]:
+                self.blocks.append(self._cur)
+            self._cur = None
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in self._BLOCK_TAGS:
+            self._close()
+            d = dict(attrs)
+            try:
+                indent = int(d.get("data-indent") or 1)
+            except (TypeError, ValueError):
+                indent = 1
+            indent = min(max(indent, 1), 3)
+            marker = d.get("data-marker") or d.get("data-num") or None
+            style = (d.get("style") or "").lower()
+            align = "center" if "center" in style else ("right" if "right" in style else None)
+            self._open(indent, marker, align, heading=tag in ("h3", "h4"))
+        elif tag in ("b", "strong"):
+            self._bold = True
+        elif tag in ("i", "em"):
+            self._italic = True
+        elif tag == "u":
+            self._underline = True
+        elif tag == "br" and self._cur is not None:
+            self._cur["runs"].append(("\n", self._bold, self._italic, self._underline))
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in self._BLOCK_TAGS:
+            self._close()
+        elif tag in ("b", "strong"):
+            self._bold = False
+        elif tag in ("i", "em"):
+            self._italic = False
+        elif tag == "u":
+            self._underline = False
+
+    def handle_data(self, data):
+        if not data:
+            return
+        if self._cur is None:
+            self._open(1, None, None, heading=False)
+        self._cur["runs"].append((data, self._bold, self._italic, self._underline))
+
+
+def clause_body_to_blocks(text: str):
+    """Normalize a clause body (edited HTML or raw template text) into layout
+    blocks. Returns None on parse failure so the caller can fall back to plain."""
+    if not text:
+        return []
+    if re.search(r"<\s*(p|h3|h4|li|ul|ol|div)\b", text, re.IGNORECASE):
+        parser = _BlockHTMLParser()
+        try:
+            parser.feed(text)
+        except Exception:
+            return None
+        parser._close()
+        return parser.blocks
+    # Raw text: structure via the ported formatter, then inline runs per line.
+    blocks = []
+    for para in _format_clause_text(text):
+        blocks.append({
+            "indent": para["indent"], "marker": para.get("marker"),
+            "align": None, "heading": False, "runs": _inline_runs(para["text"]),
+        })
+    return blocks
+
+
 # ── Document Generator ──────────────────────────────────────────────────────
 
 class DocumentGenerator:
     """
     Generates professional DOCX documents from clause selections.
-    Supports all 8 Ontario estate-planning document types with
+    Supports all built-in Ontario estate-planning document types with
     table-based signing pages.
     """
 
@@ -170,7 +527,7 @@ class DocumentGenerator:
         Generate a DOCX file from clause selections and return it as bytes.
 
         Args:
-            document_type: One of the 8 supported document types.
+            document_type: One of the supported document types.
             clauses: List of clause dicts with keys: clause_id, included,
                      templateText, customText, sortOrder, isFolder, title.
             variables: Dict of placeholder variables to resolve.
@@ -181,8 +538,12 @@ class DocumentGenerator:
             The generated DOCX file content as bytes.
         """
         doc = Document()
-        self._set_document_styles(doc)
-        self._create_cover_page(doc, document_type, variables)
+        compact = document_type in COMPACT_WILL_TYPES
+        self._set_document_styles(doc, compact=compact)
+        if compact:
+            self._create_compact_will_heading(doc, document_type, variables)
+        else:
+            self._create_cover_page(doc, document_type, variables)
 
         # Filter and sort clauses
         included = [c for c in clauses if c.get("included", True)]
@@ -200,7 +561,9 @@ class DocumentGenerator:
         # Signing pages
         if signing_data or document_type in WILL_TYPES | POA_TYPES | AFFIDAVIT_TYPES:
             sd = signing_data or {}
-            self._create_signing_page(doc, document_type, sd, variables)
+            self._create_signing_page(
+                doc, document_type, sd, variables, page_break=not compact
+            )
 
         # Schedule A for probate will
         if document_type == "probate_will":
@@ -218,10 +581,15 @@ class DocumentGenerator:
         self, doc: Document, document_type: str, variables: dict
     ) -> None:
         """Add a firm-branded cover page."""
+        # Firm identity from saved settings, falling back to the built-in default.
+        firm_name = variables.get("firmName") or FIRM_NAME
+        addr1 = variables.get("firmAddressLine1") or FIRM_ADDRESS_LINE1
+        addr2 = variables.get("firmAddressLine2") or FIRM_ADDRESS_LINE2
+
         # Firm name
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(FIRM_NAME)
+        run = p.add_run(firm_name)
         run.bold = True
         run.font.size = Pt(16)
         run.font.name = "Times New Roman"
@@ -229,13 +597,13 @@ class DocumentGenerator:
         # Address
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(FIRM_ADDRESS_LINE1)
+        run = p.add_run(addr1)
         run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(FIRM_ADDRESS_LINE2)
+        run = p.add_run(addr2)
         run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
@@ -278,6 +646,40 @@ class DocumentGenerator:
 
         # Page break after cover
         doc.add_page_break()
+
+    def _create_compact_will_heading(
+        self, doc: Document, document_type: str, variables: dict
+    ) -> None:
+        """Add an inline heading for short-form wills instead of a cover page."""
+        title = DOCUMENT_TITLES.get(document_type, document_type.upper().replace("_", " "))
+        client_name = (
+            variables.get("testatorFullName")
+            or variables.get("testator_full_name")
+            or variables.get("clientFullName")
+            or variables.get("client_full_name")
+            or "[Client Name]"
+        )
+        doc_date = variables.get("documentDate") or date.today().strftime("%B %d, %Y")
+
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(title)
+        run.bold = True
+        run.font.size = Pt(13)
+        run.font.name = "Times New Roman"
+
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(str(client_name).upper())
+        run.bold = True
+        run.font.size = Pt(11)
+        run.font.name = "Times New Roman"
+
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(str(doc_date))
+        run.font.size = Pt(10)
+        run.font.name = "Times New Roman"
 
     # ── Folder Heading ──────────────────────────────────────────────────────
 
@@ -327,25 +729,60 @@ class DocumentGenerator:
             run.font.size = Pt(12)
             run.font.name = "Times New Roman"
 
-        # Body text
-        p = doc.add_paragraph()
-        p.paragraph_format.left_indent = Inches(0.5)
-        p.space_after = Pt(6)
+        # Body text — render structured blocks so (a)/(i) markers, nested
+        # numbering, and hanging indents survive to Word. A flat run dump (the
+        # old html_to_docx_runs) collapsed the whole clause into one paragraph.
+        blocks = clause_body_to_blocks(resolved)
+        if not blocks:  # parse failure or empty — plain fallback
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent = Inches(0.5)
+            p.space_after = Pt(6)
+            if not title:
+                nr = p.add_run(f"{clause_number}.  ")
+                nr.bold = True
+                nr.font.size = Pt(12)
+                nr.font.name = "Times New Roman"
+            r = p.add_run(_strip_html(resolved))
+            r.font.size = Pt(12)
+            r.font.name = "Times New Roman"
+            return
 
-        # If no title, prefix with number in the body
-        if not title:
-            num_run = p.add_run(f"{clause_number}.  ")
-            num_run.bold = True
-            num_run.font.size = Pt(12)
-            num_run.font.name = "Times New Roman"
+        for idx, block in enumerate(blocks):
+            p = doc.add_paragraph()
+            p.space_after = Pt(6)
+            level = block.get("indent", 1)
+            p.paragraph_format.left_indent = Inches(0.5 * level)
+            marker = block.get("marker")
+            if marker:
+                # Hanging indent: marker sits 0.5in left of the wrapped body.
+                p.paragraph_format.first_line_indent = Inches(-0.5)
+                p.paragraph_format.tab_stops.add_tab_stop(Inches(0.5 * level))
+            align = block.get("align")
+            if align == "center":
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif align == "right":
+                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-        # Add the text, handling HTML if present
-        if "<" in resolved:
-            html_to_docx_runs(p, resolved)
-        else:
-            run = p.add_run(resolved)
-            run.font.size = Pt(12)
-            run.font.name = "Times New Roman"
+            # Untitled clauses carry their number on the first line.
+            if idx == 0 and not title:
+                nr = p.add_run(f"{clause_number}.  ")
+                nr.bold = True
+                nr.font.size = Pt(12)
+                nr.font.name = "Times New Roman"
+            if marker:
+                mr = p.add_run(f"{marker}\t")
+                mr.font.size = Pt(12)
+                mr.font.name = "Times New Roman"
+            for text, bold, italic, underline in block["runs"]:
+                run = p.add_run(text)
+                run.font.size = Pt(12)
+                run.font.name = "Times New Roman"
+                if bold or block.get("heading"):
+                    run.bold = True
+                if italic:
+                    run.italic = True
+                if underline:
+                    run.underline = True
 
     # ── Signing Pages ───────────────────────────────────────────────────────
 
@@ -355,12 +792,14 @@ class DocumentGenerator:
         document_type: str,
         signing_data: dict,
         variables: dict,
+        page_break: bool = True,
     ) -> None:
         """
         Create the signing page appropriate for the document type.
         Uses Word tables for precise spacing (critical for legal documents).
         """
-        doc.add_page_break()
+        if page_break:
+            doc.add_page_break()
 
         if document_type in WILL_TYPES:
             self._signing_page_will(doc, document_type, signing_data, variables)
@@ -376,123 +815,107 @@ class DocumentGenerator:
         signing_data: dict,
         variables: dict,
     ) -> None:
-        """Testimonium block for wills with witness attestation."""
+        """Precedent-style testimonium with the witnesses beside the attestation."""
         testator_name = (
             variables.get("testatorFullName")
             or variables.get("testator_full_name")
             or "[TESTATOR NAME]"
         )
-        pronoun = variables.get("pronoun", "his/her")
         if document_type == "probate_will":
-            will_type_label = "Primary"
+            will_type_label = "Probate Will"
         elif document_type == "non_probate_will":
-            will_type_label = "Non-Probate"
+            will_type_label = "Non-Probate Will"
         else:
-            will_type_label = ""  # single_will — no qualifier
+            will_type_label = "Will"
         num_pages = signing_data.get("numberOfPages", variables.get("numberOfPages", "[__]"))
 
-        # Testimonium heading
         p = doc.add_paragraph()
         p.space_before = Pt(24)
         run = p.add_run("TESTIMONIUM")
         run.bold = True
+        run.underline = True
         run.font.size = Pt(14)
         run.font.name = "Times New Roman"
+        p.paragraph_format.keep_with_next = True
 
-        # Attestation table: left column = text with ), right column = signature
-        table = doc.add_table(rows=7, cols=2)
+        p = doc.add_paragraph()
+        p.paragraph_format.keep_with_next = True
+        run = p.add_run(
+            f"I have signed this, my {will_type_label}, written upon {num_pages} pages, "
+            "including this page, this ______ day of ____________________, 20____."
+        )
+        run.font.size = Pt(11)
+        run.font.name = "Times New Roman"
+
+        # The precedent keeps the attestation at left, the testator signature at
+        # right, and both witness blocks directly beneath the attestation.
+        table = doc.add_table(rows=3, cols=2)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
         table.columns[0].width = Inches(3.5)
         table.columns[1].width = Inches(3.0)
-
-        # Remove table borders
         self._remove_table_borders(table)
 
-        # Row 0
-        left_lines = [
-            f"SIGNED, PUBLISHED AND DECLARED  )",
-            f"by the said Testator, {testator_name.upper()}  )",
-            f"as {pronoun} {(will_type_label + ' ') if will_type_label else ''}  )",
-            f"Will, consisting of {num_pages} pages  )",
-            f"including this page, in the  )",
-            f"presence of us, both present  )",
-            f"at the same time, who at  )",
-            f"{pronoun} request, in {pronoun} presence  )",
-            f"and in the presence of each  )",
-            f"other have hereunto subscribed  )",
-            f"our names as witnesses.  )",
+        attestation_lines = [
+            "SIGNED, PUBLISHED AND DECLARED",
+            f"by {testator_name.upper()} as the Testator's",
+            f"{will_type_label}, in the presence of both of us,",
+            "present at the same time, who, at the Testator's",
+            "request and in the presence of the Testator and",
+            "each other, have signed our names as witnesses.",
         ]
+        cell = table.cell(0, 0)
+        cell.text = ""
+        p = cell.paragraphs[0]
+        for line in attestation_lines:
+            run = p.add_run(f"{line:<57})")
+            run.font.size = Pt(10)
+            run.font.name = "Times New Roman"
+            run.add_break()
 
-        # Fill left column across rows
-        for i, line in enumerate(left_lines):
-            if i < len(table.rows):
-                cell = table.cell(i, 0)
-                cell.text = ""
-                p = cell.paragraphs[0]
-                run = p.add_run(line)
-                run.font.size = Pt(11)
-                run.font.name = "Times New Roman"
-
-        # If we need more rows, add them
-        while len(left_lines) > len(table.rows):
-            table.add_row()
-
-        # Re-fill if rows were added
-        if len(left_lines) > 7:
-            for i in range(7, len(left_lines)):
-                cell = table.cell(i, 0)
-                cell.text = ""
-                p = cell.paragraphs[0]
-                run = p.add_run(left_lines[i])
-                run.font.size = Pt(11)
-                run.font.name = "Times New Roman"
-
-        # Right column: signature line in the middle row area
-        sig_row = 4
-        cell = table.cell(sig_row, 1)
+        cell = table.cell(0, 1)
         cell.text = ""
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(66)
         run = p.add_run("_" * 30)
         run.font.size = Pt(11)
         run.font.name = "Times New Roman"
-
-        cell = table.cell(sig_row + 1, 1)
-        cell.text = ""
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run.add_break()
         run = p.add_run(testator_name.upper())
         run.bold = True
-        run.font.size = Pt(11)
+        run.font.size = Pt(10)
+        run.font.name = "Times New Roman"
+        run.add_break()
+        run = p.add_run("Testator")
+        run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
-        doc.add_paragraph()  # spacer
+        for row_idx, witness_number in enumerate((1, 2), start=1):
+            cell = table.cell(row_idx, 0)
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(10)
+            witness_name = variables.get(f"witness{witness_number}Name") or "_" * 28
+            witness_address = variables.get(f"witness{witness_number}Address") or "_" * 28
+            witness_occupation = variables.get(f"witness{witness_number}Occupation") or "_" * 28
+            witness_label = "First" if witness_number == 1 else "Second"
+            lines = [
+                ("_" * 34, False),
+                (f"{witness_label} witness signature", False),
+                (f"Printed name: {witness_name}", False),
+                (f"Address: {witness_address}", False),
+                (f"Occupation: {witness_occupation}", False),
+            ]
+            for line, bold in lines:
+                run = p.add_run(line)
+                run.bold = bold
+                run.font.size = Pt(10)
+                run.font.name = "Times New Roman"
+                run.add_break()
 
-        # Witness block
-        p = doc.add_paragraph()
-        run = p.add_run("WITNESSES:")
-        run.bold = True
-        run.font.size = Pt(12)
-        run.font.name = "Times New Roman"
-
-        doc.add_paragraph()
-
-        # Two witness blocks side by side
-        w_table = doc.add_table(rows=4, cols=2)
-        w_table.columns[0].width = Inches(3.25)
-        w_table.columns[1].width = Inches(3.25)
-        self._remove_table_borders(w_table)
-
-        for col in range(2):
-            labels = ["Name:", "Occupation:", "Address:", ""]
-            for row_idx, label in enumerate(labels):
-                cell = w_table.cell(row_idx, col)
-                cell.text = ""
-                p = cell.paragraphs[0]
-                if label:
-                    run = p.add_run(f"{label}  {'_' * 25}")
-                    run.font.size = Pt(11)
-                    run.font.name = "Times New Roman"
+            # Keep the right side intentionally empty, as in the precedent.
+            table.cell(row_idx, 1).text = ""
 
     def _signing_page_poa(
         self,
@@ -501,7 +924,7 @@ class DocumentGenerator:
         signing_data: dict,
         variables: dict,
     ) -> None:
-        """Signature block for Powers of Attorney."""
+        """Execution block for Powers of Attorney with two witness signatures."""
         grantor_name = (
             variables.get("testatorFullName")
             or variables.get("testator_full_name")
@@ -518,8 +941,10 @@ class DocumentGenerator:
         p.space_before = Pt(24)
         run = p.add_run("EXECUTION")
         run.bold = True
+        run.underline = True
         run.font.size = Pt(14)
         run.font.name = "Times New Roman"
+        p.paragraph_format.keep_with_next = True
 
         # Execution text
         p = doc.add_paragraph()
@@ -529,13 +954,14 @@ class DocumentGenerator:
             f"my hand and seal to this {doc_label}."
         )
         run = p.add_run(text)
-        run.font.size = Pt(12)
+        run.font.size = Pt(11)
         run.font.name = "Times New Roman"
+        p.paragraph_format.keep_with_next = True
 
-        doc.add_paragraph()
-
-        # Signature table
-        table = doc.add_table(rows=5, cols=2)
+        # Testator/grantor line above two complete witness blocks.
+        table = doc.add_table(rows=3, cols=2)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.autofit = False
         table.columns[0].width = Inches(3.5)
         table.columns[1].width = Inches(3.0)
         self._remove_table_borders(table)
@@ -557,31 +983,37 @@ class DocumentGenerator:
         run.font.size = Pt(11)
         run.font.name = "Times New Roman"
 
-        cell = table.cell(1, 1)
-        cell.text = ""
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run.add_break()
         run = p.add_run(grantor_name.upper())
         run.bold = True
-        run.font.size = Pt(11)
+        run.font.size = Pt(10)
+        run.font.name = "Times New Roman"
+        run.add_break()
+        run = p.add_run("Grantor")
+        run.font.size = Pt(10)
         run.font.name = "Times New Roman"
 
-        doc.add_paragraph()
-
-        # Witness block
-        p = doc.add_paragraph()
-        run = p.add_run("WITNESS:")
-        run.bold = True
-        run.font.size = Pt(12)
-        run.font.name = "Times New Roman"
-
-        doc.add_paragraph()
-
-        for label in ["Name:", "Occupation:", "Address:"]:
-            p = doc.add_paragraph()
-            run = p.add_run(f"{label}  {'_' * 40}")
-            run.font.size = Pt(11)
-            run.font.name = "Times New Roman"
+        for row_idx, witness_number in enumerate((1, 2), start=1):
+            witness_name = variables.get(f"witness{witness_number}Name") or "_" * 24
+            witness_address = variables.get(f"witness{witness_number}Address") or "_" * 24
+            witness_occupation = variables.get(f"witness{witness_number}Occupation") or "_" * 24
+            witness_label = "First" if witness_number == 1 else "Second"
+            cell = table.cell(row_idx, 0)
+            cell.text = ""
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(14)
+            for line in (
+                "_" * 34,
+                f"{witness_label} witness signature",
+                f"Printed name: {witness_name}",
+                f"Address: {witness_address}",
+                f"Occupation: {witness_occupation}",
+            ):
+                run = p.add_run(line)
+                run.font.size = Pt(10)
+                run.font.name = "Times New Roman"
+                run.add_break()
+            table.cell(row_idx, 1).text = ""
 
     def _signing_page_affidavit(
         self,
@@ -610,7 +1042,7 @@ class DocumentGenerator:
             or variables.get("city_name")
             or "[City]"
         )
-        province = variables.get("province", "Ontario")
+        province = resolve_jurisdiction(variables.get("province")).name
 
         # Heading
         p = doc.add_paragraph()
@@ -916,19 +1348,19 @@ class DocumentGenerator:
 
     # ── Document Styles ─────────────────────────────────────────────────────
 
-    def _set_document_styles(self, doc: Document) -> None:
+    def _set_document_styles(self, doc: Document, compact: bool = False) -> None:
         """Set base document styles: font, margins, line spacing."""
         style = doc.styles["Normal"]
         style.font.name = "Times New Roman"
-        style.font.size = Pt(12)
-        style.paragraph_format.line_spacing = 1.5
+        style.font.size = Pt(11 if compact else 12)
+        style.paragraph_format.line_spacing = 1.15 if compact else 1.5
 
-        # Margins: 1 inch all around
+        margin = Inches(0.75 if compact else 1)
         for section in doc.sections:
-            section.top_margin = Inches(1)
-            section.bottom_margin = Inches(1)
-            section.left_margin = Inches(1)
-            section.right_margin = Inches(1)
+            section.top_margin = margin
+            section.bottom_margin = margin
+            section.left_margin = margin
+            section.right_margin = margin
 
         # Heading styles
         for level in range(1, 4):

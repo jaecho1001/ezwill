@@ -10,7 +10,11 @@ import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { AiFlagsSummary } from '@/components/dashboard/ai-flags-summary'
 import { EstateOverview } from '@/components/dashboard/estate-overview'
-import { getDraft, createReviewLink } from '@/lib/api/drafts'
+import { getDraft, createReviewLink, invokeQuickDraft, type QuickDraftResult } from '@/lib/api/drafts'
+import { getAuthHeaders } from '@/lib/auth'
+import { buildDefaultSelections } from '@/lib/will-documents/index'
+import { serializeSelectionsForSave } from '@/lib/will-documents/clause-serialization'
+import type { WillDocumentType } from '@/types/will-document'
 import { cn } from '@/lib/utils'
 
 const SECTION_LABELS = [
@@ -114,7 +118,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'answers', label: 'Questionnaire Answers' },
   { id: 'documents', label: 'Documents' },
-  { id: 'tier2', label: 'Tier 2 Config' },
+  { id: 'tier2', label: 'Will Editor' },
 ]
 
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -130,6 +134,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [reviewDeliveryStatus, setReviewDeliveryStatus] = useState<{ email: boolean; sms: boolean } | null>(null)
   const [reviewSendEmail, setReviewSendEmail] = useState(true)
   const [reviewSendSms, setReviewSendSms] = useState(true)
+  const [aiDrafting, setAiDrafting] = useState(false)
+  const [aiDraftResult, setAiDraftResult] = useState<QuickDraftResult | null>(null)
+  const [aiDraftError, setAiDraftError] = useState<string | null>(null)
 
   const handleSendReviewLink = useCallback(async () => {
     setReviewLinkLoading(true)
@@ -160,6 +167,60 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     }
   }, [reviewLink])
 
+  const handleAiDraft = useCallback(async () => {
+    if (!draft) return
+    setAiDrafting(true)
+    setAiDraftResult(null)
+    setAiDraftError(null)
+    try {
+      const d = draft as unknown as Record<string, unknown>
+      const clientData: Record<string, unknown> = {
+        client_first_name: draft.client_first_name,
+        client_last_name: draft.client_last_name,
+        about_you: d.about_you,
+        your_family: d.your_family,
+        your_estate: d.your_estate,
+        your_arrangements: d.your_arrangements,
+        poa_property: d.poa_property,
+        poa_personal_care: d.poa_personal_care,
+        assets: d.assets,
+        people: d.people,
+      }
+      const result = await invokeQuickDraft(id, clientData)
+      if (result) {
+        // The engine enables the recommended documents; persist default clause
+        // selections for each so the Will Editor opens populated and the docs
+        // can generate immediately.
+        const docTypes = result.saved_document_types ?? result.document_types ?? []
+        const saveResults = await Promise.all(
+          docTypes.map(async (dt) => {
+            const clauses = buildDefaultSelections(dt as WillDocumentType)
+            if (clauses.length === 0) return true
+            try {
+              const r = await fetch(`/api/drafts/${id}/clauses/${dt}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ clauses: serializeSelectionsForSave(clauses) }),
+              })
+              return r.ok
+            } catch {
+              return false
+            }
+          }),
+        )
+        if (saveResults.every(Boolean)) {
+          setAiDraftResult(result)
+        } else {
+          setAiDraftError('AI recommended documents, but some clause selections failed to save. Please retry.')
+        }
+      } else {
+        setAiDraftError('AI draft failed. Please try again.')
+      }
+    } finally {
+      setAiDrafting(false)
+    }
+  }, [id, draft])
+
   useEffect(() => {
     getDraft(id)
       .then((res) => {
@@ -187,7 +248,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1B2A4A] border-t-transparent" />
       </div>
     )
   }
@@ -252,6 +313,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             {draft.client_email && <span>{draft.client_email}</span>}
             {draft.client_phone && <span>{draft.client_phone}</span>}
             <Badge variant="secondary" className="uppercase text-xs">{draft.language}</Badge>
+            {(() => {
+              const p = draft as unknown as { payment_status?: string; payment_tier?: string }
+              const ps = p.payment_status || 'unpaid'
+              const cls = ps === 'paid' ? 'bg-[#7BA68C]/15 text-[#5f8a70]' : ps === 'pending' ? 'bg-[#C9A84C]/15 text-[#8a6a1e]' : 'bg-gray-100 text-gray-500'
+              const label = ps === 'paid' ? `Paid${p.payment_tier ? ' · ' + p.payment_tier : ''}` : ps === 'pending' ? 'Payment pending' : 'Unpaid'
+              return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${cls}`}>{label}</span>
+            })()}
           </div>
         </div>
         <StatusBadge status={draft.status} />
@@ -266,7 +334,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
           <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
             <div
-              className="h-full rounded-full bg-amber-500 transition-all"
+              className="h-full rounded-full bg-[#1B2A4A] transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -274,7 +342,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             {SECTION_LABELS.map((s, i) => (
               <span
                 key={s.key}
-                className={draft.completed_steps.includes(i) ? 'text-amber-600 font-medium' : ''}
+                className={draft.completed_steps.includes(i) ? 'text-[#7BA68C] font-medium' : ''}
               >
                 {s.label}
               </span>
@@ -284,7 +352,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       </Card>
 
       {/* Action Buttons */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={handleAiDraft} disabled={aiDrafting} className="bg-[#C9A84C] text-white hover:bg-[#b8973f]">
+          {aiDrafting ? (
+            <svg className="mr-1.5 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+          )}
+          {aiDrafting ? 'Drafting…' : 'AI Draft'}
+        </Button>
         <Link href={`/dashboard/clients/${id}/design-sheet`}>
           <Button variant="outline">
             <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -296,10 +377,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         <Link href={`/dashboard/clients/${id}/tier2`}>
           <Button variant="outline">
             <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
-            Configure Tier 2
+            Open Will Editor
           </Button>
         </Link>
         <Link href={`/dashboard/clients/${id}/documents`}>
@@ -308,6 +388,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
             Generate Documents
+          </Button>
+        </Link>
+        <Link href={`/dashboard/clients/${id}/signing`}>
+          <Button variant="outline">
+            <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Signing Ceremony
           </Button>
         </Link>
         <Button
@@ -321,6 +409,40 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           {reviewLinkLoading ? 'Generating...' : 'Send Review Link'}
         </Button>
       </div>
+
+      {/* AI Draft result */}
+      {aiDraftError && (
+        <div className="rounded-xl border border-[#C9A84C]/40 bg-[#C9A84C]/10 p-4 text-sm text-[#8a6a1e]">{aiDraftError}</div>
+      )}
+      {aiDraftResult && (
+        <Card className="border-[#C9A84C]/40">
+          <CardContent className="space-y-3 p-6">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-[#C9A84C]/15 px-2.5 py-1 text-xs font-semibold text-[#8a6a1e]">
+                AI Draft · {aiDraftResult.needs_dual_will ? 'Dual Will recommended' : 'Single Will'}
+              </span>
+              {aiDraftResult.engine === 'rules' && (
+                <span className="text-xs text-gray-400">rules engine</span>
+              )}
+            </div>
+            <p className="text-sm leading-relaxed text-[#2D2D2D]/80">{aiDraftResult.reasoning}</p>
+            {aiDraftResult.saved_document_types && aiDraftResult.saved_document_types.length > 0 && (
+              <p className="text-sm text-gray-600">
+                <span className="font-medium text-[#1B2A4A]">Documents prepared:</span>{' '}
+                {aiDraftResult.saved_document_types.map((t) => t.replace(/_/g, ' ')).join(', ')}
+              </p>
+            )}
+            <Link href={`/dashboard/clients/${id}/tier2`}>
+              <Button className="mt-1">
+                Review in Will Editor
+                <svg className="ml-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Review Link Delivery Options */}
       <Card>
@@ -370,7 +492,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                   {reviewDeliveryStatus.email && <span className="ml-1 text-green-600">✓ Email sent</span>}
                   {reviewDeliveryStatus.sms && <span className="ml-1 text-green-600">✓ SMS sent</span>}
                   {!reviewDeliveryStatus.email && !reviewDeliveryStatus.sms && (
-                    <span className="ml-1 text-amber-600">⚠ Copy link manually (no channels sent)</span>
+                    <span className="ml-1 text-[#8a6a1e]">⚠ Copy link manually (no channels sent)</span>
                   )}
                 </p>
               )}
@@ -401,7 +523,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               className={cn(
                 'whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors',
                 activeTab === tab.id
-                  ? 'border-amber-500 text-amber-600'
+                  ? 'border-[#1B2A4A] text-[#1B2A4A]'
                   : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
               )}
             >
@@ -456,15 +578,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       {activeTab === 'tier2' && (
         <div className="space-y-4">
           <p className="text-sm text-gray-500">
-            Tier 2 clause configuration is available on the dedicated configuration page.
+            Review and edit the clauses for every document (Will, POAs) on the full Will Editor page.
           </p>
           <Link href={`/dashboard/clients/${id}/tier2`}>
             <Button variant="outline">
               <svg className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
-              Go to Tier 2 Config
+              Open Will Editor
             </Button>
           </Link>
         </div>

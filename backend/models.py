@@ -27,6 +27,8 @@ class UpdateDraftRequest(BaseModel):
     completed_steps: Optional[List[int]] = None
     language: Optional[str] = None
     status: Optional[str] = None
+    lawyer_notes: Optional[str] = None
+    design_decisions: Optional[dict] = None
 
 class SubmitDraftRequest(BaseModel):
     draft_id: str
@@ -47,6 +49,22 @@ class SendReviewLinkRequest(BaseModel):
     send_email: bool = True
     send_sms: bool = True
 
+class CustomReminder(BaseModel):
+    id: Optional[str] = None
+    label: str = Field(default='', max_length=120)
+    date: str = Field(default='', max_length=20)
+    recurring: bool = False
+
+class ReminderPreferencesRequest(BaseModel):
+    email_enabled: bool = True
+    sms_enabled: bool = False
+    email: Optional[str] = Field(default=None, max_length=254)
+    phone: Optional[str] = Field(default=None, max_length=40)
+    annual_reminder: bool = True
+    annual_frequency: str = Field(default='yearly', pattern='^(quarterly|biannual|yearly|biennial)$')
+    enabled_life_events: List[str] = Field(default_factory=list)
+    custom_reminders: List[CustomReminder] = Field(default_factory=list)
+
 class CreateLinkResponse(BaseModel):
     token: str
     draft_id: str
@@ -58,6 +76,11 @@ class ClauseSelection(BaseModel):
     clause_id: str
     included: bool = True
     custom_text: Optional[str] = None
+    # Default clause body from the library (with {{placeholders}}). Persisted so
+    # the generator has text for clauses the lawyer never hand-edited.
+    template_text: Optional[str] = None
+    title: Optional[str] = None
+    is_folder: bool = False
     ai_generated: bool = False
     sort_order: int = 0
 

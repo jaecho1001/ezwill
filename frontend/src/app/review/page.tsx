@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { resolveReviewToken, type ReviewData, type ReviewDocument } from '@/lib/api/review'
 
 const DOCUMENT_ICONS: Record<string, string> = {
+  simple_will_short: '\u{1F4DD}',
   single_will: '\u{1F4DC}',
   probate_will: '\u{1F4CB}',
   non_probate_will: '\u{1F4C4}',
@@ -19,7 +20,7 @@ const STATUS_CONFIG = {
   pending: {
     en: 'Pending Your Review',
     ko: '\uAC80\uD1A0 \uB300\uAE30 \uC911',
-    color: 'bg-amber-100 text-amber-800',
+    color: 'bg-[#C9A84C]/15 text-[#8a6a1e]',
   },
   reviewed: {
     en: 'Reviewed',
