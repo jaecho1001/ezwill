@@ -233,10 +233,14 @@ def _append_list(vault: dict, list_path: str, item: dict) -> dict:
 
 # ── Anthropic streaming path ────────────────────────────────────────────────
 async def _stream_with_claude(
-    vault: dict, messages: list[ChatMessage], progress_summary: str
+    vault: dict,
+    messages: list[ChatMessage],
+    progress_summary: str,
+    draft_id: str | None = None,
 ) -> AsyncIterator[bytes]:
     """Drive the Anthropic tool-use loop, yielding SSE frames as events occur."""
     import anthropic
+    from services.ai_usage import record_ai_usage_event
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -262,101 +266,128 @@ async def _stream_with_claude(
     total_output_tokens = 0
     total_cache_read = 0
     total_cache_creation = 0
+    provider_request_count = 0
+    usage_persist_attempted = False
 
-    for iteration in range(MAX_TOOL_ITERATIONS):
-        # Stream the assistant response. We use the streaming API so the UI
-        # can render text deltas as they arrive; tool_use blocks come through
-        # as structured events which we buffer until content_block_stop.
-        async with client.messages.stream(
-            model=MODEL,
-            max_tokens=MAX_OUTPUT_TOKENS,
-            system=system_prompt,
-            tools=TOOLS,
-            messages=conversation,
-        ) as stream:
-            async for event in stream:
-                etype = getattr(event, "type", None)
-                if etype == "content_block_delta":
-                    delta = getattr(event, "delta", None)
-                    if delta and getattr(delta, "type", None) == "text_delta":
-                        yield _sse("text_delta", {"text": delta.text})
-                # tool_use blocks are assembled at content_block_stop; handled
-                # below via the final_message we pull after streaming ends.
-
-            final = await stream.get_final_message()
-
-        # Accumulate token usage from this iteration. `usage` is always
-        # present on a non-streaming-error response; read defensively so
-        # SDK schema drift doesn't crash the route.
-        usage = getattr(final, "usage", None)
-        if usage is not None:
-            total_input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
-            total_output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
-            total_cache_read += int(getattr(usage, "cache_read_input_tokens", 0) or 0)
-            total_cache_creation += int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
-
-        # Record the assistant turn verbatim so the next iteration has full
-        # context (tool_use ids must be referenced in the tool_result).
-        conversation.append({"role": "assistant", "content": final.content})
-
-        # Collect tool uses from the final message.
-        tool_uses = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
-        if not tool_uses:
-            # No tools requested — the assistant is done talking.
-            break
-
-        # Execute each tool, emit SSE, and build tool_result blocks.
-        tool_results: list[dict[str, Any]] = []
-        for tu in tool_uses:
-            tool_call_count += 1
-            name = tu.name
-            tool_input = tu.input or {}
-            yield _sse(
-                "tool_call",
-                {"id": tu.id, "name": name, "input": tool_input},
+    def persist_usage() -> None:
+        if provider_request_count < 1:
+            return
+        try:
+            record_ai_usage_event(
+                provider="anthropic",
+                model=MODEL,
+                feature="intake_chat",
+                draft_id=draft_id,
+                request_count=provider_request_count,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                cache_read_input_tokens=total_cache_read,
+                cache_creation_input_tokens=total_cache_creation,
+                latency_ms=int((time.time() - started) * 1000),
+                metadata={"tool_calls": tool_call_count},
             )
-            result_payload = _execute_tool(name, tool_input, vault)
-            # Emit any client-visible side effect.
-            async for frame in _frames_for_side_effect(name, tool_input, result_payload):
-                yield frame
-            tool_results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tu.id,
-                    "content": json.dumps(result_payload, ensure_ascii=False),
-                }
-            )
+        except Exception:  # noqa: BLE001 - metering cannot break the stream
+            logger.exception("unexpected Claude usage recorder failure")
 
-        # Feed the tool_results back into the conversation and loop.
-        conversation.append({"role": "user", "content": tool_results})
+    try:
+        for _iteration in range(MAX_TOOL_ITERATIONS):
+            # Stream the assistant response. We use the streaming API so the UI
+            # can render text deltas as they arrive; tool_use blocks come through
+            # as structured events which we buffer until content_block_stop.
+            async with client.messages.stream(
+                model=MODEL,
+                max_tokens=MAX_OUTPUT_TOKENS,
+                system=system_prompt,
+                tools=TOOLS,
+                messages=conversation,
+            ) as stream:
+                async for event in stream:
+                    etype = getattr(event, "type", None)
+                    if etype == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        if delta and getattr(delta, "type", None) == "text_delta":
+                            yield _sse("text_delta", {"text": delta.text})
+                    # Tool-use blocks are assembled at content_block_stop and
+                    # handled below from the final message.
 
-    elapsed_ms = int((time.time() - started) * 1000)
-    # Structured billing log — parse-friendly for log aggregators.
-    logger.info(
-        "ai_intake.claude.usage model=%s input=%d output=%d cache_read=%d cache_creation=%d tool_calls=%d elapsed_ms=%d",
-        MODEL,
-        total_input_tokens,
-        total_output_tokens,
-        total_cache_read,
-        total_cache_creation,
-        tool_call_count,
-        elapsed_ms,
-    )
-    yield _sse(
-        "done",
-        {
-            "tool_calls": tool_call_count,
-            "elapsed_ms": elapsed_ms,
-            "source": "claude",
-            "model": MODEL,
-            "usage": {
-                "input_tokens": total_input_tokens,
-                "output_tokens": total_output_tokens,
-                "cache_read_input_tokens": total_cache_read,
-                "cache_creation_input_tokens": total_cache_creation,
+                final = await stream.get_final_message()
+
+            provider_request_count += 1
+            # Accumulate usage from every completed provider response. This
+            # preserves billable partial work if a later tool iteration fails.
+            usage = getattr(final, "usage", None)
+            if usage is not None:
+                total_input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
+                total_output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+                total_cache_read += int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+                total_cache_creation += int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+
+            # Record the assistant turn verbatim so the next iteration has full
+            # context (tool_use ids must be referenced in the tool_result).
+            conversation.append({"role": "assistant", "content": final.content})
+
+            tool_uses = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
+            if not tool_uses:
+                break
+
+            tool_results: list[dict[str, Any]] = []
+            for tu in tool_uses:
+                tool_call_count += 1
+                name = tu.name
+                tool_input = tu.input or {}
+                yield _sse(
+                    "tool_call",
+                    {"id": tu.id, "name": name, "input": tool_input},
+                )
+                result_payload = _execute_tool(name, tool_input, vault)
+                async for frame in _frames_for_side_effect(name, tool_input, result_payload):
+                    yield frame
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": json.dumps(result_payload, ensure_ascii=False),
+                    }
+                )
+
+            conversation.append({"role": "user", "content": tool_results})
+
+        elapsed_ms = int((time.time() - started) * 1000)
+        logger.info(
+            "ai_intake.claude.usage model=%s input=%d output=%d cache_read=%d cache_creation=%d tool_calls=%d elapsed_ms=%d",
+            MODEL,
+            total_input_tokens,
+            total_output_tokens,
+            total_cache_read,
+            total_cache_creation,
+            tool_call_count,
+            elapsed_ms,
+        )
+
+        # Persist before the terminal SSE frame: clients commonly close a
+        # stream as soon as `done` arrives, so work after that yield is unsafe.
+        persist_usage()
+        usage_persist_attempted = True
+        yield _sse(
+            "done",
+            {
+                "tool_calls": tool_call_count,
+                "elapsed_ms": elapsed_ms,
+                "source": "claude",
+                "model": MODEL,
+                "usage": {
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "cache_read_input_tokens": total_cache_read,
+                    "cache_creation_input_tokens": total_cache_creation,
+                },
             },
-        },
-    )
+        )
+    finally:
+        # If a later tool iteration fails or the client disconnects after at
+        # least one completed response, retain the provider-billed partial use.
+        if not usage_persist_attempted and provider_request_count > 0:
+            persist_usage()
 
 
 async def _frames_for_side_effect(
@@ -541,7 +572,10 @@ async def intake_chat(
             if use_claude:
                 try:
                     async for frame in _stream_with_claude(
-                        vault, body.messages, body.progress_summary or ""
+                        vault,
+                        body.messages,
+                        body.progress_summary or "",
+                        draft_id=body.draft_id,
                     ):
                         yield frame
                     return

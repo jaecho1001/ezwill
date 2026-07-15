@@ -70,6 +70,14 @@ jobs:
           python scripts/run_migrations.py
           python scripts/run_migrations.py
       - run: pytest -q
+      # The main suite globally mocks psycopg2 (tests/test_routes.py), so the app
+      # imports without a driver. The real-DB usage test must run in its OWN
+      # process, where psycopg2 is real, against the migrated firm_ci schema.
+      - name: Real-DB usage integration test
+        env:
+          DATABASE_URL: postgresql://ezwill:ezwill_test@localhost:5432/caselawvision
+          DEFAULT_SCHEMA: firm_ci
+        run: pytest tests/test_ai_usage_realdb.py -q
 
   containers:
     name: containers (compose config · image builds)

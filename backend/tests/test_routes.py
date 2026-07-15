@@ -112,6 +112,10 @@ class TestRouteRegistration:
         assert '/api/legal-library/clauses/{clause_key}' in paths
         assert '/api/legal-library/versions/{version_id}/approve' in paths
 
+    def test_usage_route_registered(self):
+        paths = [r['path'] for r in get_routes()]
+        assert '/api/usage' in paths
+
 
 class TestRouteHTTPMethods:
     """Verify correct HTTP methods are assigned to routes."""
@@ -172,6 +176,9 @@ class TestRouteHTTPMethods:
 
     def test_update_document_config_is_put(self):
         assert 'PUT' in self._methods_for_path('/api/drafts/{draft_id}/documents/{document_type}')
+
+    def test_usage_report_is_get(self):
+        assert 'GET' in self._methods_for_path('/api/usage')
 
 
 class TestRoutePrefixes:
