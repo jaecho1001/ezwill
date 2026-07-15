@@ -47,6 +47,9 @@ services:
       AI_INTAKE_RATE_MAX_REQS: ${AI_INTAKE_RATE_MAX_REQS:-20}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?set DASHBOARD_PASSWORD in .env}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?set AUTH_SESSION_SECRET in .env — openssl rand -hex 32}
+      # The HttpOnly dashboard session cookie is Secure (HTTPS-only) by default;
+      # local http dev overrides this to false in docker-compose.override.yml.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
       FIRM_EMAIL: ${FIRM_EMAIL:-lawyers@vaturicho.com}
       FIRM_NAME: ${FIRM_NAME:-Vaturi & Cho LLP}
       FIRM_PHONE: ${FIRM_PHONE:-+14166614529}

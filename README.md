@@ -119,7 +119,7 @@ frontend origin used by CORS.
 | `lib/i18n/en.ts` + `ko.ts` | Full bilingual EN/KO dictionaries |
 | `lib/api/drafts.ts` | API client — drafts, links, magic links, review links (with auth headers) |
 | `lib/api/review.ts` | Review portal API — token resolution, preview, approve, comment |
-| `lib/auth.ts` | Session management — login, logout, Bearer token, getAuthHeaders() |
+| `lib/auth.ts` | Session management — HttpOnly cookie login/logout and route guard |
 | `lib/storage.ts` | localStorage persistence |
 
 ### Backend — 35 API Routes, 7 Services
@@ -130,15 +130,15 @@ frontend origin used by CORS.
 |------------|--------|-----------|------|
 | Health | `/`, `/ready` | 2 | No |
 | Auth | `/api/auth` | login, change-password | No |
-| Drafts | `/api/drafts` | CRUD + submit (5) | Bearer token |
+| Drafts | `/api/drafts` | CRUD + submit (5) | Dashboard cookie or Bearer token |
 | Magic Links | `/api/links` | create, resolve, revoke (3) | No (client-facing) |
-| Clauses | `/api/drafts/{id}/clauses` | get-all, get, save, reset (4) | Bearer token |
-| Document Config | `/api/drafts/{id}/documents` | list, update (2) | Bearer token |
-| Document Generation | `/api/documents` | generate, generate-all, preview, list (4) | Bearer token (preview: no) |
+| Clauses | `/api/drafts/{id}/clauses` | get-all, get, save, reset (4) | Dashboard cookie or Bearer token |
+| Document Config | `/api/drafts/{id}/documents` | list, update (2) | Dashboard cookie or Bearer token |
+| Document Generation | `/api/documents` | generate, generate-all, preview, list (4) | Dashboard cookie or Bearer token (preview: no) |
 | Review | `/api/review` | token-resolve, status, preview, approve, comment, create-link (6) | No (client-facing) |
-| Export | `/api/export` | assets CSV, liabilities CSV, estate summary CSV (3) | Bearer token |
+| Export | `/api/export` | assets CSV, liabilities CSV, estate summary CSV (3) | Dashboard cookie or Bearer token |
 | Agent | `/agents/will/invoke` | 4 capabilities (draft_will, get_draft_status, run_ai_flags, quick_draft) | No (internal) |
-| AI Usage | `/api/usage` | date-filtered totals, daily trend, model breakdown, recent events | Dashboard Bearer token |
+| AI Usage | `/api/usage` | date-filtered totals, daily trend, model breakdown, recent events | Dashboard cookie or Bearer token |
 | OpenAPI | `/docs`, `/redoc`, `/openapi.json` | 3 | No |
 
 **Services**

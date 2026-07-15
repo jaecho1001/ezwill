@@ -1,6 +1,6 @@
 """Simple password-based auth for the EZWill lawyer dashboard."""
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from pydantic import BaseModel
 from dataclasses import dataclass
 from typing import Optional
@@ -17,10 +17,40 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Legacy in-memory tokens remain recognized during rolling upgrades. Newly
 # issued sessions are signed and therefore work across workers and restarts.
 _active_tokens: dict = {}
+_revoked_tokens: dict[str, float] = {}
 _login_attempts: dict[str, list[float]] = {}
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 5
 SESSION_SECONDS = 24 * 60 * 60
+
+# The dashboard session travels in an HttpOnly cookie so an XSS payload can't
+# read or exfiltrate it (unlike a JS-readable cookie or Authorization header
+# stored in the SPA). A second, non-sensitive readable flag lets the client-side
+# route guard know it is logged in without ever seeing the token itself.
+SESSION_COOKIE = "ew_session"
+AUTHED_FLAG_COOKIE = "ew_authed"
+
+
+def _cookie_secure() -> bool:
+    """Secure cookies require HTTPS. Prod = true; local http dev sets false."""
+    return os.getenv("SESSION_COOKIE_SECURE", "true").strip().lower() != "false"
+
+
+def _set_session_cookies(response: Response, token: str) -> None:
+    secure = _cookie_secure()
+    response.set_cookie(
+        SESSION_COOKIE, token, max_age=SESSION_SECONDS, httponly=True,
+        secure=secure, samesite="lax", path="/",
+    )
+    response.set_cookie(
+        AUTHED_FLAG_COOKIE, "1", max_age=SESSION_SECONDS, httponly=False,
+        secure=secure, samesite="lax", path="/",
+    )
+
+
+def _clear_session_cookies(response: Response) -> None:
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(AUTHED_FLAG_COOKIE, path="/")
 
 
 @dataclass(frozen=True)
@@ -45,7 +75,27 @@ def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     return authorization[7:]
 
 
+def _dashboard_token(request: Optional[Request], authorization: Optional[str]) -> Optional[str]:
+    """Resolve the dashboard session token.
+
+    Prefer the HttpOnly session cookie (browser dashboard); fall back to the
+    Authorization: Bearer header for API clients — tests, the function-test
+    sweep, and any server-to-server caller.
+    """
+    if request is not None:
+        cookie_token = request.cookies.get(SESSION_COOKIE)
+        if cookie_token:
+            return cookie_token
+    return _extract_bearer_token(authorization)
+
+
 def _is_active_dashboard_token(token: str) -> bool:
+    revoked_until = _revoked_tokens.get(token)
+    if revoked_until:
+        if time.time() < revoked_until:
+            return False
+        _revoked_tokens.pop(token, None)
+
     expiry = _active_tokens.get(token)
     if expiry and time.time() <= expiry:
         return True
@@ -61,6 +111,21 @@ def _is_active_dashboard_token(token: str) -> bool:
         return payload.get("purpose") == "dashboard" and time.time() < payload["exp"]
     except (ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
+
+
+def _revoke_dashboard_token(token: str) -> None:
+    """Revoke a session for the lifetime remaining on its token."""
+    expiry = _active_tokens.pop(token, None)
+    if expiry is None:
+        try:
+            encoded, _signature = token.split(".", 1)
+            padding = "=" * (-len(encoded) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+            expiry = float(payload["exp"])
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return
+    if expiry > time.time():
+        _revoked_tokens[token] = expiry
 
 
 def _configured_password() -> str | None:
@@ -135,11 +200,15 @@ def _record_failed_login(client: str) -> None:
     _login_attempts.setdefault(client, []).append(time.time())
 
 
-def verify_dashboard_token(authorization: str = Header(None)) -> str:
-    """FastAPI dependency that validates Bearer token on dashboard routes."""
-    token = _extract_bearer_token(authorization)
+def verify_dashboard_token(request: Request = None, authorization: str = Header(None)) -> str:
+    """FastAPI dependency that validates the dashboard session (cookie or Bearer).
+
+    `request` defaults to None so the dependency can also be called directly in
+    unit tests; FastAPI injects the real Request on routed calls.
+    """
+    token = _dashboard_token(request, authorization)
     if not token:
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
     if not _is_active_dashboard_token(token):
         raise HTTPException(status_code=401, detail="Token expired or invalid")
     return token
@@ -150,8 +219,8 @@ def verify_client_or_dashboard_access(
     authorization: Optional[str] = Header(None),
     x_magic_token: Optional[str] = Header(None),
 ) -> AuthContext:
-    """Validate dashboard bearer token or client magic-link token."""
-    token = _extract_bearer_token(authorization)
+    """Validate dashboard session (cookie or bearer) or client magic-link token."""
+    token = _dashboard_token(request, authorization)
     if token:
         if _is_active_dashboard_token(token):
             return AuthContext(kind="dashboard", token=token)
@@ -200,19 +269,21 @@ def assert_auth_context_can_access_draft(ctx: AuthContext, draft_id: str) -> Aut
 
 
 def verify_agent_or_dashboard_token(
+    request: Request = None,
     authorization: Optional[str] = Header(None),
     x_agent_token: Optional[str] = Header(None),
 ) -> AuthContext:
-    """Validate dashboard bearer auth or a server-to-server agent token.
+    """Validate dashboard auth (cookie or bearer) or a server-to-server agent token.
 
     AGENT_API_TOKEN is optional so local dashboard-only development keeps
     working. When set, callers may provide it as either Bearer or X-Agent-Token.
     """
-    bearer_token = _extract_bearer_token(authorization)
-    if bearer_token and _is_active_dashboard_token(bearer_token):
-        return AuthContext(kind="dashboard", token=bearer_token)
+    dashboard_token = _dashboard_token(request, authorization)
+    if dashboard_token and _is_active_dashboard_token(dashboard_token):
+        return AuthContext(kind="dashboard", token=dashboard_token)
 
     configured_agent_token = os.getenv("AGENT_API_TOKEN", "")
+    bearer_token = _extract_bearer_token(authorization)
     provided_agent_token = x_agent_token or bearer_token
     if (
         configured_agent_token
@@ -225,7 +296,7 @@ def verify_agent_or_dashboard_token(
 
 
 @router.post("/login")
-async def login(req: LoginRequest, request: Request):
+async def login(req: LoginRequest, request: Request, response: Response):
     client = request.client.host if request.client else "unknown"
     _check_rate_limit(client)
     configured = _configured_password()
@@ -239,7 +310,22 @@ async def login(req: LoginRequest, request: Request):
         token = _issue_session()
     except ValueError as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {"token": token, "expires_in": SESSION_SECONDS}
+    # The token is deliberately not returned in the JSON body: a browser response
+    # body is readable by JavaScript, which would defeat the HttpOnly boundary.
+    # API clients should retain the Set-Cookie value in a cookie jar. Existing
+    # Bearer-token verification remains available for trusted server callers.
+    _set_session_cookies(response, token)
+    return {"expires_in": SESSION_SECONDS}
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response):
+    """Revoke the presented session and clear its cookies."""
+    token = _dashboard_token(request, request.headers.get("authorization"))
+    if token and _is_active_dashboard_token(token):
+        _revoke_dashboard_token(token)
+    _clear_session_cookies(response)
+    return {"message": "Logged out"}
 
 
 @router.post("/change-password")
