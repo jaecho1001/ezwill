@@ -31,8 +31,8 @@ Vercel serverless functions are the wrong shape for this backend, for two concre
 
 ## 2. Supabase (database)
 
-1. Create a Supabase project (choose the **Canada / us-east** region closest to Ontario for latency).
-2. Get the **connection string**. Use the **pooled** connection (Supavisor, port 6543) for the app — the backend already pools, but Supabase's pooler protects the DB from connection storms. Keep a **direct** connection string (port 5432) for running migrations.
+1. Create a Supabase project in **Canada Central (`ca-central-1`)**, the closest available region to Ontario.
+2. Get both connection strings. For the persistent container backend, use the **Supavisor session-mode pooler** (port 5432); it is intended for long-lived application processes and works with the backend's `ThreadedConnectionPool`. Do not use transaction mode (port 6543), which Supabase targets at temporary/serverless clients and which does not preserve session state between transactions. Keep the **direct** connection string (also port 5432, but on the project's `db.*` host) for migrations and administrative work. Copy the exact hosts from Supabase's Connect panel rather than distinguishing them by port alone.
 3. **Tenant schema:** migrations run against schema `firm_demo` (each file starts `SET search_path TO firm_demo;`, rewritten per-tenant by `scripts/run_migrations.py`). Supabase's default schema is `public`; our app uses `firm_demo`. Create it first:
    ```sql
    CREATE SCHEMA IF NOT EXISTS firm_demo;
@@ -53,7 +53,7 @@ Vercel serverless functions are the wrong shape for this backend, for two concre
 1. `fly launch` from `backend/` (it has a Dockerfile). No Postgres addon — point at Supabase.
 2. Set secrets (see §4):
    ```bash
-   fly secrets set DATABASE_URL="postgresql://…@…:6543/postgres" \
+   fly secrets set DATABASE_URL="postgresql://postgres.<project-ref>:…@<region>.pooler.supabase.com:5432/postgres" \
      DEFAULT_SCHEMA=firm_demo \
      AUTH_SESSION_SECRET="…" DASHBOARD_PASSWORD="…" \
      ANTHROPIC_API_KEY="…" OPENAI_API_KEY="…" \
@@ -104,7 +104,7 @@ Also close before launch:
 ## 6. Deploy order (runbook)
 
 1. **Supabase**: create project → create `firm_demo` schema → run migrations (direct conn) → verify `ew_schema_migrations` has 30–36.
-2. **Backend**: deploy container to Fly → set secrets (Supabase pooled URL, fresh `AUTH_SESSION_SECRET`, rotated `DASHBOARD_PASSWORD`, API keys, `CORS_ALLOW_ORIGINS`, `SESSION_COOKIE_SECURE=true`) → confirm `GET /` healthy → confirm `GET /api/payments/tiers` returns 200.
+2. **Backend**: deploy container to Fly → set secrets (Supabase **session-mode** pooled URL, fresh `AUTH_SESSION_SECRET`, rotated `DASHBOARD_PASSWORD`, API keys, `CORS_ALLOW_ORIGINS`, `SESSION_COOKIE_SECURE=true`) → confirm `GET /` healthy → confirm `GET /api/payments/tiers` returns 200.
 3. **Frontend**: import repo to Vercel → set `NEXT_PUBLIC_API_URL=https://<backend>` (Production) → deploy.
 4. **Smoke test on the live URLs** (mirror the local 30/30 sweep):
    - Landing loads; `/dashboard/login` → login with the rotated password sets the HttpOnly cookie.
