@@ -29,6 +29,11 @@ class UpdateDraftRequest(BaseModel):
     status: Optional[str] = None
     lawyer_notes: Optional[str] = None
     design_decisions: Optional[dict] = None
+    # Conversational AI-intake snapshot (the client's WillVault) and the
+    # contact info collected on the summary page's send-to-lawyer flow.
+    vault: Optional[dict] = None
+    client_email: Optional[str] = None
+    client_phone: Optional[str] = None
 
 class SubmitDraftRequest(BaseModel):
     draft_id: str

@@ -152,6 +152,34 @@ export async function saveDraftToServer(
   }
 }
 
+// Sync the AI-intake vault (and optional contact info) to the server draft.
+// The summary flow's data lives in the local WillVault, not the WillDocument
+// the questionnaire syncs — without this PUT the lawyer never sees it.
+export async function saveVaultToServer(
+  draftId: string,
+  vault: Record<string, unknown>,
+  contact?: { email?: string; phone?: string },
+  magicToken?: string,
+): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...getAuthHeaders() }
+    if (magicToken) {
+      headers['X-Magic-Token'] = magicToken
+    }
+    const body: Record<string, unknown> = { vault }
+    if (contact?.email) body.client_email = contact.email
+    if (contact?.phone) body.client_phone = contact.phone
+    const res = await fetch(`/api/drafts/${draftId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 // Submit final draft
 export async function submitDraft(draftId: string, magicToken?: string): Promise<{ submitted_at: string } | null> {
   try {

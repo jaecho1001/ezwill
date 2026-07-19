@@ -10,6 +10,9 @@ import { EditableField } from '@/components/review/editable-field'
 import { determineRequiredDocuments, getDocumentTypeConfig } from '@/lib/will-documents/index'
 import { Button } from '@/components/ui/button'
 import { generateAllDocuments, downloadBlob } from '@/lib/api/documents'
+import { createSelfServeDraft, saveVaultToServer, submitDraft } from '@/lib/api/drafts'
+import { useDraft } from '@/providers/draft-provider'
+import { useEnsureSelfServeDraft } from '@/hooks/use-ensure-draft'
 
 export default function SummaryPage({ params }: { params: Promise<{ willId: string }> }) {
   const { willId } = use(params)
@@ -18,9 +21,18 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
   const vault = store((s) => s.vault)
   const setField = store((s) => s.setField)
 
+  // The vault is local-only; documents and lawyer review need a real server
+  // draft. Create one (public, rate-limited) if this client has none yet.
+  useEnsureSelfServeDraft()
+  const { draftId, token, setDraftId, setToken } = useDraft()
+
   const overall = useMemo(() => overallProgress(vault), [vault])
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [clientEmail, setClientEmail] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
 
   const handleGenerate = async () => {
     setGenerating(true)
@@ -32,6 +44,53 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
       setGenerateError((err as Error).message)
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handleSendToLawyer = async () => {
+    setSendError(null)
+    if (!/.+@.+\..+/.test(clientEmail.trim())) {
+      setSendError('Please enter your email address so the lawyer can reach you.')
+      return
+    }
+    setSending(true)
+    try {
+      // Make sure a server draft exists (the ensure hook may have failed
+      // earlier if the client was offline or rate-limited — retry inline).
+      let id = draftId
+      let tok = token
+      if (!id) {
+        const res = await createSelfServeDraft()
+        if (!res) {
+          setSendError('Could not reach the server. Please check your connection and try again.')
+          return
+        }
+        setDraftId(res.draft_id)
+        setToken(res.token)
+        id = res.draft_id
+        tok = res.token
+      }
+      const saved = await saveVaultToServer(
+        id,
+        vault as unknown as Record<string, unknown>,
+        { email: clientEmail.trim() },
+        tok ?? undefined,
+      )
+      if (!saved) {
+        setSendError('Could not save your answers to the server. Please try again.')
+        return
+      }
+      const submitted = await submitDraft(id, tok ?? undefined)
+      if (!submitted) {
+        setSendError(
+          'We could not send this to the lawyer — it may already have been sent. ' +
+          'Contact the firm if you are unsure.'
+        )
+        return
+      }
+      setSent(true)
+    } finally {
+      setSending(false)
     }
   }
   const pctByChapter = useMemo(() => {
@@ -193,9 +252,34 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
               >
                 {generating ? 'Generating…' : 'Generate all documents'}
               </Button>
-              <Button variant="outline" className="w-full">
-                Send to lawyer for review
-              </Button>
+              {sent ? (
+                <p className="rounded-md border border-[#7BA68C] bg-[#F2F7F4] p-2 text-center text-xs text-[#3d6650]">
+                  Sent — your lawyer will review your answers and contact you
+                  at {clientEmail.trim()}.
+                </p>
+              ) : (
+                <>
+                  <input
+                    type="email"
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    placeholder="Your email (so the lawyer can reach you)"
+                    className="w-full rounded-md border border-[#E8E4DF] px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#1B2A4A] focus:outline-none"
+                    disabled={sending}
+                  />
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleSendToLawyer}
+                    disabled={sending}
+                  >
+                    {sending ? 'Sending…' : 'Send to lawyer for review'}
+                  </Button>
+                </>
+              )}
+              {sendError && (
+                <p className="text-[11px] text-red-600 text-center">{sendError}</p>
+              )}
               {generateError && (
                 <p className="text-[11px] text-red-600 text-center">{generateError}</p>
               )}

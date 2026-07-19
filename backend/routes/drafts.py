@@ -139,6 +139,15 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(ve
         if body.poa_personal_care is not None:
             updates['poa_personal_care'] = json.dumps(body.poa_personal_care)
 
+        # AI-intake vault snapshot + summary-page contact info: the client's
+        # own data, so magic-token access may write them (token is draft-bound).
+        if body.vault is not None:
+            updates['vault'] = json.dumps(body.vault)
+        if body.client_email is not None:
+            updates['client_email'] = body.client_email
+        if body.client_phone is not None:
+            updates['client_phone'] = body.client_phone
+
         if body.current_step is not None:
             updates['current_step'] = body.current_step
         if body.completed_steps is not None:

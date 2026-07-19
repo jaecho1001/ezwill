@@ -768,6 +768,13 @@ async def notify_lawyer_submission(draft: dict, flags: list) -> bool:
     client_name = (
         f"{draft.get('client_first_name', '')} {draft.get('client_last_name', '')}".strip()
     )
+    if not client_name:
+        # AI-intake (vault) drafts carry the client's name only inside the
+        # vault snapshot — no name-splitting guesses, use it verbatim.
+        vault = draft.get("vault") or {}
+        client_name = ((vault.get("testator") or {}).get("fullName") or "").strip()
+    if not client_name:
+        client_name = "Unnamed client"
     draft_id = str(draft.get("id", ""))
 
     critical_flags = [f for f in flags if f.get("severity") == "critical"]
