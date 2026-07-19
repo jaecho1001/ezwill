@@ -50,6 +50,7 @@ async def create_self_serve_draft(body: SelfServeDraftRequest, request: Request)
             client_last_name="",
             language=body.language or "en",
             province=body.province or "ON",
+            origin="self_serve",
         )
         if not draft:
             raise HTTPException(500, "Failed to create draft")

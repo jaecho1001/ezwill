@@ -25,6 +25,7 @@ from services.document_generator import (
     firm_variables,
 )
 from services.pdf_converter import convert_to_pdf
+from services.payment_gate import payment_required
 from routes.auth import verify_dashboard_token
 
 logger = logging.getLogger(__name__)
@@ -136,8 +137,35 @@ def _clause_to_html(clause: dict, variables: dict, missing: set = None) -> str:
 
 # ── Routes ──────────────────────────────────────────────────────────────────
 
+def _enforce_payment_gate(draft: dict, draft_id: str, override_payment: bool) -> None:
+    """402 unless the draft is paid, exempt, or the lawyer explicitly overrides."""
+    if not payment_required(draft):
+        return
+    if override_payment:
+        logger.warning(
+            "Payment gate overridden for draft %s (status=%s)",
+            draft_id, draft.get("payment_status", "unpaid"),
+        )
+        return
+    raise HTTPException(402, {
+        "error": "payment_required",
+        "message": (
+            "This self-serve draft has not been paid for. The client must "
+            "complete checkout before documents are delivered, or re-run "
+            "with override_payment=true if the fee was handled outside "
+            "the app."
+        ),
+        "payment_status": draft.get("payment_status", "unpaid"),
+    })
+
+
 @router.post("/{draft_id}/generate")
-async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token: str = Depends(verify_dashboard_token)):
+async def generate_document(
+    draft_id: str,
+    body: GenerateDocumentRequest,
+    override_payment: bool = False,
+    _token: str = Depends(verify_dashboard_token),
+):
     """
     Generate a single document for a draft.
     Returns the generated file as a download (DOCX or PDF).
@@ -145,6 +173,8 @@ async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
         raise HTTPException(404, "Draft not found")
+
+    _enforce_payment_gate(draft, draft_id, override_payment)
 
     document_type = body.document_type
     if document_type not in DOCUMENT_TITLES:
@@ -198,10 +228,6 @@ async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token
             document_type, draft_id, sorted(missing),
         )
 
-    # Record generation
-    with EWDbWriter(DEFAULT_SCHEMA) as db:
-        db.update_document_generated(draft_id, document_type, f"memory://{document_type}")
-
     # PDF conversion if requested
     if body.format == "pdf":
         pdf_bytes = convert_to_pdf(docx_bytes)
@@ -214,10 +240,25 @@ async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token
         filename = f"{document_type}.pdf"
         media_type = "application/pdf"
         content = pdf_bytes
+        file_format = "pdf"
     else:
         filename = f"{document_type}.docx"
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         content = docx_bytes
+        file_format = "docx"
+
+    # Persist the exact delivered bytes (audit trail), then point the
+    # document config at the stored row instead of a throwaway marker.
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        record = db.record_document_generation(
+            draft_id, document_type, file_format, content,
+            generated_by="dashboard",
+            params={
+                "unresolved": sorted(missing),
+                "allow_incomplete": body.allow_incomplete,
+            },
+        )
+        db.update_document_generated(draft_id, document_type, record["storage_path"])
 
     return StreamingResponse(
         io.BytesIO(content),
@@ -230,6 +271,7 @@ async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token
 async def generate_all_documents(
     draft_id: str,
     allow_incomplete: bool = False,
+    override_payment: bool = False,
     _token: str = Depends(verify_dashboard_token),
 ):
     """
@@ -238,10 +280,14 @@ async def generate_all_documents(
 
     Rejects the whole batch with 422 if any document still contains
     unresolved [placeholder] text, unless allow_incomplete=true.
+    Rejects with 402 if the draft is self-serve and unpaid, unless
+    override_payment=true.
     """
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
         raise HTTPException(404, "Draft not found")
+
+    _enforce_payment_gate(draft, draft_id, override_payment)
 
     variables = _build_variables(draft)
 
@@ -299,10 +345,19 @@ async def generate_all_documents(
             draft_id, {dt: sorted(n) for dt, n in missing_by_doc.items()},
         )
 
-    # Record generation for each
+    # Persist the exact delivered bytes of every document (audit trail).
     with EWDbWriter(DEFAULT_SCHEMA) as db:
-        for doc_type in results:
-            db.update_document_generated(draft_id, doc_type, f"memory://{doc_type}")
+        for doc_type, docx_bytes in results.items():
+            record = db.record_document_generation(
+                draft_id, doc_type, "docx", docx_bytes,
+                generated_by="dashboard",
+                params={
+                    "unresolved": sorted(missing_by_doc.get(doc_type, set())),
+                    "allow_incomplete": allow_incomplete,
+                    "batch": True,
+                },
+            )
+            db.update_document_generated(draft_id, doc_type, record["storage_path"])
 
     # Build ZIP
     zip_buf = io.BytesIO()
@@ -447,3 +502,68 @@ async def list_documents(draft_id: str, _token: str = Depends(verify_dashboard_t
         })
 
     return {"draft_id": draft_id, "documents": documents}
+
+
+@router.get("/{draft_id}/generations")
+async def list_generations(draft_id: str, _token: str = Depends(verify_dashboard_token)):
+    """
+    Audit trail: every document ever generated for this draft, with checksum
+    and size — metadata only, the bytes stay in the database.
+    """
+    draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
+    if not draft:
+        raise HTTPException(404, "Draft not found")
+
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        rows = db.get_document_generations(draft_id)
+
+    return {
+        "draft_id": draft_id,
+        "generations": [
+            {
+                "id": str(r["id"]),
+                "document_type": r["document_type"],
+                "format": r["format"],
+                "content_sha256": r["content_sha256"],
+                "byte_size": r["byte_size"],
+                "generation_params": r["generation_params"],
+                "generated_by": r["generated_by"],
+                "created_at": str(r["created_at"]),
+            }
+            for r in (rows or [])
+        ],
+    }
+
+
+@router.get("/{draft_id}/generations/{generation_id}/download")
+async def download_generation(
+    draft_id: str,
+    generation_id: str,
+    _token: str = Depends(verify_dashboard_token),
+):
+    """Re-download the exact bytes of a previously generated document."""
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        row = db.get_document_generation_content(generation_id)
+
+    # Bind the generation to the draft in the path so one draft's audit
+    # trail can never be fetched through another draft's URL.
+    if not row or str(row["draft_id"]) != str(draft_id):
+        raise HTTPException(404, "Generated document not found")
+
+    if row.get("content") is None:
+        raise HTTPException(404, "This generation predates stored content")
+
+    content = bytes(row["content"])
+    if row["format"] == "pdf":
+        media_type = "application/pdf"
+        ext = "pdf"
+    else:
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ext = "docx"
+    filename = f"{row['document_type']}_{str(row['id'])[:8]}.{ext}"
+
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

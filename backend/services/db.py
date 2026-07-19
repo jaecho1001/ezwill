@@ -1,3 +1,4 @@
+import hashlib
 import os
 import psycopg2
 import psycopg2.pool
@@ -78,13 +79,14 @@ class EWDbWriter:
 
     def create_draft(self, client_first_name: str, client_last_name: str,
                      client_email: str = None, client_phone: str = None,
-                     language: str = 'en', province: str = 'ON') -> dict:
+                     language: str = 'en', province: str = 'ON',
+                     origin: str = 'lawyer') -> dict:
         return self.fetchone("""
             INSERT INTO ew_will_drafts
-                (client_first_name, client_last_name, client_email, client_phone, language, province, status)
-            VALUES (%s, %s, %s, %s, %s, %s, 'link_sent')
+                (client_first_name, client_last_name, client_email, client_phone, language, province, status, origin)
+            VALUES (%s, %s, %s, %s, %s, %s, 'link_sent', %s)
             RETURNING *
-        """, (client_first_name, client_last_name, client_email, client_phone, language, province))
+        """, (client_first_name, client_last_name, client_email, client_phone, language, province, origin))
 
     def get_draft(self, draft_id: str) -> dict:
         return self.fetchone(
@@ -525,6 +527,67 @@ class EWDbWriter:
             WHERE draft_id = %s AND document_type = %s
         """, (file_path, draft_id, document_type))
         return True
+
+    # ── Document generations (audit trail) ────────────────────────────────────
+
+    def record_document_generation(
+        self,
+        draft_id: str,
+        document_type: str,
+        file_format: str,
+        content: bytes,
+        generated_by: str = "dashboard",
+        params: dict = None,
+    ) -> dict:
+        """Persist the exact bytes of a delivered document plus a checksum.
+
+        This is the legal audit trail: what the system actually produced for
+        this draft, verifiable later against any copy a client holds.
+        """
+        digest = hashlib.sha256(content).hexdigest()
+        row = self.fetchone("""
+            INSERT INTO ew_document_generations
+                (draft_id, document_type, format, generation_params,
+                 generated_by, content, content_sha256, byte_size)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, created_at
+        """, (
+            draft_id, document_type, file_format,
+            psycopg2.extras.Json(params or {}), generated_by,
+            psycopg2.Binary(content), digest, len(content),
+        ))
+        storage_path = f"db://ew_document_generations/{row['id']}"
+        self.execute(
+            "UPDATE ew_document_generations SET storage_path = %s WHERE id = %s",
+            (storage_path, row["id"]),
+        )
+        return {
+            "id": row["id"],
+            "created_at": row["created_at"],
+            "storage_path": storage_path,
+            "content_sha256": digest,
+            "byte_size": len(content),
+        }
+
+    def get_document_generations(self, draft_id: str) -> list:
+        """List the audit trail for a draft — metadata only, never the bytes."""
+        return self.fetchall("""
+            SELECT id, draft_id, document_type, format, storage_path,
+                   content_sha256, byte_size, generation_params, generated_by,
+                   created_at
+            FROM ew_document_generations
+            WHERE draft_id = %s
+            ORDER BY created_at DESC
+        """, (draft_id,))
+
+    def get_document_generation_content(self, generation_id: str) -> dict:
+        """Fetch one stored generation including its bytes."""
+        return self.fetchone("""
+            SELECT id, draft_id, document_type, format, content,
+                   content_sha256, byte_size, created_at
+            FROM ew_document_generations
+            WHERE id = %s
+        """, (generation_id,))
 
     # ── Signing / execution events ───────────────────────────────────────────
 

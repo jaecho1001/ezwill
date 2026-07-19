@@ -247,6 +247,14 @@ class FakeDb:
     def get_firm_settings(self):
         return {}
 
+    def record_document_generation(self, draft_id, document_type, file_format,
+                                   content, generated_by="dashboard", params=None):
+        return {
+            "id": "gen-1", "created_at": "now",
+            "storage_path": "db://ew_document_generations/gen-1",
+            "content_sha256": "x", "byte_size": len(content),
+        }
+
     def update_document_generated(self, draft_id, document_type, file_path):
         type(self).generated_records.append((draft_id, document_type, file_path))
         return True

@@ -10,13 +10,15 @@ def test_create_draft_persists_province(monkeypatch):
     def fake_fetchone(query, params=None):
         captured["query"] = query
         captured["params"] = params
-        return {"province": params[-1]}
+        return {"province": params[5]}
 
     monkeypatch.setattr(writer, "fetchone", fake_fetchone)
     result = writer.create_draft("Ada", "Lovelace", language="en", province="BC")
 
     assert "province" in captured["query"]
-    assert captured["params"][-1] == "BC"
+    assert captured["params"][5] == "BC"
+    # origin is the final insert parameter and defaults to lawyer-created.
+    assert captured["params"][-1] == "lawyer"
     assert result["province"] == "BC"
 
 
