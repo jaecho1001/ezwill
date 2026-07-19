@@ -1,0 +1,286 @@
+"""Unresolved-placeholder guard tests.
+
+The worst failure mode for a legal-document product is silent corruption: a
+will delivered with literal [executorName] text where the client's data should
+be. These tests pin the guard at every layer — the resolve_variables collector,
+the assembled-document scan for the bracket literals that bypass it, and the
+422 rejection (with explicit override) on the delivery routes.
+"""
+
+from __future__ import annotations
+
+import io
+import os
+import sys
+import zipfile
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# Module-level import on purpose: test_routes.py replaces sys.modules['docx']
+# with a MagicMock during collection, so a runtime import inside a test body
+# would get the mock. Binding the real Document here (this module imports
+# before test_routes alphabetically) keeps these tests on real python-docx.
+from docx import Document as RealDocument
+
+from services.document_generator import (
+    DocumentGenerator,
+    resolve_variables,
+    scan_unresolved_literals,
+)
+from routes import documents as documents_route
+from routes.auth import verify_dashboard_token
+
+
+# ── resolve_variables collector ──────────────────────────────────────────────
+
+def test_missing_placeholder_is_recorded():
+    missing: set = set()
+    out = resolve_variables("I appoint {{executorName}}.", {}, missing)
+    assert out == "I appoint [executorName]."
+    assert missing == {"executorName"}
+
+
+def test_camel_to_snake_fallback_is_not_recorded_as_missing():
+    missing: set = set()
+    out = resolve_variables(
+        "{{testatorFullName}}", {"testator_full_name": "HYUN JUNG KIM"}, missing
+    )
+    assert out == "HYUN JUNG KIM"
+    assert missing == set()
+
+
+def test_empty_string_value_counts_as_resolved():
+    # Documents current behavior: a present-but-empty variable substitutes to
+    # "" rather than being reported. The guard targets *absent* data.
+    missing: set = set()
+    assert resolve_variables("{{spouseFullName}}", {"spouseFullName": ""}, missing) == ""
+    assert missing == set()
+
+
+def test_none_text_passthrough_preserved():
+    missing: set = set()
+    assert resolve_variables(None, {}, missing) is None
+    assert missing == set()
+
+
+def test_collector_is_optional():
+    # Preview/review-portal callers pass no collector; behavior is unchanged.
+    assert resolve_variables("{{x}}", {}) == "[x]"
+
+
+# ── assembled-document scan (cover/signing pages bypass resolve_variables) ──
+
+def _doc_text(docx_bytes: bytes) -> str:
+    doc = RealDocument(io.BytesIO(docx_bytes))
+    parts = [p.text for p in doc.paragraphs]
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                parts.extend(p.text for p in cell.paragraphs)
+    return "\n".join(parts)
+
+
+CLAUSE_MISSING = [{
+    "clause_id": "executors",
+    "included": True,
+    "templateText": "I appoint {{primaryExecutorFullName}} as my Estate Trustee.",
+    "sortOrder": 1,
+    "title": "Appointment of Estate Trustee",
+}]
+
+CLAUSE_COMPLETE = [{
+    "clause_id": "revocation",
+    "included": True,
+    "templateText": "I, {{testatorFullName}}, revoke all prior wills.",
+    "sortOrder": 1,
+    "title": "Revocation",
+}]
+
+FULL_VARIABLES = {
+    "testatorFullName": "HYUN JUNG KIM",
+    "documentDate": "July 19, 2026",
+}
+
+
+def test_generate_document_collects_clause_misses():
+    missing: set = set()
+    DocumentGenerator().generate_document(
+        "single_will", CLAUSE_MISSING, dict(FULL_VARIABLES), missing=missing
+    )
+    assert "primaryExecutorFullName" in missing
+
+
+def test_signing_page_fallback_literal_is_caught():
+    # No testator name anywhere: the signing/cover pages emit their hardcoded
+    # bracket literals without ever calling resolve_variables. The final-doc
+    # scan must still catch them.
+    missing: set = set()
+    docx_bytes = DocumentGenerator().generate_document(
+        "single_will", CLAUSE_COMPLETE, {}, missing=missing
+    )
+    text = _doc_text(docx_bytes)
+    assert "[TESTATOR NAME]" in text or "[Client Name]" in text
+    assert "[TESTATOR NAME]" in missing or "[Client Name]" in missing
+
+
+def test_unmatchable_brace_token_is_caught():
+    # {{ spaced token }} never matches VARIABLE_PATTERN, survives substitution
+    # verbatim, and must be reported by the scan.
+    clause = [{
+        "clause_id": "bad",
+        "included": True,
+        "templateText": "Residue to {{ residual beneficiary }}.",
+        "sortOrder": 1,
+        "title": "Residue",
+    }]
+    missing: set = set()
+    DocumentGenerator().generate_document(
+        "single_will", clause, dict(FULL_VARIABLES), missing=missing
+    )
+    assert "{{ residual beneficiary }}" in missing
+
+
+def test_complete_document_reports_nothing():
+    missing: set = set()
+    DocumentGenerator().generate_document(
+        "single_will", CLAUSE_COMPLETE, dict(FULL_VARIABLES), missing=missing
+    )
+    assert missing == set()
+
+
+def test_scan_helper_finds_literals_in_tables():
+    doc = RealDocument()
+    table = doc.add_table(rows=1, cols=1)
+    table.rows[0].cells[0].paragraphs[0].add_run("Signed: [COMMISSIONER NAME]")
+    missing: set = set()
+    scan_unresolved_literals(doc, missing)
+    assert missing == {"[COMMISSIONER NAME]"}
+
+
+# ── route-level rejection ────────────────────────────────────────────────────
+
+class FakeDb:
+    """Stands in for EWDbWriter inside routes.documents."""
+
+    generated_records: list = []
+    clause_selections: list = []
+    all_selections: dict = {}
+
+    def __init__(self, schema: str):
+        self.schema = schema
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return None
+
+    def get_clause_selections(self, draft_id, document_type):
+        return list(type(self).clause_selections)
+
+    def get_all_clause_selections(self, draft_id):
+        return dict(type(self).all_selections)
+
+    def get_document_configs(self, draft_id):
+        return []
+
+    def get_firm_settings(self):
+        return {}
+
+    def update_document_generated(self, draft_id, document_type, file_path):
+        type(self).generated_records.append((draft_id, document_type, file_path))
+        return True
+
+
+DRAFT = {
+    "id": "draft-1",
+    "client_first_name": "Hyun Jung",
+    "client_last_name": "Kim",
+    "province": "ON",
+    "people": [],
+}
+
+
+@pytest.fixture
+def client(monkeypatch):
+    monkeypatch.setattr(documents_route, "EWDbWriter", FakeDb)
+    monkeypatch.setattr(documents_route, "get_full_draft", lambda draft_id, schema: dict(DRAFT))
+    FakeDb.generated_records = []
+
+    app = FastAPI()
+    app.include_router(documents_route.router, prefix="/api/documents")
+    app.dependency_overrides[verify_dashboard_token] = lambda: "test-token"
+    return TestClient(app)
+
+
+def test_generate_rejects_unresolved_placeholders(client):
+    FakeDb.clause_selections = CLAUSE_MISSING
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+    assert res.status_code == 422
+    detail = res.json()["detail"]
+    assert detail["error"] == "unresolved_placeholders"
+    assert "primaryExecutorFullName" in detail["unresolved"]
+    # Nothing recorded as generated: the document was never delivered.
+    assert FakeDb.generated_records == []
+
+
+def test_generate_override_delivers_with_warning(client):
+    FakeDb.clause_selections = CLAUSE_MISSING
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx", "allow_incomplete": True},
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument"
+    )
+    assert len(FakeDb.generated_records) == 1
+
+
+def test_generate_complete_document_passes(client):
+    FakeDb.clause_selections = CLAUSE_COMPLETE
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+    assert res.status_code == 200
+    assert len(FakeDb.generated_records) == 1
+
+
+def test_generate_all_rejects_batch_when_any_document_incomplete(client):
+    FakeDb.all_selections = {
+        "single_will": CLAUSE_COMPLETE,
+        "poa_property": CLAUSE_MISSING,
+    }
+    res = client.post("/api/documents/draft-1/generate-all")
+    assert res.status_code == 422
+    detail = res.json()["detail"]
+    assert "poa_property" in detail["unresolved_by_document"]
+    assert "single_will" not in detail["unresolved_by_document"]
+    assert FakeDb.generated_records == []
+
+
+def test_generate_all_override_delivers_zip(client):
+    FakeDb.all_selections = {
+        "single_will": CLAUSE_COMPLETE,
+        "poa_property": CLAUSE_MISSING,
+    }
+    res = client.post("/api/documents/draft-1/generate-all?allow_incomplete=true")
+    assert res.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+        assert len(zf.namelist()) == 2
+
+
+def test_preview_reports_unresolved_but_does_not_block(client):
+    FakeDb.clause_selections = CLAUSE_MISSING
+    res = client.get("/api/documents/draft-1/preview/single_will")
+    assert res.status_code == 200
+    body = res.json()
+    assert "primaryExecutorFullName" in body["unresolved_placeholders"]

@@ -25,7 +25,22 @@ export async function generateAllDocuments(draftId: string): Promise<GenerateAll
     let detail = res.statusText
     try {
       const body = await res.json()
-      if (body?.detail) detail = body.detail
+      const d = body?.detail
+      if (typeof d === 'string') {
+        detail = d
+      } else if (d?.message) {
+        // Structured 422 from the unresolved-placeholder guard.
+        detail = d.message
+        const byDoc = d.unresolved_by_document as Record<string, string[]> | undefined
+        if (byDoc) {
+          const parts = Object.entries(byDoc).map(
+            ([doc, names]) => `${doc}: ${names.join(', ')}`
+          )
+          detail += ` Missing — ${parts.join('; ')}`
+        } else if (Array.isArray(d.unresolved)) {
+          detail += ` Missing — ${d.unresolved.join(', ')}`
+        }
+      }
     } catch {
       // body wasn't JSON — keep statusText
     }

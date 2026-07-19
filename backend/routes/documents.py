@@ -122,7 +122,7 @@ def _get_enabled_document_types(draft_id: str, schema: str) -> list[str]:
     return list(DOCUMENT_TITLES.keys())
 
 
-def _clause_to_html(clause: dict, variables: dict) -> str:
+def _clause_to_html(clause: dict, variables: dict, missing: set = None) -> str:
     """Convert a clause to HTML for preview."""
     text = (
         clause.get("custom_text")
@@ -131,7 +131,7 @@ def _clause_to_html(clause: dict, variables: dict) -> str:
         or clause.get("templateText")
         or ""
     )
-    return resolve_variables(text, variables)
+    return resolve_variables(text, variables, missing)
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -167,15 +167,36 @@ async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token
 
     variables = _build_variables(draft)
 
+    missing: set = set()
     try:
         docx_bytes = _generator.generate_document(
             document_type=document_type,
             clauses=clauses,
             variables=variables,
+            missing=missing,
         )
     except Exception:
         logger.exception("Document generation failed for %s", document_type)
         raise HTTPException(500, "Document generation failed")
+
+    # Refuse to deliver a legal document containing literal [placeholder]
+    # text — silent corruption in a signed will is the worst failure mode.
+    if missing and not body.allow_incomplete:
+        raise HTTPException(422, {
+            "error": "unresolved_placeholders",
+            "message": (
+                "Document was not delivered: it still contains unresolved "
+                "placeholders. Complete the missing client data, or re-run "
+                "with allow_incomplete=true to override deliberately."
+            ),
+            "document_type": document_type,
+            "unresolved": sorted(missing),
+        })
+    if missing:
+        logger.warning(
+            "Delivering %s for draft %s with unresolved placeholders (override): %s",
+            document_type, draft_id, sorted(missing),
+        )
 
     # Record generation
     with EWDbWriter(DEFAULT_SCHEMA) as db:
@@ -206,10 +227,17 @@ async def generate_document(draft_id: str, body: GenerateDocumentRequest, _token
 
 
 @router.post("/{draft_id}/generate-all")
-async def generate_all_documents(draft_id: str, _token: str = Depends(verify_dashboard_token)):
+async def generate_all_documents(
+    draft_id: str,
+    allow_incomplete: bool = False,
+    _token: str = Depends(verify_dashboard_token),
+):
     """
     Generate all enabled documents for a draft.
     Returns a ZIP file containing all DOCX files.
+
+    Rejects the whole batch with 422 if any document still contains
+    unresolved [placeholder] text, unless allow_incomplete=true.
     """
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
@@ -240,14 +268,36 @@ async def generate_all_documents(draft_id: str, _token: str = Depends(verify_das
         raise HTTPException(404, "No enabled documents with clause selections found")
 
     # Generate all documents
+    missing_by_doc: dict = {}
     results = _generator.generate_all_documents(
         draft_data=draft,
         clause_selections=filtered_selections,
         variables=variables,
+        missing_by_doc=missing_by_doc,
     )
 
     if not results:
         raise HTTPException(500, "No documents could be generated")
+
+    # Refuse the whole batch if any document has unresolved placeholders:
+    # a ZIP with one corrupted will is not a safe deliverable.
+    if missing_by_doc and not allow_incomplete:
+        raise HTTPException(422, {
+            "error": "unresolved_placeholders",
+            "message": (
+                "Documents were not delivered: some still contain unresolved "
+                "placeholders. Complete the missing client data, or re-run "
+                "with allow_incomplete=true to override deliberately."
+            ),
+            "unresolved_by_document": {
+                dt: sorted(names) for dt, names in missing_by_doc.items()
+            },
+        })
+    if missing_by_doc:
+        logger.warning(
+            "Delivering documents for draft %s with unresolved placeholders (override): %s",
+            draft_id, {dt: sorted(n) for dt, n in missing_by_doc.items()},
+        )
 
     # Record generation for each
     with EWDbWriter(DEFAULT_SCHEMA) as db:
@@ -315,14 +365,15 @@ async def preview_document(
     included = [c for c in clauses if c.get("included", True)]
     included.sort(key=lambda c: c.get("sort_order", c.get("sortOrder", 0)))
 
+    missing: set = set()
     clause_number = 0
     for clause in included:
         is_folder = clause.get("is_folder", clause.get("isFolder", False))
-        text = _clause_to_html(clause, variables)
+        text = _clause_to_html(clause, variables, missing)
 
         if is_folder:
             clause_title = clause.get("title", clause.get("clause_id", ""))
-            clause_title = resolve_variables(clause_title, variables)
+            clause_title = resolve_variables(clause_title, variables, missing)
             html_parts.append(
                 f"<h2 style='margin-top:1.5em'>{clause_title.upper()}</h2>"
             )
@@ -330,7 +381,7 @@ async def preview_document(
             clause_number += 1
             clause_title = clause.get("title", "")
             if clause_title:
-                clause_title = resolve_variables(clause_title, variables)
+                clause_title = resolve_variables(clause_title, variables, missing)
                 html_parts.append(
                     f"<p style='margin-top:1em'>"
                     f"<strong>{clause_number}. {clause_title}</strong></p>"
@@ -347,6 +398,9 @@ async def preview_document(
         "html": "\n".join(html_parts),
         "clause_count": clause_number,
         "variables_used": list(variables.keys()),
+        # Informational: preview never blocks, but the dashboard can warn the
+        # lawyer that generation will be refused until these are filled.
+        "unresolved_placeholders": sorted(missing),
     }
 
 

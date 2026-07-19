@@ -254,10 +254,14 @@ def firm_variables(settings: dict) -> dict:
     return v
 
 
-def resolve_variables(text: str, variables: dict) -> str:
+def resolve_variables(text: str, variables: dict, missing: Optional[set] = None) -> str:
     """
     Replace {{variableName}} placeholders with values from variables dict.
     Unresolved placeholders become [variableName].
+
+    When `missing` is provided, every placeholder that falls through both the
+    camelCase and snake_case lookups is recorded in it, so callers can refuse
+    to deliver a document containing literal [variableName] text.
     """
     if not text:
         return text
@@ -272,9 +276,52 @@ def resolve_variables(text: str, variables: dict) -> str:
         value = variables.get(snake_key)
         if value is not None:
             return str(value)
+        if missing is not None:
+            missing.add(key)
         return f"[{key}]"
 
     return VARIABLE_PATTERN.sub(_replace, text)
+
+
+# Bracket literals the cover/signing/affidavit builders emit when a variable is
+# absent. Those code paths never call resolve_variables, so the assembled
+# document must be scanned for them before delivery.
+FALLBACK_LITERALS = (
+    "[Client Name]",
+    "[TESTATOR NAME]",
+    "[GRANTOR NAME]",
+    "[DEPONENT NAME]",
+    "[COMMISSIONER NAME]",
+    "[City]",
+)
+
+# {{ tokens }} that VARIABLE_PATTERN could not match (spaces, hyphens) survive
+# substitution untouched; they are just as unresolved as a bracketed name.
+UNSUBSTITUTED_PATTERN = re.compile(r"\{\{[^{}]*\}\}")
+
+
+def _iter_document_text(doc):
+    """Yield the text of every paragraph in the document body and its tables."""
+    for para in doc.paragraphs:
+        yield para.text
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    yield para.text
+
+
+def scan_unresolved_literals(doc, missing: set) -> None:
+    """Record fallback bracket literals and un-substituted {{tokens}} left in
+    an assembled document."""
+    for text in _iter_document_text(doc):
+        if not text:
+            continue
+        for literal in FALLBACK_LITERALS:
+            if literal in text:
+                missing.add(literal)
+        for token in UNSUBSTITUTED_PATTERN.findall(text):
+            missing.add(token)
 
 
 def html_to_docx_runs(paragraph, html_text: str) -> None:
@@ -522,6 +569,7 @@ class DocumentGenerator:
         clauses: list[dict],
         variables: dict,
         signing_data: Optional[dict] = None,
+        missing: Optional[set] = None,
     ) -> bytes:
         """
         Generate a DOCX file from clause selections and return it as bytes.
@@ -533,6 +581,9 @@ class DocumentGenerator:
             variables: Dict of placeholder variables to resolve.
             signing_data: Optional dict with signing-page specifics
                           (witness names, commissioner, etc.).
+            missing: Optional set that collects every unresolved placeholder
+                     name and fallback bracket literal found in the finished
+                     document, so callers can refuse delivery.
 
         Returns:
             The generated DOCX file content as bytes.
@@ -553,10 +604,10 @@ class DocumentGenerator:
         for clause in included:
             is_folder = clause.get("isFolder", clause.get("is_folder", False))
             if is_folder:
-                self._add_folder_heading(doc, clause, variables)
+                self._add_folder_heading(doc, clause, variables, missing)
             else:
                 clause_number += 1
-                self._add_clause(doc, clause, variables, clause_number)
+                self._add_clause(doc, clause, variables, clause_number, missing)
 
         # Signing pages
         if signing_data or document_type in WILL_TYPES | POA_TYPES | AFFIDAVIT_TYPES:
@@ -570,6 +621,11 @@ class DocumentGenerator:
             self._create_schedule_a(doc, variables)
 
         self._add_page_numbers(doc)
+
+        # Cover/signing/affidavit builders emit bracket literals directly
+        # (never via resolve_variables) — catch those in the assembled text.
+        if missing is not None:
+            scan_unresolved_literals(doc, missing)
 
         buf = io.BytesIO()
         doc.save(buf)
@@ -684,11 +740,12 @@ class DocumentGenerator:
     # ── Folder Heading ──────────────────────────────────────────────────────
 
     def _add_folder_heading(
-        self, doc: Document, clause: dict, variables: dict
+        self, doc: Document, clause: dict, variables: dict,
+        missing: Optional[set] = None,
     ) -> None:
         """Add a bold, caps folder heading (e.g. 'EXECUTORS AND TRUSTEES')."""
         title = clause.get("title", clause.get("clause_id", ""))
-        title = resolve_variables(title, variables)
+        title = resolve_variables(title, variables, missing)
 
         p = doc.add_paragraph()
         p.space_before = Pt(18)
@@ -701,7 +758,8 @@ class DocumentGenerator:
     # ── Clause Body ─────────────────────────────────────────────────────────
 
     def _add_clause(
-        self, doc: Document, clause: dict, variables: dict, clause_number: int
+        self, doc: Document, clause: dict, variables: dict, clause_number: int,
+        missing: Optional[set] = None,
     ) -> None:
         """
         Add a numbered clause to the document. Uses customText if present,
@@ -715,12 +773,12 @@ class DocumentGenerator:
             or clause.get("template_text")
             or ""
         )
-        resolved = resolve_variables(raw_text, variables)
+        resolved = resolve_variables(raw_text, variables, missing)
 
         # Clause number + title
         title = clause.get("title", "")
         if title:
-            title = resolve_variables(title, variables)
+            title = resolve_variables(title, variables, missing)
             heading_p = doc.add_paragraph()
             heading_p.space_before = Pt(12)
             heading_p.space_after = Pt(4)
@@ -1399,6 +1457,7 @@ class DocumentGenerator:
         draft_data: dict,
         clause_selections: dict[str, list[dict]],
         variables: dict,
+        missing_by_doc: Optional[dict] = None,
     ) -> dict[str, bytes]:
         """
         Generate all required documents for a client.
@@ -1407,6 +1466,8 @@ class DocumentGenerator:
             draft_data: The full draft record from the database.
             clause_selections: Dict mapping document_type -> list of clause dicts.
             variables: Resolved placeholder variables.
+            missing_by_doc: Optional dict that collects, per document type, the
+                set of unresolved placeholders found in that document.
 
         Returns:
             Dict mapping document_type -> DOCX file bytes.
@@ -1417,12 +1478,16 @@ class DocumentGenerator:
             if not clauses:
                 continue
             try:
+                missing: set = set()
                 docx_bytes = self.generate_document(
                     document_type=doc_type,
                     clauses=clauses,
                     variables=variables,
+                    missing=missing,
                 )
                 results[doc_type] = docx_bytes
+                if missing_by_doc is not None and missing:
+                    missing_by_doc[doc_type] = missing
                 logger.info("Generated %s (%d bytes)", doc_type, len(docx_bytes))
             except Exception:
                 logger.exception("Failed to generate %s", doc_type)

@@ -97,6 +97,9 @@ class DocumentConfigUpdate(BaseModel):
 class GenerateDocumentRequest(BaseModel):
     document_type: str
     format: str = "docx"  # "docx" or "pdf"
+    # Explicit lawyer override: deliver the document even though it still
+    # contains unresolved [placeholder] text.
+    allow_incomplete: bool = False
 
 class LiabilityData(BaseModel):
     id: Optional[str] = None
