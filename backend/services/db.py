@@ -545,11 +545,14 @@ class EWDbWriter:
         this draft, verifiable later against any copy a client holds.
         """
         digest = hashlib.sha256(content).hexdigest()
+        # clock_timestamp(), not the default now(): a generate-all batch
+        # inserts several rows in one transaction, and now() would stamp them
+        # all with the same transaction time, making audit order ambiguous.
         row = self.fetchone("""
             INSERT INTO ew_document_generations
                 (draft_id, document_type, format, generation_params,
-                 generated_by, content, content_sha256, byte_size)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 generated_by, content, content_sha256, byte_size, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, clock_timestamp())
             RETURNING id, created_at
         """, (
             draft_id, document_type, file_format,
@@ -577,7 +580,7 @@ class EWDbWriter:
                    created_at
             FROM ew_document_generations
             WHERE draft_id = %s
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
         """, (draft_id,))
 
     def get_document_generation_content(self, generation_id: str) -> dict:
