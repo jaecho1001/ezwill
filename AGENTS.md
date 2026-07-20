@@ -65,7 +65,7 @@ Local orchestration is Docker Compose (`db` + `backend` + `frontend`). See
 | Backend dev (:8003) | `cd backend && uvicorn main:app --port 8003 --reload` |
 | Backend tests (pytest) | `cd backend && python -m pytest` |
 | Full stack (Docker) | `docker-compose up` |
-| Apply DB migrations | `SET search_path TO firm_demo;` then `\i` migrations 25→26→27 (see `memory/architecture.md`) |
+| Apply DB migrations | `cd backend && python scripts/run_migrations.py` (env: `DATABASE_URL`, `DEFAULT_SCHEMA`; applies `00` + `25–38`, checksum-guarded, idempotent) |
 
 Run `uvicorn` from inside `backend/` — imports resolve relative to that directory.
 

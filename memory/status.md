@@ -1,26 +1,44 @@
 # Status — where we left off
 
-> Last updated: 2026-07-14.
+> Last updated: 2026-07-19.
 
-- **This change:** bootstrapping the agent brain on a branch (`add-agent-brain`, PR to
-  `main`). Adds `NORTH-STAR.md`, `AGENTS.md`, pointer `CLAUDE.md`, and `memory/` as an
-  additive documentation layer. **No source code touched.**
-- **App state (from code + README):** substantially built and not yet run end-to-end
-  against a real database. Frontend (Next.js 16, three portals) and backend (FastAPI,
-  8 routers, 6 services, migrations 25–27) are in place; ~129 backend pytest functions plus
-  a frontend Vitest suite exist.
-- **Verified this session:** `ew_` table prefix and 14 `ew_*` tables (migrations 25–27);
-  `firm_{id}` tenancy in `services/db.py` (regex + `SET search_path` + `sql.Identifier`);
-  `ix_cross_client_map.ew_client_id` amendment (identity link only, no event bus);
-  Next.js 16/React 19 + FastAPI stack; ports 3000/8003; DB `caselawvision`; OpenAI-backed
-  will agent; GoHighLevel notifications (replaced SendGrid).
-- **Next step:** merge this PR, then the first real-code task is applying migrations to a
-  `firm_demo` schema and proving the end-to-end flow against a live DB (README "Must Do").
-- **Open questions:** `ix_` event-bus scope (planned vs. build now); production backend host
-  (#65 covers Vercel + Supabase for FE/DB, not the FastAPI host); session/token store
-  (in-memory today vs. Redis/JWT in #52); Python floor (3.12 Docker vs. 3.9 source). See
-  `AGENTS.md` → Open questions.
-- **Guardrail:** all generated legal documents are draft-only and lawyer-approved; keep
-  tenant isolation intact; never commit secrets/PII.
-- **Note:** the `caselawvision-platform` Bible still marks EzWill "Planned / Stack: TBD" —
-  stale; the app is built. Flag for a Bible update.
+- **This session:** fixed the five commercial-launch blockers from the readiness
+  assessment, all committed locally with plain-English commit bodies:
+  1. Unresolved-placeholder guard — generation returns 422 listing missing fields
+     instead of silently shipping `[executorName]` text; lawyer override via
+     `allow_incomplete=true`; preview lists gaps (`1c5e0ef`).
+  2. Document persistence — migration 37 stores the exact delivered bytes +
+     SHA-256 in `ew_document_generations` (previously write-orphaned); new
+     `/generations` list + draft-bound re-download endpoints (`52da6d9`).
+  3. Payment gate — migration 38 adds `ew_will_drafts.origin`
+     (`lawyer`/`self_serve`); unpaid self-serve drafts get 402 before delivery;
+     `PAYMENT_ENFORCEMENT` env (default `self_serve`); logged
+     `override_payment` escape hatch (`52da6d9`).
+  4. Vault sync — `PUT /api/drafts/{id}` accepts `vault`/`client_email`/
+     `client_phone` from draft-bound magic tokens; firm notification falls back
+     to the vault testator name (`c256ca2`).
+  5. Send-to-lawyer wired — summary page ensures a server draft, collects the
+     client's email, syncs the vault, submits, firm gets the email (`c256ca2`).
+  Plus `d6cbb4e`: real-DB test caught nondeterministic audit ordering
+  (transaction-timestamp ties) → `clock_timestamp()` + id tiebreaker.
+- **Verified:** backend 271 passed / frontend 80 passed + typecheck clean /
+  migrations 00→38 applied twice (idempotent) on a real Postgres 16 + both
+  real-DB integration tests green.
+- **Important context:** this working copy (`ezwill-main` on Desktop) was a ZIP
+  snapshot with no git history. A local git repo was initialized 2026-07-19
+  (baseline `e696d89`) so every fix is a reviewable commit — but there is **no
+  remote**; commits must be exported/pushed to the real repository. The July
+  audits (AUDIT_UPDATE.md 2026-07-11) are stale: their top security P0s were
+  already fixed upstream before this snapshot.
+- **In flight:** adversarial multi-agent review of the full diff (5 lenses ×
+  3-skeptic verification) — address confirmed findings before export.
+- **Next step:** reconcile these commits with the real GitHub repo (push or
+  `git format-patch e696d89..HEAD`), run CI there, and update the dashboard
+  documents page to surface the new 422/402 details and the generations
+  audit-trail endpoints in the UI.
+- **Machine note:** the Mac's disk hit 100% full mid-session (Docker Desktop VM
+  is 112 GB; caches ~14 GB); ~1 GB was freed during the session. Reclaim via
+  Docker Desktop → Settings → Resources → Disk before heavy local work.
+- **Guardrail:** unchanged — legal output draft-only and lawyer-approved;
+  tenant isolation intact (all new queries parameterized, schema-scoped);
+  no secrets/PII committed.

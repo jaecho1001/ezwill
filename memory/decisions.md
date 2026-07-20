@@ -1,7 +1,40 @@
 # Decision Log
 
-> Last updated: 2026-07-14. Newest first. Product/architecture decisions live in the code
+> Last updated: 2026-07-19. Newest first. Product/architecture decisions live in the code
 > and issues; this log captures the ones a future agent needs to know without re-deriving.
+
+## 2026-07-19 — Generated documents are stored in Postgres, not the filesystem
+
+- **Decision:** persist the exact delivered bytes of every generated document in
+  `ew_document_generations` (`content BYTEA` + `content_sha256` + `byte_size`,
+  migration 37), pointed at by `ew_document_configs.generated_file_path` as
+  `db://ew_document_generations/<id>`.
+- **Why:** the audit trail is a liability requirement — the firm must be able to prove
+  what a client was given. DB storage rides the existing backup/tenancy story; DOCX files
+  are ~50–200 KB, so bytea is fine at this scale. No filesystem coupling in containers.
+- **Consequence:** re-download endpoints are draft-bound (`/{draft_id}/generations/...`);
+  listing never returns bytes; storage growth is linear in generations (revisit if PDFs
+  at scale).
+
+## 2026-07-19 — Payment enforcement keys off draft origin, not caller identity
+
+- **Decision:** `ew_will_drafts.origin` (`lawyer` default / `self_serve`, migration 38)
+  plus `PAYMENT_ENFORCEMENT` env (`self_serve` default / `all` / `off`). Unpaid
+  self-serve drafts get 402 at document delivery; `refunded` counts as unpaid; lawyers
+  override per-request with `override_payment=true` (logged).
+- **Why:** lawyer-led clients are billed by the firm outside the app; self-serve clients
+  pay online. Existing rows default to `lawyer`, so nothing in flight changed behavior.
+- **Consequence:** any new delivery path must call `services/payment_gate.py`; the gate
+  runs before the placeholder guard so unpaid clients don't learn draft internals.
+
+## 2026-07-19 — Incomplete documents are refused, with an explicit logged override
+
+- **Decision:** generation collects unresolved placeholders (template misses, bracket
+  literals from signing/cover pages, unmatchable `{{ tokens }}`) and returns 422 listing
+  them; `allow_incomplete=true` delivers anyway and the audit row records the override
+  and the missing-field list. Preview reports gaps without blocking.
+- **Why:** silent corruption in a signed will is the worst failure mode; but lawyers need
+  work-in-progress exports, so the override is explicit and auditable rather than absent.
 
 ## 2026-07-14 — Adopt the shared, self-improving agent brain
 
