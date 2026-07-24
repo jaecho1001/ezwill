@@ -1,6 +1,6 @@
 # Status — where we left off
 
-> Last updated: 2026-07-19.
+> Last updated: 2026-07-23.
 
 - **This session:** fixed the five commercial-launch blockers from the readiness
   assessment, all committed locally with plain-English commit bodies:
@@ -30,12 +30,24 @@
   remote**; commits must be exported/pushed to the real repository. The July
   audits (AUDIT_UPDATE.md 2026-07-11) are stale: their top security P0s were
   already fixed upstream before this snapshot.
-- **In flight:** adversarial multi-agent review of the full diff (5 lenses ×
-  3-skeptic verification) — address confirmed findings before export.
+- **Adversarial review (completed 2026-07-23, commit `ed5e19f`):** 4 confirmed
+  findings fixed (blank-value guard blind spot; preview/generation parity via a
+  discarded generation pass; malformed-UUID 404; type-guarded vault name
+  fallback) plus 2 hand-verified from its unadjudicated list (commissioner
+  bracket excluded from the scan — fill-at-commissioning; dashboard documents
+  page now surfaces 422/402 reasons). Caveat: the review's security lens
+  errored and 53/71 verifier agents died on org spend limits — the
+  unadjudicated findings were triaged by hand instead.
+- **Known limitations (documented, not bugs):** one global client draft id
+  (a second local will would write the same server draft's vault); vault-only
+  submissions show no name in the dashboard client LIST (email names them);
+  re-send after edits syncs data but sends no second notification; summary
+  page's client-facing Generate button still dead-ends on dashboard auth
+  (pre-existing).
 - **Next step:** reconcile these commits with the real GitHub repo (push or
-  `git format-patch e696d89..HEAD`), run CI there, and update the dashboard
-  documents page to surface the new 422/402 details and the generations
-  audit-trail endpoints in the UI.
+  `git format-patch e696d89..HEAD`) and run CI there — including the real-DB
+  persistence test on migrations 37/38. Then: generations audit-trail UI in
+  the dashboard, and an in-dashboard override control for 422/402.
 - **Machine note:** the Mac's disk hit 100% full mid-session (Docker Desktop VM
   is 112 GB; caches ~14 GB); ~1 GB was freed during the session. Reclaim via
   Docker Desktop → Settings → Resources → Disk before heavy local work.
