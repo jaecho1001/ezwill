@@ -1,6 +1,6 @@
 # Product — EzWill
 
-> Last verified: 2026-07-14 against `README.md`, `backend/`, `frontend/`, and migrations.
+> Last verified: 2026-07-26 against `backend/`, `frontend/`, and issue #75.
 
 ## Problem
 
@@ -16,8 +16,10 @@ EzWill turns a guided, bilingual (EN/KO) client questionnaire into lawyer-review
 wills, powers of attorney (property and personal care), and supporting documents. It has
 three portals in one app:
 
-- **Client Questionnaire** (`/will/*`, public via magic link) — About You, Family, Estate,
-  Arrangements, POA Property, POA Personal Care, Assets/Liabilities, Review, Submit.
+- **Client Questionnaire** (`/intake/{draftId}`, public via magic link) — nine-section
+  versioned intake for identity, family, executors/guardians, beneficiaries, gifts,
+  trusts, assets/debts, POAs, final wishes, then review and lawyer submission. The older
+  `/will/*` questionnaire remains temporarily for self-serve migration.
 - **Lawyer Dashboard** (`/dashboard/*`, password auth) — client list, estate overview,
   AI flags, a Tiptap clause editor (Tier 2), a design sheet, and document generation.
 - **Client Review Portal** (`/review/*`, review link) — clause-by-clause review with

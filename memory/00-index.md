@@ -1,20 +1,20 @@
 # Memory Index
 
-> Last updated: 2026-07-19.
+> Last updated: 2026-07-26.
 
 The map of this repository's persistent brain. Dates indicate when each file was last
 checked against the code, not merely reformatted.
 
 | File | Holds | Last verified |
 |------|-------|---------------|
-| `product.md` | problem, users, scope, success, constraints, pillar fit | 2026-07-14 |
-| `architecture.md` | portals, services, data model, integration, environments | 2026-07-14 |
-| `decisions.md` | significant decisions and rationale, newest first | 2026-07-19 |
+| `product.md` | problem, users, scope, success, constraints, pillar fit | 2026-07-26 |
+| `architecture.md` | portals, services, data model, integration, environments | 2026-07-26 |
+| `decisions.md` | significant decisions and rationale, newest first | 2026-07-26 |
 | `glossary.md` | domain terms, `ew_*` tables, Ontario statutes | 2026-07-14 |
 | `conventions.md` | standing rules, code/workflow gotchas, testing expectations | 2026-07-19 |
-| `roadmap.md` | Now / Next / Later / Done by platform pillar | 2026-07-14 |
-| `status.md` | concise current state and next action | 2026-07-19 |
-| `learnings.md` | append-only self-improvement journal | 2026-07-19 |
+| `roadmap.md` | Now / Next / Later / Done by platform pillar | 2026-07-26 |
+| `status.md` | concise current state and next action | 2026-07-26 |
+| `learnings.md` | append-only self-improvement journal | 2026-07-26 |
 | `MEMORY.md` | pointer to the global spec-patch / verification-ledger workflow | 2026-07-19 |
 
 Supporting context:

@@ -1,21 +1,22 @@
 # Roadmap — EzWill
 
-> Last updated: 2026-07-14. Organized by platform pillar. Feature detail and status live in
+> Last updated: 2026-07-26. Organized by platform pillar. Feature detail and status live in
 > GitHub issues; this is the orienting map, not a backlog.
 
 ## Legal delivery (primary — the app itself)
 
-- **Now:** get the built app running end-to-end against a real database — apply migrations
-  25–27 to a `firm_demo` schema, then walk the full flow (create client → magic link →
-  questionnaire → submit → lawyer review → generate documents). Never yet tested against a
-  live DB (README "Must Do" #1–2).
-- **Next:** finish the built-but-unverified edges — liabilities draft sync, WillFormProvider
-  reducer coverage, clause-editor UX polish (issue #46), form prepopulation. Versioned
-  Annotated Will update pipeline + lawyer-reviewed clause assistant (issue #64).
+- **Now:** review and real-DB test the unified lawyer-led client intake from issue #75:
+  magic link → versioned nine-section questionnaire → cross-device resume → client submit →
+  lawyer dashboard/flags → lawyer document generation → client document review.
+- **Next:** finish issue #75 parity: full EN/KO summary and validation, reusable people,
+  self-serve entry routing, placeholder coverage matrix, real-user accessibility testing,
+  then retire the legacy `/will/*` questionnaire. Continue the versioned Annotated Will
+  pipeline + lawyer-reviewed clause assistant (issue #64).
 - **Later:** future document types — codicil, memorandum of personal effects (issue #45);
   AI-powered estate planning beyond wills — life insurance, tax/EAT optimization, business
   succession (issue #42).
-- **Done:** three portals built; 60+ clause library (15 sections); 9-rule Ontario AI-flag
+- **Done:** three portals built; versioned nine-section lawyer-link intake foundation;
+  60+ clause library (15 sections); 9-rule Ontario AI-flag
   engine; 8 document types; python-docx generation; magic-link intake + client review
   portal; auth middleware; CSV export; GHL notifications; Docker Compose stack.
 

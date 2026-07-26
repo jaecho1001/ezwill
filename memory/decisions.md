@@ -1,7 +1,21 @@
 # Decision Log
 
-> Last updated: 2026-07-19. Newest first. Product/architecture decisions live in the code
+> Last updated: 2026-07-26. Newest first. Product/architecture decisions live in the code
 > and issues; this log captures the ones a future agent needs to know without re-deriving.
+
+## 2026-07-26 — One versioned intake vault; clients submit facts, lawyers generate drafts
+
+- **Decision:** the newer guided intake becomes the canonical client experience under a
+  versioned `WillVault` (schema 2). Lawyer-created magic links enter it. The older
+  `WillDocument` questionnaire stays temporarily as a migration fallback, not a second
+  long-term truth.
+- **Why:** the six-section prototype was easier to use but omitted facts already required
+  by the existing wills and POAs. Maintaining two independent questionnaires risks missing
+  legal facts and inconsistent answers.
+- **Consequence:** server vault data is authoritative and projected into existing
+  `ew_people`, `ew_assets`, and liabilities storage. The final client action is “Send my
+  answers to my lawyer”; only the authenticated lawyer workflow generates documents.
+  Legal-strategy answers create issue-spotting flags, never automatic approval.
 
 ## 2026-07-19 — Generated documents are stored in Postgres, not the filesystem
 

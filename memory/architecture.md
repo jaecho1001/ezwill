@@ -1,6 +1,6 @@
 # Architecture — EzWill
 
-> Last verified: 2026-07-14 against `backend/main.py`, `backend/services/db.py`,
+> Last verified: 2026-07-26 against `backend/main.py`, `backend/services/db.py`,
 > `backend/routes/`, `backend/db/migrations/`, `frontend/package.json`,
 > `frontend/src/app/`, and `docker-compose.yml`.
 
@@ -17,8 +17,9 @@ through the shared `ix_cross_client_map` table.
 - **UI:** Radix UI primitives, Tiptap (ProseMirror) rich-text clause editor, Recharts,
   lucide-react, TanStack React Query, axios.
 - **Portals (verified route dirs under `src/app/`):**
-  - `/` + `/will/*` — client questionnaire: `about-you`, `your-family`, `your-estate`,
-    `your-arrangements`, `poa-property`, `poa-personal-care`, `assets`, `review`, `submitted`.
+  - `/intake/{draftId}` + `/summary/{draftId}` — canonical version-2 client intake for
+    lawyer-created magic links; autosaves the vault and projects people/assets/liabilities.
+  - `/will/*` — legacy self-serve questionnaire retained during issue #75 migration.
   - `/dashboard/*` — lawyer dashboard: `login`, `clients`, `settings` (+ nested client detail,
     tier2, design-sheet, documents pages).
   - `/review/*` — client review portal: `review`, `review/[documentType]`, `review/complete`.

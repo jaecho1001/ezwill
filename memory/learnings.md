@@ -1,6 +1,6 @@
 # Learnings — self-improvement journal
 
-> Last updated: 2026-07-19.
+> Last updated: 2026-07-26.
 
 Append-only. One dated bullet per lesson: what happened, what you learned, and (if it
 became a rule) where you wrote it down.
@@ -42,3 +42,8 @@ became a rule) where you wrote it down.
   "migrations 25→26→27" table was stale (13 migration files exist: 00 + 25–38 now).
   Lesson: derive migration numbers from `ls backend/db/migrations/`, never from docs.
   → *(AGENTS.md key-commands row corrected)*
+- 2026-07-26 — A polished intake is not complete merely because it reaches a summary:
+  the newer six-section vault omitted several document-driving facts, and the lawyer
+  dashboard read only legacy questionnaire columns. The client-to-lawyer contract must
+  be tested end-to-end: question → versioned fact → server resume → lawyer visibility →
+  placeholder/flag. Added schema migration, dashboard projection, and coverage tests.
