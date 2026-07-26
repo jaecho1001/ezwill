@@ -1,0 +1,1 @@
+- **Global spec patch workflow** — see `~/.claude/CLAUDE.md` (auto-loaded for every project) for verification-ledger discipline
