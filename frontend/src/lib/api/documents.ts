@@ -31,8 +31,8 @@ export async function generateAllDocuments(draftId: string): Promise<GenerateAll
 
 /**
  * Extract a human-readable message from an error response, including the
- * structured 422 detail (unresolved placeholders) the generation endpoints
- * return. Falls back to statusText.
+ * structured 422 (unresolved placeholders) and 402 (payment required) details
+ * the generation endpoints return. Falls back to statusText.
  */
 export async function extractApiErrorDetail(res: Response): Promise<string> {
   let detail = res.statusText
