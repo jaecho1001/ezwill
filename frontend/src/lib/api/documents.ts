@@ -22,33 +22,41 @@ export async function generateAllDocuments(draftId: string): Promise<GenerateAll
     headers: { ...getAuthHeaders() },
   })
   if (!res.ok) {
-    let detail = res.statusText
-    try {
-      const body = await res.json()
-      const d = body?.detail
-      if (typeof d === 'string') {
-        detail = d
-      } else if (d?.message) {
-        // Structured 422 from the unresolved-placeholder guard.
-        detail = d.message
-        const byDoc = d.unresolved_by_document as Record<string, string[]> | undefined
-        if (byDoc) {
-          const parts = Object.entries(byDoc).map(
-            ([doc, names]) => `${doc}: ${names.join(', ')}`
-          )
-          detail += ` Missing — ${parts.join('; ')}`
-        } else if (Array.isArray(d.unresolved)) {
-          detail += ` Missing — ${d.unresolved.join(', ')}`
-        }
-      }
-    } catch {
-      // body wasn't JSON — keep statusText
-    }
-    throw new Error(detail || 'Document generation failed')
+    throw new Error((await extractApiErrorDetail(res)) || 'Document generation failed')
   }
   const blob = await res.blob()
   const filename = extractFilename(res.headers.get('content-disposition')) ?? `estate-documents-${draftId}.zip`
   return { blob, filename }
+}
+
+/**
+ * Extract a human-readable message from an error response, including the
+ * structured 422 detail (unresolved placeholders) the generation endpoints
+ * return. Falls back to statusText.
+ */
+export async function extractApiErrorDetail(res: Response): Promise<string> {
+  let detail = res.statusText
+  try {
+    const body = await res.json()
+    const d = body?.detail
+    if (typeof d === 'string') {
+      detail = d
+    } else if (d?.message) {
+      detail = d.message
+      const byDoc = d.unresolved_by_document as Record<string, string[]> | undefined
+      if (byDoc) {
+        const parts = Object.entries(byDoc).map(
+          ([doc, names]) => `${doc}: ${names.join(', ')}`
+        )
+        detail += ` Missing — ${parts.join('; ')}`
+      } else if (Array.isArray(d.unresolved)) {
+        detail += ` Missing — ${d.unresolved.join(', ')}`
+      }
+    }
+  } catch {
+    // body wasn't JSON — keep statusText
+  }
+  return detail
 }
 
 /** Kick off a browser download for a Blob. */

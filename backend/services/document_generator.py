@@ -269,16 +269,21 @@ def resolve_variables(text: str, variables: dict, missing: Optional[set] = None)
     def _replace(match: re.Match) -> str:
         key = match.group(1)
         value = variables.get(key)
-        if value is not None:
-            return str(value)
-        # Try camelCase -> snake_case lookup
-        snake_key = re.sub(r"([A-Z])", r"_\1", key).lower().lstrip("_")
-        value = variables.get(snake_key)
-        if value is not None:
-            return str(value)
-        if missing is not None:
+        if value is None:
+            # Try camelCase -> snake_case lookup
+            snake_key = re.sub(r"([A-Z])", r"_\1", key).lower().lstrip("_")
+            value = variables.get(snake_key)
+        if value is None:
+            if missing is not None:
+                missing.add(key)
+            return f"[{key}]"
+        # Present-but-blank is still missing data: substituting "" produces
+        # text like "my spouse, ." with no visible marker at all — worse than
+        # a bracket. Record it, but substitute as before (delivery-blocking
+        # is the route's decision, and the override still works).
+        if missing is not None and not str(value).strip():
             missing.add(key)
-        return f"[{key}]"
+        return str(value)
 
     return VARIABLE_PATTERN.sub(_replace, text)
 
@@ -286,12 +291,15 @@ def resolve_variables(text: str, variables: dict, missing: Optional[set] = None)
 # Bracket literals the cover/signing/affidavit builders emit when a variable is
 # absent. Those code paths never call resolve_variables, so the assembled
 # document must be scanned for them before delivery.
+#
+# Deliberately NOT listed: "[COMMISSIONER NAME]" — no code path can populate a
+# commissioner at generation time (it is completed at commissioning, like the
+# "[__]" page-count blank), so flagging it would block every affidavit.
 FALLBACK_LITERALS = (
     "[Client Name]",
     "[TESTATOR NAME]",
     "[GRANTOR NAME]",
     "[DEPONENT NAME]",
-    "[COMMISSIONER NAME]",
     "[City]",
 )
 

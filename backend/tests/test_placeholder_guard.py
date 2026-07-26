@@ -53,12 +53,26 @@ def test_camel_to_snake_fallback_is_not_recorded_as_missing():
     assert missing == set()
 
 
-def test_empty_string_value_counts_as_resolved():
-    # Documents current behavior: a present-but-empty variable substitutes to
-    # "" rather than being reported. The guard targets *absent* data.
+def test_empty_string_value_is_recorded_as_missing():
+    # A present-but-blank variable substitutes to "" (unchanged) but IS
+    # recorded: "my spouse, ." in a signed will is the exact silent
+    # corruption the guard exists to refuse — worse than a bracket, since
+    # there is no visible marker at all. (_build_variables defaults many
+    # keys to "", which previously made this blind spot structural.)
     missing: set = set()
     assert resolve_variables("{{spouseFullName}}", {"spouseFullName": ""}, missing) == ""
-    assert missing == set()
+    assert missing == {"spouseFullName"}
+
+
+def test_whitespace_only_value_is_recorded_as_missing():
+    missing: set = set()
+    assert resolve_variables("{{city}}", {"city": "  "}, missing) == "  "
+    assert missing == {"city"}
+
+
+def test_blank_value_without_collector_still_substitutes():
+    # Preview/review-portal callers without a collector see no behavior change.
+    assert resolve_variables("{{spouseFullName}}", {"spouseFullName": ""}) == ""
 
 
 def test_none_text_passthrough_preserved():
@@ -155,10 +169,52 @@ def test_complete_document_reports_nothing():
 def test_scan_helper_finds_literals_in_tables():
     doc = RealDocument()
     table = doc.add_table(rows=1, cols=1)
-    table.rows[0].cells[0].paragraphs[0].add_run("Signed: [COMMISSIONER NAME]")
+    table.rows[0].cells[0].paragraphs[0].add_run("Witness: [DEPONENT NAME]")
     missing: set = set()
     scan_unresolved_literals(doc, missing)
-    assert missing == {"[COMMISSIONER NAME]"}
+    assert missing == {"[DEPONENT NAME]"}
+
+
+def test_commissioner_blank_is_fill_at_signing_not_flagged():
+    # No code path can populate a commissioner at generation time — that
+    # block is completed at commissioning. Flagging it would 422 every
+    # affidavit ever generated.
+    doc = RealDocument()
+    doc.add_paragraph("A Commissioner for Taking Affidavits: [COMMISSIONER NAME]")
+    missing: set = set()
+    scan_unresolved_literals(doc, missing)
+    assert missing == set()
+
+
+def test_affidavit_with_witness_and_city_passes_guard():
+    variables = {
+        "testatorFullName": "HYUN JUNG KIM",
+        "otherWitnessName": "JOON TAE PARK",
+        "city": "Vaughan",
+        "documentDate": "July 19, 2026",
+        "province": "ON",
+        "numberOfPages": "12",
+    }
+    missing: set = set()
+    DocumentGenerator().generate_document(
+        "affidavit_execution", CLAUSE_COMPLETE, variables, missing=missing
+    )
+    assert missing == set()
+
+
+def test_affidavit_without_deponent_is_flagged():
+    variables = {
+        "testatorFullName": "HYUN JUNG KIM",
+        "city": "Vaughan",
+        "documentDate": "July 19, 2026",
+        "province": "ON",
+        "numberOfPages": "12",
+    }
+    missing: set = set()
+    DocumentGenerator().generate_document(
+        "affidavit_execution", CLAUSE_COMPLETE, variables, missing=missing
+    )
+    assert "[DEPONENT NAME]" in missing
 
 
 # ── route-level rejection ────────────────────────────────────────────────────
@@ -284,3 +340,29 @@ def test_preview_reports_unresolved_but_does_not_block(client):
     assert res.status_code == 200
     body = res.json()
     assert "primaryExecutorFullName" in body["unresolved_placeholders"]
+
+
+def test_preview_warning_list_matches_generation(client, monkeypatch):
+    # Parity both directions (review finding): a folder row's unused
+    # templateText must NOT be reported, while the cover/signing-page bracket
+    # literals — which the HTML preview never renders — MUST be, so the
+    # preview's warning list predicts exactly what POST /generate refuses.
+    FakeDb.clause_selections = [
+        {
+            "clause_id": "folder-1", "included": True, "isFolder": True,
+            "title": "EXECUTORS", "templateText": "{{neverRenderedInFolders}}",
+            "sortOrder": 1,
+        },
+        dict(CLAUSE_COMPLETE[0], sortOrder=2),
+    ]
+    # Draft with no client name: generation emits [Client Name]/[TESTATOR NAME]
+    # fallback literals on cover/signing pages.
+    monkeypatch.setattr(
+        documents_route, "get_full_draft",
+        lambda draft_id, schema: dict(DRAFT, client_first_name="", client_last_name=""),
+    )
+    res = client.get("/api/documents/draft-1/preview/single_will")
+    assert res.status_code == 200
+    unresolved = res.json()["unresolved_placeholders"]
+    assert "neverRenderedInFolders" not in unresolved
+    assert "[TESTATOR NAME]" in unresolved or "[Client Name]" in unresolved

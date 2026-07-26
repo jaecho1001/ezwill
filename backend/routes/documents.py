@@ -365,15 +365,14 @@ async def preview_document(
     included = [c for c in clauses if c.get("included", True)]
     included.sort(key=lambda c: c.get("sort_order", c.get("sortOrder", 0)))
 
-    missing: set = set()
     clause_number = 0
     for clause in included:
         is_folder = clause.get("is_folder", clause.get("isFolder", False))
-        text = _clause_to_html(clause, variables, missing)
+        text = _clause_to_html(clause, variables)
 
         if is_folder:
             clause_title = clause.get("title", clause.get("clause_id", ""))
-            clause_title = resolve_variables(clause_title, variables, missing)
+            clause_title = resolve_variables(clause_title, variables)
             html_parts.append(
                 f"<h2 style='margin-top:1.5em'>{clause_title.upper()}</h2>"
             )
@@ -381,7 +380,7 @@ async def preview_document(
             clause_number += 1
             clause_title = clause.get("title", "")
             if clause_title:
-                clause_title = resolve_variables(clause_title, variables, missing)
+                clause_title = resolve_variables(clause_title, variables)
                 html_parts.append(
                     f"<p style='margin-top:1em'>"
                     f"<strong>{clause_number}. {clause_title}</strong></p>"
@@ -391,6 +390,21 @@ async def preview_document(
                 f"{text if clause_title else f'<strong>{clause_number}.</strong> {text}'}"
                 f"</p>"
             )
+
+    # Compute the warning list with a real (discarded) generation pass so the
+    # preview agrees with what POST /generate will actually refuse: folders
+    # contribute only their titles, and the cover/signing-page bracket
+    # literals — which this HTML preview never renders — are included.
+    missing: set = set()
+    try:
+        _generator.generate_document(
+            document_type=document_type,
+            clauses=clauses,
+            variables=variables,
+            missing=missing,
+        )
+    except Exception:
+        logger.exception("Preview parity pass failed for %s", document_type)
 
     return {
         "document_type": document_type,

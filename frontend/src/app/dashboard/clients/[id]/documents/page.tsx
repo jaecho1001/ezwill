@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { getDraft } from '@/lib/api/drafts'
+import { extractApiErrorDetail } from '@/lib/api/documents'
 import { getAuthHeaders } from '@/lib/auth'
 import {
   willDocumentTypes,
@@ -41,6 +42,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
   const [generating, setGenerating] = useState<string | null>(null)
   const [generatingAll, setGeneratingAll] = useState(false)
   const [previewDoc, setPreviewDoc] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     getDraft(id)
@@ -90,6 +92,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
 
   async function handleGenerate(docType: string) {
     setGenerating(docType)
+    setActionError(null)
 
     // Call the generation API
     try {
@@ -108,7 +111,9 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
           )
         )
       } else {
-        // Mark as draft if generation had issues
+        // Surface WHY (missing placeholder fields, payment required, ...)
+        // instead of silently downgrading the row to draft.
+        setActionError(await extractApiErrorDetail(res))
         setDocuments((prev) =>
           prev.map((doc) =>
             doc.docType === docType
@@ -118,7 +123,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
         )
       }
     } catch {
-      // Mark as draft on error (still attempted)
+      setActionError('Generation failed: could not reach the server.')
       setDocuments((prev) =>
         prev.map((doc) =>
           doc.docType === docType
@@ -142,13 +147,14 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
   }
 
   async function handleDownload(documentType: string, format: 'docx' | 'pdf') {
+    setActionError(null)
     try {
       const res = await fetch(`/api/documents/${id}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ document_type: documentType, format }),
       })
-      if (!res.ok) throw new Error('Download failed')
+      if (!res.ok) throw new Error(await extractApiErrorDetail(res))
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -159,6 +165,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (err) {
+      setActionError((err as Error).message || 'Download failed.')
       console.error(err)
     }
   }
@@ -196,6 +203,12 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
         </svg>
         Back to Client
       </Link>
+
+      {actionError && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          {actionError}
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <div>
