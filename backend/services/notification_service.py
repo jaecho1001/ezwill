@@ -770,9 +770,15 @@ async def notify_lawyer_submission(draft: dict, flags: list) -> bool:
     )
     if not client_name:
         # AI-intake (vault) drafts carry the client's name only inside the
-        # vault snapshot — no name-splitting guesses, use it verbatim.
-        vault = draft.get("vault") or {}
-        client_name = ((vault.get("testator") or {}).get("fullName") or "").strip()
+        # vault snapshot — no name-splitting guesses, use it verbatim. The
+        # vault shape is client-controlled JSONB (Pydantic validates only the
+        # top-level dict), so type-guard every level: a malformed vault must
+        # not crash this function — that would silently drop the lawyer
+        # notification inside the submit route's broad try/except.
+        vault = draft.get("vault")
+        testator = vault.get("testator") if isinstance(vault, dict) else None
+        full_name = testator.get("fullName") if isinstance(testator, dict) else None
+        client_name = full_name.strip() if isinstance(full_name, str) else ""
     if not client_name:
         client_name = "Unnamed client"
     draft_id = str(draft.get("id", ""))

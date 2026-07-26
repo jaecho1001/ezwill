@@ -137,6 +137,23 @@ def test_notification_without_any_name_is_explicit_not_blank(monkeypatch):
     assert "Unnamed client" in captured["subject"]
 
 
+def test_notification_survives_client_malformed_vault(monkeypatch):
+    # The vault is client-controlled JSONB (Pydantic validates only the top
+    # level). A scalar where an object belongs must not crash the fallback —
+    # a crash here is swallowed by the submit route's try/except and silently
+    # drops both the lawyer email and GHL tracking.
+    for bad_vault in (
+        {"testator": "John Smith"},          # scalar instead of object
+        {"testator": {"fullName": {"x": 1}}},  # object instead of string
+        {"testator": None},
+        "not-even-a-dict",
+    ):
+        draft = {"id": "draft-1", "client_first_name": "", "client_last_name": "",
+                 "vault": bad_vault}
+        captured = _captured_firm_email(monkeypatch, draft)
+        assert "Unnamed client" in captured["subject"]
+
+
 def test_notification_prefers_draft_row_name_over_vault(monkeypatch):
     draft = {
         "id": "draft-1",
