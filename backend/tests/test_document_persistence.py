@@ -219,13 +219,17 @@ def test_list_generations_returns_metadata_without_bytes(client):
     assert "content" not in gens[0]
 
 
+GEN_UUID = "11111111-1111-1111-1111-111111111111"
+GEN_UUID_2 = "22222222-2222-2222-2222-222222222222"
+
+
 def test_download_generation_streams_stored_bytes(client):
     FakeDb.generation_content = {
-        "id": "gen-1", "draft_id": "draft-1", "document_type": "single_will",
+        "id": GEN_UUID, "draft_id": "draft-1", "document_type": "single_will",
         "format": "docx", "content": b"STORED", "content_sha256": "x",
         "byte_size": 6, "created_at": "now",
     }
-    res = client.get("/api/documents/draft-1/generations/gen-1/download")
+    res = client.get(f"/api/documents/draft-1/generations/{GEN_UUID}/download")
     assert res.status_code == 200
     assert res.content == b"STORED"
 
@@ -234,20 +238,31 @@ def test_download_generation_is_draft_bound(client):
     # A generation belonging to another draft must 404 through this URL —
     # otherwise any draft id could read any client's stored documents.
     FakeDb.generation_content = {
-        "id": "gen-9", "draft_id": "OTHER-draft", "document_type": "single_will",
+        "id": GEN_UUID_2, "draft_id": "OTHER-draft", "document_type": "single_will",
         "format": "docx", "content": b"SECRET", "content_sha256": "x",
         "byte_size": 6, "created_at": "now",
     }
-    res = client.get("/api/documents/draft-1/generations/gen-9/download")
+    res = client.get(f"/api/documents/draft-1/generations/{GEN_UUID_2}/download")
     assert res.status_code == 404
     assert b"SECRET" not in res.content
 
 
+def test_download_malformed_generation_id_404s_without_touching_db(client, monkeypatch):
+    # A non-UUID id must be rejected before the query — Postgres would raise
+    # on the uuid cast and surface as a 500 instead of this route's 404.
+    def _explode(self, generation_id):
+        raise AssertionError("query must not run for malformed ids")
+
+    monkeypatch.setattr(FakeDb, "get_document_generation_content", _explode)
+    res = client.get("/api/documents/draft-1/generations/not-a-uuid/download")
+    assert res.status_code == 404
+
+
 def test_download_pre_migration_row_404s_cleanly(client):
     FakeDb.generation_content = {
-        "id": "gen-1", "draft_id": "draft-1", "document_type": "single_will",
+        "id": GEN_UUID, "draft_id": "draft-1", "document_type": "single_will",
         "format": "docx", "content": None, "content_sha256": None,
         "byte_size": None, "created_at": "now",
     }
-    res = client.get("/api/documents/draft-1/generations/gen-1/download")
+    res = client.get(f"/api/documents/draft-1/generations/{GEN_UUID}/download")
     assert res.status_code == 404

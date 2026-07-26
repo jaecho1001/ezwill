@@ -5,6 +5,7 @@ Generates DOCX/PDF documents from clause selections.
 
 import io
 import os
+import uuid
 import zipfile
 import logging
 from datetime import date
@@ -542,6 +543,13 @@ async def download_generation(
     _token: str = Depends(verify_dashboard_token),
 ):
     """Re-download the exact bytes of a previously generated document."""
+    # Validate before querying: a non-UUID string would make Postgres raise
+    # on the uuid cast and surface as a 500 instead of this route's 404.
+    try:
+        uuid.UUID(generation_id)
+    except ValueError:
+        raise HTTPException(404, "Generated document not found")
+
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         row = db.get_document_generation_content(generation_id)
 
