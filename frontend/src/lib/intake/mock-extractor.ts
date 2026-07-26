@@ -27,12 +27,11 @@ const CHILDREN_RE = /(?:children(?: are)?|kids(?: are)?)\s*[:,]?\s*([A-Z][A-Za-z
 const ADDRESS_RE = /(?:i live at|address is|lives? at)\s+([^.]+)/i
 const DOB_RE = /(?:born on|birthday|dob)\s+(\d{4}-\d{2}-\d{2}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})/i
 const BOOL_RULES: Array<{ re: RegExp; path: string; value: boolean }> = [
-  { re: /\b(dual will|two wills|secondary will)\b/i, path: 'goals.hasDualWill', value: true },
-  { re: /\b(poa (?:for )?property|power of attorney for property)\b/i, path: 'goals.hasPoaProperty', value: true },
-  { re: /\b(personal care poa|poa (?:for )?personal care)\b/i, path: 'goals.hasPoaPersonalCare', value: true },
+  { re: /\b(dual will|two wills|secondary will)\b/i, path: 'goals.dualWillReviewRequested', value: true },
+  { re: /\b(poa (?:for )?property|power of attorney for property)\b/i, path: 'poa.property.requested', value: true },
+  { re: /\b(personal care poa|poa (?:for )?personal care)\b/i, path: 'poa.personalCare.requested', value: true },
   { re: /\b(private (?:company|corp|corporation) shares?|private-co shares?)\b/i, path: 'assets.privateCompanyShares', value: true },
   { re: /\b(on(?: the)? odsp|disability benefits?)\b/i, path: 'goals.henson', value: true },
-  { re: /\b(charitable|charity donation|leave to charity)\b/i, path: 'goals.charitableGiving', value: true },
 ]
 
 export function extractFromMessage(message: string, vault: WillVault): MockResult {

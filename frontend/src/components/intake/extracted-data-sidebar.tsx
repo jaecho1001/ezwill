@@ -85,20 +85,28 @@ function summarizeChapter(
     case 'beneficiaries':
       return [
         { label: L(lang, 'Residue', '잔여재산'), value: v.beneficiaries.map((b) => b.fullName).filter(Boolean).join(', ') },
-        { label: L(lang, 'Charitable', '기부'), value: yn(v.goals.charitableGiving) },
+        { label: L(lang, 'Method', '분배 방식'), value: v.residueDistribution ?? '' },
+      ]
+    case 'gifts':
+      return [{ label: L(lang, 'Specific gifts', '특정 유증'), value: v.gifts.length ? String(v.gifts.length) : '' }]
+    case 'trusts':
+      return [
+        { label: L(lang, 'Young beneficiary', '어린 수혜자'), value: yn(v.goals.minorChildrenTrust) },
+        { label: L(lang, 'ODSP review', 'ODSP 검토'), value: yn(v.goals.henson) },
       ]
     case 'assets':
       return [
         { label: L(lang, 'Est. net worth', '추정 순자산'), value: v.assets.estimatedNetWorth != null ? `$${v.assets.estimatedNetWorth.toLocaleString()}` : '' },
         { label: L(lang, 'Private shares', '비상장 주식'), value: yn(v.assets.privateCompanyShares) },
-        { label: L(lang, 'Dual will', '이중 유언장'), value: yn(v.goals.hasDualWill) },
+        { label: L(lang, 'Dual-will review', '이중 유언장 검토'), value: yn(v.goals.dualWillReviewRequested) },
       ]
-    case 'special':
+    case 'poa':
       return [
-        { label: L(lang, 'Henson trust', '헨슨 신탁'), value: yn(v.goals.henson) },
-        { label: L(lang, 'POA Property', '재산 위임장'), value: yn(v.goals.hasPoaProperty) },
-        { label: L(lang, 'POA Care', '돌봄 위임장'), value: yn(v.goals.hasPoaPersonalCare) },
+        { label: L(lang, 'POA Property', '재산 위임장'), value: yn(v.poa.property.requested) },
+        { label: L(lang, 'POA Care', '돌봄 위임장'), value: yn(v.poa.personalCare.requested) },
       ]
+    case 'final':
+      return [{ label: L(lang, 'Resting place', '안장 방식'), value: v.finalWishes.restingPlace ?? '' }]
     default:
       return []
   }

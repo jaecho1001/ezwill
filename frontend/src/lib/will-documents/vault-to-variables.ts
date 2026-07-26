@@ -38,6 +38,27 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
   // ── Guardians ─────────────────────────────────────────────
   const primaryGuardian = vault.guardians.find((g) => !g.isBackup)
   if (primaryGuardian) v.primaryGuardianFullName = primaryGuardian.fullName
+  if (vault.corporateTrusteeName) v.corporateTrusteeName = vault.corporateTrusteeName
+
+  // ── Beneficiaries / gifts ─────────────────────────────────
+  const firstBeneficiary = vault.beneficiaries.find((b) => b.fullName)
+  if (firstBeneficiary) {
+    v.recipientFullName = firstBeneficiary.fullName
+    v.recipientFirstName = firstBeneficiary.fullName.split(/\s+/)[0]
+  }
+  const firstGift = vault.gifts.find((gift) => gift.description || gift.charityName)
+  if (firstGift) {
+    if (firstGift.description) v.giftDescription = firstGift.description
+    if (firstGift.amount != null) v.cashAmount = formatCurrency(firstGift.amount)
+    if (firstGift.charityName) v.charityName = firstGift.charityName
+    if (firstGift.charityNumber) v.charityNumber = firstGift.charityNumber
+  }
+
+  // ── Powers of attorney ─────────────────────────────────────
+  const propertyAttorney = vault.poa.property.attorneys.find((person) => !person.isBackup)
+  const careAttorney = vault.poa.personalCare.attorneys.find((person) => !person.isBackup)
+  if (propertyAttorney) v.poaPropertyAttorneyFullName = propertyAttorney.fullName
+  if (careAttorney) v.poaCareAttorneyFullName = careAttorney.fullName
 
   // ── Goals-derived defaults ────────────────────────────────
   v.willType = vault.goals.hasDualWill ? 'Probate Will' : 'Last Will and Testament'
@@ -46,9 +67,14 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
   // ── Conservative defaults (can be overridden in the editor) ──
   v.survivalDays = v.survivalDays ?? '30'
   v.trustDistributionAge = v.trustDistributionAge ?? '25'
+  if (vault.trustDistributionAge) v.trustDistributionAge = String(vault.trustDistributionAge)
   v.dateOfWill = formatToday()
 
   return v
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(value)
 }
 
 function extractCity(addr: string): string {

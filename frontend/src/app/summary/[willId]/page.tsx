@@ -4,12 +4,15 @@ import { use, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useWillVault } from '@/stores/will-vault-store'
-import { willIntakeChapters, chapterProgress, overallProgress } from '@/lib/intake/will-intake-script'
+import {
+  willIntakeChapters,
+  chapterProgress,
+  intakeErrors,
+  overallProgress,
+} from '@/lib/intake/will-intake-script'
 import { EditableReviewSection } from '@/components/review/editable-review-section'
 import { EditableField } from '@/components/review/editable-field'
-import { determineRequiredDocuments, getDocumentTypeConfig } from '@/lib/will-documents/index'
 import { Button } from '@/components/ui/button'
-import { generateAllDocuments, downloadBlob } from '@/lib/api/documents'
 import { createSelfServeDraft, saveVaultToServer, submitDraft } from '@/lib/api/drafts'
 import { useDraft } from '@/providers/draft-provider'
 import { useEnsureSelfServeDraft } from '@/hooks/use-ensure-draft'
@@ -20,72 +23,65 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
   const store = useWillVault(willId)
   const vault = store((s) => s.vault)
   const setField = store((s) => s.setField)
-
-  // The vault is local-only; documents and lawyer review need a real server
-  // draft. Create one (public, rate-limited) if this client has none yet.
   useEnsureSelfServeDraft()
   const { draftId, token, setDraftId, setToken } = useDraft()
 
   const overall = useMemo(() => overallProgress(vault), [vault])
-  const [generating, setGenerating] = useState(false)
-  const [generateError, setGenerateError] = useState<string | null>(null)
-  const [clientEmail, setClientEmail] = useState('')
+  const errors = useMemo(() => intakeErrors(vault), [vault])
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
 
-  const handleGenerate = async () => {
-    setGenerating(true)
-    setGenerateError(null)
-    try {
-      const { blob, filename } = await generateAllDocuments(willId)
-      downloadBlob(blob, filename)
-    } catch (err) {
-      setGenerateError((err as Error).message)
-    } finally {
-      setGenerating(false)
-    }
+  const pctByChapter = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const chapter of willIntakeChapters) out[chapter.id] = chapterProgress(chapter, vault).pct
+    return out
+  }, [vault])
+
+  const jumpToChapter = (chapterId: string) => {
+    const idx = willIntakeChapters.findIndex((chapter) => chapter.id === chapterId)
+    router.push(`/intake/${willId}?chapter=${idx}`)
   }
 
   const handleSendToLawyer = async () => {
     setSendError(null)
-    if (!/.+@.+\..+/.test(clientEmail.trim())) {
-      setSendError('Please enter your email address so the lawyer can reach you.')
+    if (errors.length) {
+      setSendError('Please correct the items listed above before sending your answers.')
+      return
+    }
+    if (!confirmed) {
+      setSendError('Please confirm that you reviewed your answers.')
       return
     }
     setSending(true)
     try {
-      // Make sure a server draft exists (the ensure hook may have failed
-      // earlier if the client was offline or rate-limited — retry inline).
-      let id = draftId
-      let tok = token
+      let id = draftId === willId ? draftId : null
+      let magicToken = draftId === willId ? token : null
       if (!id) {
-        const res = await createSelfServeDraft()
-        if (!res) {
+        const created = await createSelfServeDraft()
+        if (!created) {
           setSendError('Could not reach the server. Please check your connection and try again.')
           return
         }
-        setDraftId(res.draft_id)
-        setToken(res.token)
-        id = res.draft_id
-        tok = res.token
+        setDraftId(created.draft_id)
+        setToken(created.token)
+        id = created.draft_id
+        magicToken = created.token
       }
       const saved = await saveVaultToServer(
         id,
         vault as unknown as Record<string, unknown>,
-        { email: clientEmail.trim() },
-        tok ?? undefined,
+        { email: vault.testator.email, phone: vault.testator.phone },
+        magicToken ?? undefined,
       )
       if (!saved) {
-        setSendError('Could not save your answers to the server. Please try again.')
+        setSendError('We could not save your latest answers. Nothing was submitted; please try again.')
         return
       }
-      const submitted = await submitDraft(id, tok ?? undefined)
+      const submitted = await submitDraft(id, magicToken ?? undefined)
       if (!submitted) {
-        setSendError(
-          'We could not send this to the lawyer — it may already have been sent. ' +
-          'Contact the firm if you are unsure.'
-        )
+        setSendError('We could not submit this file. It may already have been sent; contact the firm if you are unsure.')
         return
       }
       setSent(true)
@@ -93,200 +89,169 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
       setSending(false)
     }
   }
-  const pctByChapter = useMemo(() => {
-    const out: Record<string, number> = {}
-    for (const ch of willIntakeChapters) out[ch.id] = chapterProgress(ch, vault).pct
-    return out
-  }, [vault])
-
-  const requiredDocs = useMemo(
-    () =>
-      determineRequiredDocuments({
-        tier: vault.goals.hasDualWill ? 2 : 1,
-        hasDualWill: !!vault.goals.hasDualWill,
-        hasPoaProperty: !!vault.goals.hasPoaProperty,
-        hasPoaPersonalCare: !!vault.goals.hasPoaPersonalCare,
-      }),
-    [vault.goals]
-  )
-
-  const jumpToChapter = (chapterId: string) => {
-    const idx = willIntakeChapters.findIndex((c) => c.id === chapterId)
-    router.push(`/intake/${willId}?chapter=${idx}`)
-  }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-5 p-6">
-      {/* Header */}
+    <div className="mx-auto flex max-w-5xl flex-col gap-5 p-4 sm:p-6">
       <header className="rounded-xl border border-[#E8E4DF] bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Review & Generate</h1>
-            <p className="text-xs text-gray-500">
-              Everything you told us, in one place. Edit any field inline, then generate your documents.
+            <h1 className="text-xl font-semibold text-gray-900">Review your answers</h1>
+            <p className="mt-1 max-w-2xl text-sm text-gray-600">
+              Check that the information below is accurate. Sending it does not create a final will.
+              Your lawyer will review your facts, discuss legal choices, and prepare drafts.
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Link href={`/intake/${willId}`}>
-              <Button variant="outline" size="sm">
-                ← Back to wizard
-              </Button>
-            </Link>
-            <Button
-              size="sm"
-              onClick={handleGenerate}
-              disabled={overall.requiredUnanswered > 0 || generating}
-            >
-              {generating ? 'Generating…' : 'Generate all documents'}
-            </Button>
-          </div>
+          <Link className="ml-auto" href={`/intake/${willId}`}>
+            <Button variant="outline" size="sm">Back to questionnaire</Button>
+          </Link>
         </div>
         <div className="mt-4">
           <div className="mb-1.5 flex items-center justify-between text-xs text-gray-500">
-            <span>Completion</span>
-            <span>{overall.pct}%</span>
+            <span>Required answers complete</span><span>{overall.pct}%</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-[#E8E4DF]">
-            <div
-              className="h-2 rounded-full bg-gradient-to-r from-[#1B2A4A] to-[#7BA68C] transition-all"
-              style={{ width: `${overall.pct}%` }}
-            />
+            <div className="h-2 rounded-full bg-[#7BA68C]" style={{ width: `${overall.pct}%` }} />
           </div>
-          {overall.requiredUnanswered > 0 && (
-            <p className="mt-2 text-[11px] text-[#8a6a1e]">
-              {overall.requiredUnanswered} required field{overall.requiredUnanswered === 1 ? '' : 's'} still empty.
-            </p>
-          )}
         </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-4">
-        {/* Left — editable review sections */}
-        <div className="col-span-12 lg:col-span-8 space-y-4">
-          <EditableReviewSection title="Testator" icon="👤" completenessPct={pctByChapter.testator} onJumpToIntake={() => jumpToChapter('testator')}>
-            <EditableField label="Full legal name" value={vault.testator.fullName} onSave={(v) => setField('testator.fullName', v)} />
-            <EditableField label="Date of birth" value={vault.testator.dob} kind="date" onSave={(v) => setField('testator.dob', v)} />
-            <EditableField label="Address" value={vault.testator.address} onSave={(v) => setField('testator.address', v)} />
-            <EditableField label="Marital status" value={vault.testator.maritalStatus} onSave={(v) => setField('testator.maritalStatus', v)} />
-            <EditableField label="Occupation" value={vault.testator.occupation} onSave={(v) => setField('testator.occupation', v)} />
-          </EditableReviewSection>
+      {errors.length > 0 && (
+        <section className="rounded-xl border border-red-200 bg-red-50 p-4" aria-labelledby="answer-errors">
+          <h2 id="answer-errors" className="font-semibold text-red-900">Please review {errors.length} item{errors.length === 1 ? '' : 's'}</h2>
+          <ul className="mt-2 space-y-1 text-sm text-red-800">
+            {errors.map((error) => (
+              <li key={`${error.chapterId}-${error.questionId}`}>
+                <button className="text-left underline" onClick={() => jumpToChapter(error.chapterId)}>
+                  {error.message}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-          <EditableReviewSection title="Family" icon="👨‍👩‍👧" completenessPct={pctByChapter.family} onJumpToIntake={() => jumpToChapter('family')}>
-            <EditableField label="Include spouse" value={vault.spouse?.included} kind="boolean" onSave={(v) => setField('spouse.included', v)} />
-            <EditableField label="Spouse name" value={vault.spouse?.fullName} onSave={(v) => setField('spouse.fullName', v)} />
-            <EditableField
-              label="Children"
-              value={vault.children.map((c) => c.fullName).filter(Boolean).join(', ')}
-              display={(v) => (v ? String(v) : '')}
-              onSave={() => jumpToChapter('family')}
-            />
-          </EditableReviewSection>
+      <div className="space-y-4">
+        <EditableReviewSection title="About you" icon="1" completenessPct={pctByChapter.testator} onJumpToIntake={() => jumpToChapter('testator')}>
+          <EditableField label="Full legal name" value={vault.testator.fullName} onSave={(value) => setField('testator.fullName', value)} />
+          <EditableField label="Date of birth" value={vault.testator.dob} kind="date" onSave={(value) => setField('testator.dob', value)} />
+          <EditableField label="Address" value={vault.testator.address} onSave={(value) => setField('testator.address', value)} />
+          <EditableField label="Email" value={vault.testator.email} onSave={(value) => setField('testator.email', value)} />
+          <EditableField label="Marital status" value={vault.testator.maritalStatus} onSave={(value) => setField('testator.maritalStatus', value)} />
+        </EditableReviewSection>
 
-          <EditableReviewSection title="Executors & Guardians" icon="🛡️" completenessPct={pctByChapter.executors} onJumpToIntake={() => jumpToChapter('executors')}>
-            <EditableField
-              label="Primary executor"
-              value={vault.executors.find((e) => !e.isBackup)?.fullName}
-              onSave={() => jumpToChapter('executors')}
-            />
-            <EditableField
-              label="Backup executor"
-              value={vault.executors.find((e) => e.isBackup)?.fullName}
-              onSave={() => jumpToChapter('executors')}
-            />
-            <EditableField
-              label="Primary guardian"
-              value={vault.guardians.find((g) => !g.isBackup)?.fullName}
-              onSave={() => jumpToChapter('executors')}
-            />
-          </EditableReviewSection>
+        <ReviewListSection title="Family and dependants" icon="2" pct={pctByChapter.family}
+          onOpen={() => jumpToChapter('family')} rows={[
+            ['Spouse or partner', vault.spouse?.included ? vault.spouse.fullName || 'Name not provided' : 'Not included'],
+            ['Children and dependants', names(vault.children)],
+            ['Separated', yesNo(vault.spouse?.separated)],
+          ]} />
 
-          <EditableReviewSection title="Beneficiaries" icon="🎁" completenessPct={pctByChapter.beneficiaries} onJumpToIntake={() => jumpToChapter('beneficiaries')}>
-            <EditableField
-              label="Residue beneficiaries"
-              value={vault.beneficiaries.map((b) => b.fullName).filter(Boolean).join(', ')}
-              onSave={() => jumpToChapter('beneficiaries')}
-            />
-            <EditableField label="Charitable giving" value={vault.goals.charitableGiving} kind="boolean" onSave={(v) => setField('goals.charitableGiving', v)} />
-          </EditableReviewSection>
+        <ReviewListSection title="Executors and guardians" icon="3" pct={pctByChapter.executors}
+          onOpen={() => jumpToChapter('executors')} rows={[
+            ['Executors', names(vault.executors)],
+            ['Guardians', names(vault.guardians)],
+            ['Trust company fallback', vault.corporateTrusteeName],
+          ]} />
 
-          <EditableReviewSection title="Assets & Strategy" icon="💼" completenessPct={pctByChapter.assets} onJumpToIntake={() => jumpToChapter('assets')}>
-            <EditableField label="Estimated net worth" value={vault.assets.estimatedNetWorth} kind="number" onSave={(v) => setField('assets.estimatedNetWorth', v)} />
-            <EditableField label="Private-co. shares" value={vault.assets.privateCompanyShares} kind="boolean" onSave={(v) => setField('assets.privateCompanyShares', v)} />
-            <EditableField label="Dual-will strategy" value={vault.goals.hasDualWill} kind="boolean" onSave={(v) => setField('goals.hasDualWill', v)} />
-            <EditableField label="Life insurance" value={vault.assets.lifeInsurance} kind="boolean" onSave={(v) => setField('assets.lifeInsurance', v)} />
-          </EditableReviewSection>
+        <ReviewListSection title="Beneficiaries and residue" icon="4" pct={pctByChapter.beneficiaries}
+          onOpen={() => jumpToChapter('beneficiaries')} rows={[
+            ['Distribution method', vault.residueDistribution],
+            ['Residue beneficiaries', vault.beneficiaries.map((person) =>
+              `${person.fullName}${person.sharePercent != null ? ` (${person.sharePercent}%)` : ''}`).join(', ')],
+            ['Backup beneficiaries', names(vault.contingentBeneficiaries)],
+          ]} />
 
-          <EditableReviewSection title="Special provisions" icon="⭐" completenessPct={pctByChapter.special} onJumpToIntake={() => jumpToChapter('special')}>
-            <EditableField label="Henson trust" value={vault.goals.henson} kind="boolean" onSave={(v) => setField('goals.henson', v)} />
-            <EditableField label="Minor children trust" value={vault.goals.minorChildrenTrust} kind="boolean" onSave={(v) => setField('goals.minorChildrenTrust', v)} />
-            <EditableField label="POA Property" value={vault.goals.hasPoaProperty} kind="boolean" onSave={(v) => setField('goals.hasPoaProperty', v)} />
-            <EditableField label="POA Personal Care" value={vault.goals.hasPoaPersonalCare} kind="boolean" onSave={(v) => setField('goals.hasPoaPersonalCare', v)} />
-          </EditableReviewSection>
-        </div>
+        <ReviewListSection title="Specific gifts and charities" icon="5" pct={pctByChapter.gifts}
+          onOpen={() => jumpToChapter('gifts')} rows={[
+            ['Gifts', vault.gifts.length ? vault.gifts.map((gift) => gift.description || gift.charityName || gift.type).join('; ') : 'None provided'],
+          ]} />
 
-        {/* Right — documents sidebar */}
-        <aside className="col-span-12 lg:col-span-4">
-          <div className="sticky top-4 rounded-xl border border-[#E8E4DF] bg-white p-4 shadow-sm">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Documents to be generated
-            </h3>
-            <ul className="mt-3 space-y-2">
-              {requiredDocs.map((docId) => {
-                const cfg = getDocumentTypeConfig(docId)
-                return (
-                  <li key={docId} className="flex items-start gap-2 rounded-md border border-[#E8E4DF] bg-[#FAF8F5] p-2">
-                    <span className="text-lg leading-none">{cfg?.icon ?? '📄'}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-gray-900">{cfg?.shortName ?? docId}</div>
-                      <div className="text-[11px] text-gray-500 leading-snug">{cfg?.description}</div>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-            <div className="mt-4 space-y-2">
-              <Button
-                className="w-full"
-                onClick={handleGenerate}
-                disabled={overall.requiredUnanswered > 0 || generating}
-              >
-                {generating ? 'Generating…' : 'Generate all documents'}
-              </Button>
-              {sent ? (
-                <p className="rounded-md border border-[#7BA68C] bg-[#F2F7F4] p-2 text-center text-xs text-[#3d6650]">
-                  Sent — your lawyer will review your answers and contact you
-                  at {clientEmail.trim()}.
-                </p>
-              ) : (
-                <>
-                  <input
-                    type="email"
-                    value={clientEmail}
-                    onChange={(e) => setClientEmail(e.target.value)}
-                    placeholder="Your email (so the lawyer can reach you)"
-                    className="w-full rounded-md border border-[#E8E4DF] px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#1B2A4A] focus:outline-none"
-                    disabled={sending}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={handleSendToLawyer}
-                    disabled={sending}
-                  >
-                    {sending ? 'Sending…' : 'Send to lawyer for review'}
-                  </Button>
-                </>
-              )}
-              {sendError && (
-                <p className="text-[11px] text-red-600 text-center">{sendError}</p>
-              )}
-              {generateError && (
-                <p className="text-[11px] text-red-600 text-center">{generateError}</p>
-              )}
-            </div>
-          </div>
-        </aside>
+        <ReviewListSection title="Children and trusts" icon="6" pct={pctByChapter.trusts}
+          onOpen={() => jumpToChapter('trusts')} rows={[
+            ['Young-beneficiary trust', yesNo(vault.goals.minorChildrenTrust)],
+            ['Preferred distribution age', vault.trustDistributionAge],
+            ['ODSP / Henson discussion', yesNo(vault.goals.henson)],
+            ['Spousal trust discussion', yesNo(vault.goals.spousalTrust)],
+          ]} />
+
+        <ReviewListSection title="Assets and debts" icon="7" pct={pctByChapter.assets}
+          onOpen={() => jumpToChapter('assets')} rows={[
+            ['Approximate net value', vault.assets.estimatedNetWorth != null ? `$${vault.assets.estimatedNetWorth.toLocaleString()}` : undefined],
+            ['Assets listed', vault.assets.items?.length],
+            ['Debts listed', vault.assets.liabilities?.length],
+            ['Private-company interests', yesNo(vault.assets.privateCompanyShares)],
+            ['Dual-will review requested', yesNo(vault.goals.dualWillReviewRequested)],
+          ]} />
+
+        <ReviewListSection title="Powers of attorney" icon="8" pct={pctByChapter.poa}
+          onOpen={() => jumpToChapter('poa')} rows={[
+            ['Property POA requested', yesNo(vault.poa.property.requested)],
+            ['Property attorneys', names(vault.poa.property.attorneys)],
+            ['Personal Care POA requested', yesNo(vault.poa.personalCare.requested)],
+            ['Personal Care attorneys', names(vault.poa.personalCare.attorneys)],
+          ]} />
+
+        <ReviewListSection title="Final wishes" icon="9" pct={pctByChapter.final}
+          onOpen={() => jumpToChapter('final')} rows={[
+            ['Resting place', vault.finalWishes.restingPlace],
+            ['Ceremony wishes', vault.finalWishes.ceremonyWishes],
+            ['Other concerns', vault.finalWishes.otherConcerns],
+          ]} />
       </div>
+
+      <section className="rounded-xl border border-[#D8E4DC] bg-[#F2F7F4] p-5">
+        {sent ? (
+          <div role="status">
+            <h2 className="font-semibold text-[#315641]">Your answers were sent to the lawyer</h2>
+            <p className="mt-1 text-sm text-[#3d6650]">
+              The firm will review the information and contact you at {vault.testator.email}. No final will has been created or filed.
+            </p>
+          </div>
+        ) : (
+          <>
+            <label className="flex items-start gap-3 text-sm text-gray-800">
+              <input type="checkbox" className="mt-1" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+              <span>I reviewed these answers and believe they are accurate. I understand that a lawyer must review them before any draft is approved for signing.</span>
+            </label>
+            <Button className="mt-4 w-full sm:w-auto" onClick={handleSendToLawyer}
+              disabled={sending || errors.length > 0 || !confirmed}>
+              {sending ? 'Sending…' : 'Send my answers to my lawyer'}
+            </Button>
+            {sendError && <p className="mt-2 text-sm text-red-700" role="alert">{sendError}</p>}
+          </>
+        )}
+      </section>
     </div>
   )
+}
+
+function ReviewListSection({
+  title, icon, pct, onOpen, rows,
+}: {
+  title: string
+  icon: string
+  pct: number
+  onOpen: () => void
+  rows: Array<[string, unknown]>
+}) {
+  return (
+    <EditableReviewSection title={title} icon={icon} completenessPct={pct} onJumpToIntake={onOpen}>
+      {rows.map(([label, value]) => (
+        <EditableField key={label} label={label} value={displayValue(value)} onSave={onOpen} />
+      ))}
+    </EditableReviewSection>
+  )
+}
+
+function names(items: Array<{ fullName: string }>): string {
+  return items.map((item) => item.fullName).filter(Boolean).join(', ') || 'None provided'
+}
+
+function yesNo(value?: boolean): string {
+  return value === true ? 'Yes' : value === false ? 'No' : 'Not provided'
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Not provided'
+  return String(value).replaceAll('_', ' ')
 }

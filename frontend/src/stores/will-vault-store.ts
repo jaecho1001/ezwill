@@ -10,7 +10,7 @@
 
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { emptyVault, type WillVault, type VaultPath } from '@/types/will-vault'
+import { emptyVault, normalizeVault, type WillVault, type VaultPath } from '@/types/will-vault'
 import type { Language } from '@/lib/types/will'
 
 interface VaultState {
@@ -63,12 +63,17 @@ export function useWillVault(willId: string): UseBoundStore<StoreApi<VaultState>
         setLanguage: (language) => set({ language }),
         setField: (path, value) => set({ vault: setByPath(get().vault, path, value) as WillVault }),
         getField: (path) => getByPath(get().vault, path),
-        replaceVault: (next) => set({ vault: next }),
+        replaceVault: (next) => set({ vault: normalizeVault(next) }),
         reset: () => set({ vault: emptyVault }),
       }),
       {
         name: `ezwill.vault.${willId}`,
         storage: createJSONStorage(() => (typeof window === 'undefined' ? dummyStorage : localStorage)),
+        version: 2,
+        migrate: (persisted) => {
+          const state = (persisted ?? {}) as Partial<VaultState>
+          return { ...state, vault: normalizeVault(state.vault) } as VaultState
+        },
       }
     )
   )

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from models import CreateLinkRequest, CreateLinkResponse
 from services.db import EWDbWriter
 from services.notification_service import send_magic_link_to_client
@@ -72,8 +72,9 @@ async def create_link(
 
 
 @router.get("/{token}/resolve")
-async def resolve_link(token: str):
+async def resolve_link(token: str, response: Response):
     """Client-facing — resolves a magic link token (no auth)."""
+    response.headers["Cache-Control"] = "no-store"
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         link = db.resolve_link(token)
         if not link:
@@ -88,6 +89,9 @@ async def resolve_link(token: str):
             "status": link["draft_status"],
             "current_step": link["current_step"],
             "completed_steps": link["completed_steps"] or [],
+            "vault": link.get("vault") or None,
+            "client_email": link.get("client_email"),
+            "client_phone": link.get("client_phone"),
         }
 
 

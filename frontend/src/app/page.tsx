@@ -113,10 +113,7 @@ function HomePageInner() {
         dispatch({ type: 'SET_LANGUAGE', payload: result.language as WillDocument['language'] })
       }
       setTokenState('resolved')
-      const nextStep = result.completed_steps?.length > 0
-        ? WILL_STEPS[Math.min(result.completed_steps.length, WILL_STEPS.length - 1)]?.path
-        : '/will/about-you'
-      setTimeout(() => router.push(nextStep || '/will/about-you'), 800)
+      setTimeout(() => router.push(`/intake/${result.draft_id}?t=${encodeURIComponent(token)}`), 800)
     })
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -16,6 +16,9 @@ import { buildDefaultSelections } from '@/lib/will-documents/index'
 import { serializeSelectionsForSave } from '@/lib/will-documents/clause-serialization'
 import type { WillDocumentType } from '@/types/will-document'
 import { cn } from '@/lib/utils'
+import { normalizeVault } from '@/types/will-vault'
+import { overallProgress } from '@/lib/intake/will-intake-script'
+import { getVaultReviewFlags } from '@/lib/intake/vault-review-flags'
 
 const SECTION_LABELS = [
   { key: 'about_you', label: 'About You' },
@@ -25,6 +28,7 @@ const SECTION_LABELS = [
   { key: 'poa_property', label: 'POA — Property' },
   { key: 'poa_personal_care', label: 'POA — Personal Care' },
   { key: 'assets', label: 'Assets' },
+  { key: 'vault', label: 'Unified Client Intake' },
 ]
 
 function SectionData({ label, data }: { label: string; data: unknown }) {
@@ -67,11 +71,12 @@ function SectionData({ label, data }: { label: string; data: unknown }) {
       <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-1">
         {Object.entries(obj).map(([key, val]) => {
           if (val === null || val === undefined || val === '') return null
-          if (typeof val === 'object') return null // skip nested objects in summary
           return (
-            <div key={key} className="flex items-baseline gap-2 text-sm">
+            <div key={key} className="flex items-start gap-2 text-sm">
               <span className="text-gray-400">{key.replace(/_/g, ' ')}:</span>
-              <span className="text-gray-700">{String(val)}</span>
+              <span className="whitespace-pre-wrap break-words text-gray-700">
+                {typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val)}
+              </span>
             </div>
           )
         })}
@@ -110,6 +115,7 @@ interface DraftDetail {
     dismissed?: boolean
   }>
   tier2_clauses?: Record<string, unknown> | null
+  vault?: Record<string, unknown> | null
 }
 
 type TabId = 'overview' | 'answers' | 'documents' | 'tier2'
@@ -185,6 +191,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         poa_personal_care: d.poa_personal_care,
         assets: d.assets,
         people: d.people,
+        vault: d.vault,
       }
       const result = await invokeQuickDraft(id, clientData)
       if (result) {
@@ -269,7 +276,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     )
   }
 
-  const progress = Math.round((draft.completed_steps.length / 7) * 100)
+  const unifiedProgress = draft.vault ? overallProgress(normalizeVault(draft.vault as never)).pct : null
+  const progress = unifiedProgress ?? Math.round((draft.completed_steps.length / 7) * 100)
 
   // Map ai_flags to the format AiFlagsSummary expects
   const flags = (draft.ai_flags ?? [])
@@ -281,6 +289,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       message: f.description,
       field: f.statute,
     }))
+  if (draft.vault) {
+    for (const flag of getVaultReviewFlags(normalizeVault(draft.vault as never))) {
+      if (!flags.some((existing) => existing.id === flag.id)) {
+        flags.push({
+          id: flag.id,
+          rule: flag.title,
+          severity: flag.severity,
+          message: flag.description,
+          field: flag.statute,
+        })
+      }
+    }
+  }
 
   // Build section data map
   const sectionData: Record<string, unknown> = {
@@ -291,6 +312,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     poa_property: draft.poa_property,
     poa_personal_care: draft.poa_personal_care,
     assets: draft.assets,
+    vault: draft.vault,
   }
 
   return (
@@ -330,7 +352,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         <CardContent className="p-6">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-gray-700">Intake Progress</span>
-            <span className="text-gray-500">{progress}% — Step {draft.current_step + 1} of 7</span>
+            <span className="text-gray-500">
+              {progress}%{unifiedProgress === null ? ` — Step ${draft.current_step + 1} of 7` : ' of required answers'}
+            </span>
           </div>
           <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
             <div
@@ -338,8 +362,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="mt-2 flex justify-between text-xs text-gray-400">
-            {SECTION_LABELS.map((s, i) => (
+          {unifiedProgress === null && <div className="mt-2 flex justify-between text-xs text-gray-400">
+            {SECTION_LABELS.filter((section) => section.key !== 'vault').map((s, i) => (
               <span
                 key={s.key}
                 className={draft.completed_steps.includes(i) ? 'text-[#7BA68C] font-medium' : ''}
@@ -347,7 +371,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 {s.label}
               </span>
             ))}
-          </div>
+          </div>}
         </CardContent>
       </Card>
 

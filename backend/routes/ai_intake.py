@@ -100,7 +100,7 @@ TOOLS = [
         "description": (
             "Write a single scalar value into the user's will vault at a "
             "dot-path (e.g. 'testator.fullName', 'spouse.fullName', "
-            "'goals.hasDualWill'). Use this for strings, numbers, booleans, "
+            "'goals.dualWillReviewRequested'). Use this for strings, numbers, booleans, "
             "and enums. Never invent values — only write what the user has "
             "actually stated. If a field already has a value, do NOT overwrite "
             "it unless the user explicitly corrected it."
@@ -153,7 +153,10 @@ TOOLS = [
             "properties": {
                 "chapter_id": {
                     "type": "string",
-                    "enum": ["testator", "family", "executors", "beneficiaries", "assets", "special"],
+                    "enum": [
+                        "testator", "family", "executors", "beneficiaries",
+                        "gifts", "trusts", "assets", "poa", "final",
+                    ],
                 },
             },
             "required": ["chapter_id"],
@@ -180,18 +183,24 @@ SYSTEM_PROMPT_TEMPLATE = """You are an intake assistant for an Ontario estate-pl
 Your job is to help the user fill out their will vault by asking natural, warm questions and calling tools
 to record their answers. Be concise. One or two short questions at a time. Never draft legal advice.
 
-The vault has these chapters:
-1. testator (fullName, dob, address, maritalStatus, occupation, citizenship)
-2. family (spouse.fullName, spouse.included, children[])
-3. executors (executors[], guardians[] — each with fullName, relationship, isBackup)
-4. beneficiaries (beneficiaries[] with fullName, relationship, sharePercent, specificGift; goals.charitableGiving)
-5. assets (assets.estimatedNetWorth, assets.privateCompanyShares, assets.realEstate, assets.lifeInsurance, goals.hasDualWill)
-6. special (goals.henson, goals.minorChildrenTrust, goals.hasPoaProperty, goals.hasPoaPersonalCare)
+The version-2 vault has these chapters:
+1. testator (fullName, preferredName, dob, address, email, phone, maritalStatus, occupation, citizenship)
+2. family (spouse details including separation; children[] including dependency and ODSP facts)
+3. executors (executors[], guardians[], corporateTrusteeName)
+4. beneficiaries (residueDistribution, beneficiaries[], contingentBeneficiaries[])
+5. gifts (gifts[] for cash, items, real estate, charities, or pet care)
+6. trusts (goals.minorChildrenTrust, trustDistributionAge, goals.henson, goals.spousalTrust)
+7. assets (assets.items[], assets.liabilities[], estimatedNetWorth, privateCompanyShares,
+   goals.dualWillReviewRequested)
+8. poa (property/personalCare requested, attorneys, timing, restrictions, and care wishes)
+9. final (restingPlace, ceremonyWishes, petCare, otherConcerns)
 
 Rules:
 - NEVER invent values. If the user hasn't told you something, don't write it.
 - If a field already has a value in the vault, don't overwrite it unless the user says to correct it.
 - Use write_vault_field for scalars. Use append_vault_list_item for children/executors/guardians/beneficiaries.
+- A dual-will or trust answer requests lawyer review only. Never state that a
+  strategy, clause, or legal document has been approved.
 - When you've finished a chapter (all required fields filled), call advance_chapter and move on.
 - When the user's message is ambiguous, call ask_clarifying_question rather than guessing.
 - Keep assistant messages short (1–2 sentences) unless the user asks for more.
@@ -442,10 +451,10 @@ _NAME_RE = re.compile(r"(?:i(?:'| a)m|my name is|i am)\s+([A-Z][a-zA-Z\- ]{1,40}
 _SPOUSE_RE = re.compile(r"(?:married to|my (?:wife|husband|spouse|partner) is)\s+([A-Z][a-zA-Z\- ]{1,40})", re.IGNORECASE)
 _CHILDREN_RE = re.compile(r"(?:children(?: are)?|kids(?: are)?|two kids|three kids)\s*[:,]?\s*([A-Z][A-Za-z,\- and]+)", re.IGNORECASE)
 _YESNO_RE = {
-    "hasDualWill": re.compile(r"\b(dual will|two wills|secondary will)\b", re.IGNORECASE),
-    "hasPoaProperty": re.compile(r"\b(poa (?:for )?property|power of attorney for property)\b", re.IGNORECASE),
-    "hasPoaPersonalCare": re.compile(r"\b(personal care poa|poa (?:for )?personal care)\b", re.IGNORECASE),
-    "privateCompanyShares": re.compile(r"\b(private (?:company|corp|corporation) shares?|private-co)\b", re.IGNORECASE),
+    "goals.dualWillReviewRequested": re.compile(r"\b(dual will|two wills|secondary will)\b", re.IGNORECASE),
+    "poa.property.requested": re.compile(r"\b(poa (?:for )?property|power of attorney for property)\b", re.IGNORECASE),
+    "poa.personalCare.requested": re.compile(r"\b(personal care poa|poa (?:for )?personal care)\b", re.IGNORECASE),
+    "assets.privateCompanyShares": re.compile(r"\b(private (?:company|corp|corporation) shares?|private-co)\b", re.IGNORECASE),
 }
 
 
@@ -488,13 +497,8 @@ async def _stream_with_mock(
             if re.match(r"^[A-Z][A-Za-z\- ]{1,40}$", n):
                 patches.append(("append_vault_list_item", "children", {"fullName": n}))
 
-    for field, rex in _YESNO_RE.items():
+    for path, rex in _YESNO_RE.items():
         if rex.search(text):
-            path = (
-                f"assets.{field}"
-                if field == "privateCompanyShares"
-                else f"goals.{field}"
-            )
             patches.append(("write_vault_field", path, True))
 
     for name, path_or_list, payload in patches:

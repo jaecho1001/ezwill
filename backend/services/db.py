@@ -411,7 +411,8 @@ class EWDbWriter:
 
     def resolve_link(self, token: str) -> dict:
         return self.fetchone("""
-            SELECT l.*, d.status as draft_status, d.language, d.current_step, d.completed_steps
+            SELECT l.*, d.status as draft_status, d.language, d.current_step,
+                   d.completed_steps, d.vault, d.client_email, d.client_phone
             FROM ew_client_links l
             JOIN ew_will_drafts d ON d.id = l.draft_id
             WHERE l.token = %s

@@ -2,7 +2,14 @@
 
 import { useId } from 'react'
 import type { IntakeQuestion } from '@/lib/intake/will-intake-script'
-import type { VaultChild, VaultPerson } from '@/types/will-vault'
+import type {
+  VaultAssetItem,
+  VaultBeneficiary,
+  VaultChild,
+  VaultGift,
+  VaultLiability,
+  VaultPerson,
+} from '@/types/will-vault'
 import type { Language } from '@/lib/types/will'
 import { L } from '@/lib/intake/localize'
 import { Input } from '@/components/ui/input'
@@ -14,15 +21,16 @@ interface Props {
   value: unknown
   onChange: (value: unknown) => void
   language: Language
+  error?: string | null
 }
 
-export function QuestionCard({ question, value, onChange, language }: Props) {
+export function QuestionCard({ question, value, onChange, language, error }: Props) {
   const id = useId()
   return (
     <div className="rounded-xl border border-[#E8E4DF] bg-white p-5 shadow-sm">
       <label htmlFor={id} className="block text-sm font-semibold text-gray-900">
         {L(language, question.prompt, question.promptKo)}
-        {question.required && <span className="ml-1 text-[#C9A84C]">*</span>}
+        {question.required && <span className="ml-1 text-gray-600">({L(language, 'required', '필수')})</span>}
       </label>
       {question.helpText && (
         <p className="mt-1 text-xs text-gray-500 leading-relaxed">
@@ -30,6 +38,7 @@ export function QuestionCard({ question, value, onChange, language }: Props) {
         </p>
       )}
       <div className="mt-3">{renderInput(id, question, value, onChange, language)}</div>
+      {error && <p className="mt-2 text-xs text-red-700" role="alert">{error}</p>}
     </div>
   )
 }
@@ -119,6 +128,14 @@ function renderInput(
       return <PersonListEditor value={(value as VaultPerson[]) ?? []} onChange={onChange} language={language} />
     case 'childList':
       return <ChildListEditor value={(value as VaultChild[]) ?? []} onChange={onChange} language={language} />
+    case 'beneficiaryList':
+      return <BeneficiaryListEditor value={(value as VaultBeneficiary[]) ?? []} onChange={onChange} language={language} />
+    case 'giftList':
+      return <GiftListEditor value={(value as VaultGift[]) ?? []} onChange={onChange} language={language} />
+    case 'assetList':
+      return <AssetListEditor value={(value as VaultAssetItem[]) ?? []} onChange={onChange} language={language} />
+    case 'liabilityList':
+      return <LiabilityListEditor value={(value as VaultLiability[]) ?? []} onChange={onChange} language={language} />
     default:
       return null
   }
@@ -176,7 +193,7 @@ function PersonListEditor({
         </p>
       )}
       {value.map((p, i) => (
-        <div key={p.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2">
+        <div key={p.id} className="grid gap-2 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-[auto_1fr_12rem_auto] sm:items-center">
           <span className="shrink-0 rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
                 style={{ background: p.isBackup ? '#F6EEDA' : '#E9F1EC', color: p.isBackup ? '#8a6a1e' : '#4A6B57' }}>
             {p.isBackup ? L(language, 'Backup', '예비') : L(language, 'Primary', '기본')}
@@ -188,7 +205,7 @@ function PersonListEditor({
             onChange={(e) => update(i, { fullName: e.target.value })}
           />
           <Input
-            className="h-8 w-44"
+            className="h-8"
             value={p.relationship ?? ''}
             placeholder={L(language, 'Relationship', '관계')}
             onChange={(e) => update(i, { relationship: e.target.value })}
@@ -239,7 +256,7 @@ function ChildListEditor({
         </p>
       )}
       {value.map((c, i) => (
-        <div key={c.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2">
+        <div key={c.id} className="grid gap-2 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-[1fr_10rem_auto_auto] sm:items-center">
           <Input
             className="h-8"
             value={c.fullName}
@@ -247,7 +264,7 @@ function ChildListEditor({
             onChange={(e) => update(i, { fullName: e.target.value })}
           />
           <Input
-            className="h-8 w-36"
+            className="h-8"
             type="date"
             value={c.dob ?? ''}
             onChange={(e) => update(i, { dob: e.target.value })}
@@ -259,6 +276,14 @@ function ChildListEditor({
               onChange={(e) => update(i, { fromPriorRelationship: e.target.checked })}
             />
             {L(language, 'Prior relationship', '이전 관계')}
+          </label>
+          <label className="flex shrink-0 items-center gap-1 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={!!c.receivesODSP}
+              onChange={(e) => update(i, { receivesODSP: e.target.checked })}
+            />
+            ODSP
           </label>
           <button
             type="button"
@@ -274,5 +299,192 @@ function ChildListEditor({
         {L(language, '+ Add child', '+ 자녀 추가')}
       </Button>
     </div>
+  )
+}
+
+function BeneficiaryListEditor({
+  value,
+  onChange,
+  language,
+}: {
+  value: VaultBeneficiary[]
+  onChange: (next: VaultBeneficiary[]) => void
+  language: Language
+}) {
+  const update = (idx: number, patch: Partial<VaultBeneficiary>) =>
+    onChange(value.map((person, i) => i === idx ? { ...person, ...patch } : person))
+  return (
+    <div className="space-y-2">
+      {value.map((person, idx) => (
+        <div key={person.id} className="grid gap-2 rounded-lg border border-gray-200 p-3 sm:grid-cols-[1fr_10rem_7rem_auto]">
+          <Input value={person.fullName} placeholder={L(language, 'Full legal name', '전체 법적 이름')}
+            onChange={(e) => update(idx, { fullName: e.target.value })} />
+          <Input value={person.relationship ?? ''} placeholder={L(language, 'Relationship', '관계')}
+            onChange={(e) => update(idx, { relationship: e.target.value })} />
+          <Input type="number" min={0} max={100} value={person.sharePercent ?? ''}
+            aria-label={L(language, 'Share percentage', '지분 비율')}
+            placeholder="%" onChange={(e) => update(idx, { sharePercent: e.target.value === '' ? undefined : Number(e.target.value) })} />
+          <RemoveButton onClick={() => onChange(value.filter((_, i) => i !== idx))} language={language} />
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm"
+        onClick={() => onChange([...value, { id: crypto.randomUUID(), fullName: '' }])}>
+        {L(language, '+ Add beneficiary', '+ 수혜자 추가')}
+      </Button>
+    </div>
+  )
+}
+
+function GiftListEditor({
+  value,
+  onChange,
+  language,
+}: {
+  value: VaultGift[]
+  onChange: (next: VaultGift[]) => void
+  language: Language
+}) {
+  const update = (idx: number, patch: Partial<VaultGift>) =>
+    onChange(value.map((gift, i) => i === idx ? { ...gift, ...patch } : gift))
+  return (
+    <div className="space-y-3">
+      {value.map((gift, idx) => (
+        <div key={gift.id} className="space-y-2 rounded-lg border border-gray-200 p-3">
+          <div className="grid gap-2 sm:grid-cols-[10rem_1fr_auto]">
+            <select className="h-10 rounded-lg border border-gray-300 px-3 text-sm" value={gift.type}
+              aria-label={L(language, 'Gift type', '유증 종류')}
+              onChange={(e) => update(idx, { type: e.target.value as VaultGift['type'] })}>
+              <option value="cash">{L(language, 'Cash', '현금')}</option>
+              <option value="personal_item">{L(language, 'Personal item', '개인 물품')}</option>
+              <option value="real_estate">{L(language, 'Real estate', '부동산')}</option>
+              <option value="charity">{L(language, 'Charity', '자선단체')}</option>
+              <option value="pet">{L(language, 'Pet care', '반려동물 돌봄')}</option>
+            </select>
+            <Input value={gift.description} placeholder={L(language, 'Describe the gift', '유증 설명')}
+              onChange={(e) => update(idx, { description: e.target.value })} />
+            <RemoveButton onClick={() => onChange(value.filter((_, i) => i !== idx))} language={language} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Input value={gift.type === 'charity' ? gift.charityName ?? '' : gift.recipientName ?? ''}
+              placeholder={gift.type === 'charity' ? L(language, 'Charity name', '자선단체명') : L(language, 'Recipient', '수령인')}
+              onChange={(e) => update(idx, gift.type === 'charity' ? { charityName: e.target.value } : { recipientName: e.target.value })} />
+            <Input type="number" min={0} value={gift.amount ?? ''} placeholder={L(language, 'Amount, if applicable', '금액 (해당 시)')}
+              onChange={(e) => update(idx, { amount: e.target.value === '' ? undefined : Number(e.target.value) })} />
+            <Input value={gift.condition ?? ''} placeholder={L(language, 'Condition (optional)', '조건 (선택 사항)')}
+              onChange={(e) => update(idx, { condition: e.target.value })} />
+          </div>
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm"
+        onClick={() => onChange([...value, { id: crypto.randomUUID(), type: 'cash', description: '' }])}>
+        {L(language, '+ Add gift', '+ 유증 추가')}
+      </Button>
+    </div>
+  )
+}
+
+function AssetListEditor({
+  value,
+  onChange,
+  language,
+}: {
+  value: VaultAssetItem[]
+  onChange: (next: VaultAssetItem[]) => void
+  language: Language
+}) {
+  const update = (idx: number, patch: Partial<VaultAssetItem>) =>
+    onChange(value.map((asset, i) => i === idx ? { ...asset, ...patch } : asset))
+  return (
+    <div className="space-y-3">
+      {value.map((asset, idx) => (
+        <div key={asset.id} className="space-y-2 rounded-lg border border-gray-200 p-3">
+          <div className="grid gap-2 sm:grid-cols-[10rem_1fr_auto]">
+            <select className="h-10 rounded-lg border border-gray-300 px-3 text-sm" value={asset.type}
+              aria-label={L(language, 'Asset type', '자산 종류')}
+              onChange={(e) => update(idx, { type: e.target.value as VaultAssetItem['type'] })}>
+              {[
+                ['real_estate', 'Real estate', '부동산'], ['bank', 'Bank account', '은행 계좌'],
+                ['investment', 'Investment', '투자'], ['registered_plan', 'RRSP/RRIF/TFSA', '등록 플랜'],
+                ['insurance', 'Life insurance', '생명보험'], ['business', 'Business interest', '사업 지분'],
+                ['foreign', 'Foreign property', '해외 재산'], ['digital', 'Digital asset', '디지털 자산'],
+                ['other', 'Other', '기타'],
+              ].map(([key, en, ko]) => <option key={key} value={key}>{L(language, en, ko)}</option>)}
+            </select>
+            <Input value={asset.description} placeholder={L(language, 'General description only', '일반적인 설명만 입력')}
+              onChange={(e) => update(idx, { description: e.target.value })} />
+            <RemoveButton onClick={() => onChange(value.filter((_, i) => i !== idx))} language={language} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Input type="number" min={0} value={asset.estimatedValue ?? ''} placeholder={L(language, 'Approximate value', '대략적인 가치')}
+              onChange={(e) => update(idx, { estimatedValue: e.target.value === '' ? undefined : Number(e.target.value) })} />
+            <select className="h-10 rounded-lg border border-gray-300 px-3 text-sm" value={asset.ownership ?? ''}
+              aria-label={L(language, 'Ownership', '소유 형태')}
+              onChange={(e) => update(idx, { ownership: (e.target.value || undefined) as VaultAssetItem['ownership'] })}>
+              <option value="">{L(language, 'Ownership (optional)', '소유 형태 (선택)')}</option>
+              <option value="sole">{L(language, 'Sole', '단독')}</option>
+              <option value="joint_spouse">{L(language, 'Joint with spouse', '배우자와 공동')}</option>
+              <option value="joint_other">{L(language, 'Joint with another person', '다른 사람과 공동')}</option>
+              <option value="tenants_in_common">{L(language, 'Tenants in common', '공유 지분')}</option>
+            </select>
+            <Input value={asset.designatedBeneficiaryName ?? ''} placeholder={L(language, 'Named beneficiary (if any)', '지정 수혜자 (있는 경우)')}
+              onChange={(e) => update(idx, { designatedBeneficiaryName: e.target.value, hasDesignatedBeneficiary: !!e.target.value })} />
+          </div>
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm"
+        onClick={() => onChange([...value, { id: crypto.randomUUID(), type: 'real_estate', description: '' }])}>
+        {L(language, '+ Add asset', '+ 자산 추가')}
+      </Button>
+    </div>
+  )
+}
+
+function LiabilityListEditor({
+  value,
+  onChange,
+  language,
+}: {
+  value: VaultLiability[]
+  onChange: (next: VaultLiability[]) => void
+  language: Language
+}) {
+  const update = (idx: number, patch: Partial<VaultLiability>) =>
+    onChange(value.map((item, i) => i === idx ? { ...item, ...patch } : item))
+  return (
+    <div className="space-y-2">
+      {value.map((item, idx) => (
+        <div key={item.id} className="grid gap-2 rounded-lg border border-gray-200 p-3 sm:grid-cols-[9rem_1fr_9rem_auto]">
+          <select className="h-10 rounded-lg border border-gray-300 px-2 text-sm" value={item.type}
+            aria-label={L(language, 'Debt type', '채무 종류')}
+            onChange={(e) => update(idx, { type: e.target.value as VaultLiability['type'] })}>
+            <option value="mortgage">{L(language, 'Mortgage', '모기지')}</option>
+            <option value="credit">{L(language, 'Credit', '신용 채무')}</option>
+            <option value="loan">{L(language, 'Loan', '대출')}</option>
+            <option value="tax">{L(language, 'Tax', '세금')}</option>
+            <option value="business">{L(language, 'Business', '사업 채무')}</option>
+            <option value="other">{L(language, 'Other', '기타')}</option>
+          </select>
+          <Input value={item.description} placeholder={L(language, 'General description', '일반 설명')}
+            onChange={(e) => update(idx, { description: e.target.value })} />
+          <Input type="number" min={0} value={item.estimatedBalance ?? ''} placeholder={L(language, 'Balance', '잔액')}
+            onChange={(e) => update(idx, { estimatedBalance: e.target.value === '' ? undefined : Number(e.target.value) })} />
+          <RemoveButton onClick={() => onChange(value.filter((_, i) => i !== idx))} language={language} />
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm"
+        onClick={() => onChange([...value, { id: crypto.randomUUID(), type: 'mortgage', description: '' }])}>
+        {L(language, '+ Add debt', '+ 채무 추가')}
+      </Button>
+    </div>
+  )
+}
+
+function RemoveButton({ onClick, language }: { onClick: () => void; language: Language }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="min-h-10 rounded px-2 text-xs text-gray-500 hover:bg-red-50 hover:text-red-700"
+      aria-label={L(language, 'Remove item', '항목 삭제')}>
+      {L(language, 'Remove', '삭제')}
+    </button>
   )
 }

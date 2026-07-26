@@ -210,6 +210,42 @@ def vault_to_variables(vault: dict) -> dict:
         v["guardianFullName"] = primary_guardian["fullName"]
         v["primaryGuardianFullName"] = primary_guardian["fullName"]
 
+    if vault.get("corporateTrusteeName"):
+        v["corporateTrusteeName"] = vault["corporateTrusteeName"]
+
+    beneficiaries = vault.get("beneficiaries") or []
+    first_beneficiary = next((b for b in beneficiaries if b.get("fullName")), None)
+    if first_beneficiary:
+        v["recipientFullName"] = first_beneficiary["fullName"]
+        v["recipientFirstName"] = first_beneficiary["fullName"].split()[0]
+
+    gifts = vault.get("gifts") or []
+    first_gift = next(
+        (gift for gift in gifts if gift.get("description") or gift.get("charityName")),
+        None,
+    )
+    if first_gift:
+        if first_gift.get("description"):
+            v["giftDescription"] = first_gift["description"]
+        if first_gift.get("amount") is not None:
+            v["cashAmount"] = "${:,.2f}".format(first_gift["amount"])
+        if first_gift.get("charityName"):
+            v["charityName"] = first_gift["charityName"]
+        if first_gift.get("charityNumber"):
+            v["charityNumber"] = first_gift["charityNumber"]
+
+    poa = vault.get("poa") or {}
+    property_attorneys = (poa.get("property") or {}).get("attorneys") or []
+    care_attorneys = (poa.get("personalCare") or {}).get("attorneys") or []
+    property_primary = next((p for p in property_attorneys if not p.get("isBackup")), None)
+    care_primary = next((p for p in care_attorneys if not p.get("isBackup")), None)
+    if property_primary and property_primary.get("fullName"):
+        v["poaPropertyAttorneyFullName"] = property_primary["fullName"]
+    if care_primary and care_primary.get("fullName"):
+        v["poaCareAttorneyFullName"] = care_primary["fullName"]
+    if vault.get("trustDistributionAge"):
+        v["trustDistributionAge"] = str(vault["trustDistributionAge"])
+
     return v
 
 

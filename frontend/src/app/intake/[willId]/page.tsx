@@ -9,6 +9,7 @@ import {
   shouldAsk,
   chapterProgress,
   overallProgress,
+  questionError,
 } from '@/lib/intake/will-intake-script'
 import { ChapterStepper } from '@/components/intake/chapter-stepper'
 import { QuestionCard } from '@/components/intake/question-card'
@@ -17,6 +18,10 @@ import { ChatPane } from '@/components/intake/chat-pane'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { L } from '@/lib/intake/localize'
+import { resolveLink } from '@/lib/api/drafts'
+import { useDraft } from '@/providers/draft-provider'
+import { normalizeVault } from '@/types/will-vault'
+import { useVaultSync } from '@/hooks/use-vault-sync'
 
 export default function IntakePage({ params }: { params: Promise<{ willId: string }> }) {
   const { willId } = use(params)
@@ -27,6 +32,42 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   const setField = store((s) => s.setField)
   const language = store((s) => s.language)
   const setLanguage = store((s) => s.setLanguage)
+  const replaceVault = store((s) => s.replaceVault)
+  const { setDraftId, setToken } = useDraft()
+  const [linkError, setLinkError] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
+  const hasMagicToken = Boolean(searchParams.get('t'))
+  const { status: saveStatus, retry: retrySave } = useVaultSync(vault, !hasMagicToken || hydrated, willId)
+
+  // A lawyer-created link is resolved again here so a bookmarked intake URL
+  // can restore its server copy on another device.
+  useEffect(() => {
+    const magicToken = searchParams.get('t')
+    if (!magicToken || hydrated) return
+    void resolveLink(magicToken).then((result) => {
+      if (!result || result.draft_id !== willId) {
+        setLinkError(true)
+        return
+      }
+      setDraftId(result.draft_id)
+      setToken(magicToken)
+      setLanguage(result.language)
+      const [firstName = '', ...rest] = result.client_name.split(' ')
+      const serverVault = result.vault
+        ? normalizeVault(result.vault as never)
+        : normalizeVault(vault)
+      replaceVault({
+        ...serverVault,
+        testator: {
+          ...serverVault.testator,
+          fullName: serverVault.testator.fullName || [firstName, ...rest].join(' ').trim(),
+          email: serverVault.testator.email || result.client_email || undefined,
+          phone: serverVault.testator.phone || result.client_phone || undefined,
+        },
+      })
+      setHydrated(true)
+    })
+  }, [hydrated, replaceVault, searchParams, setDraftId, setLanguage, setToken, vault, willId])
 
   // Seed the active chapter from ?chapter=N so deep-links from the summary
   // page / facts panel / external bookmarks land on the right step.
@@ -36,6 +77,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
     return Math.max(0, Math.min(willIntakeChapters.length - 1, Math.trunc(raw)))
   })()
   const [chapterIdx, setChapterIdx] = useState(initialIdx)
+  const [attemptedChapters, setAttemptedChapters] = useState<Set<string>>(() => new Set())
   const chapter = willIntakeChapters[chapterIdx]
 
   // Mode toggle — 'form' or 'chat'. Both modes share the same Zustand vault
@@ -76,9 +118,21 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   const overall = useMemo(() => overallProgress(vault), [vault])
 
   const goPrev = () => setChapterIdx((i) => Math.max(0, i - 1))
-  const goNext = () => setChapterIdx((i) => Math.min(willIntakeChapters.length - 1, i + 1))
+  const goNext = () => {
+    setAttemptedChapters((current) => new Set(current).add(chapter.id))
+    setChapterIdx((i) => Math.min(willIntakeChapters.length - 1, i + 1))
+  }
   const isLast = chapterIdx === willIntakeChapters.length - 1
   const canReview = overall.requiredUnanswered === 0
+
+  if (linkError) {
+    return (
+      <div className="mx-auto max-w-lg p-6 text-center">
+        <h1 className="text-xl font-semibold text-[#1B2A4A]">{L(language, 'This link is no longer available', '이 링크는 더 이상 사용할 수 없습니다')}</h1>
+        <p className="mt-2 text-sm text-gray-600">{L(language, 'Please ask your lawyer for a new questionnaire link.', '변호사에게 새 설문 링크를 요청해 주세요.')}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-6">
@@ -131,6 +185,17 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
             </button>
           </div>
           <span className="ml-auto text-gray-500">{overall.pct}% {L(language, 'complete', '완료')}</span>
+          <button
+            type="button"
+            onClick={() => saveStatus === 'error' && void retrySave()}
+            className={cn('text-xs', saveStatus === 'error' ? 'text-red-700 underline' : 'text-gray-500')}
+            aria-live="polite"
+          >
+            {saveStatus === 'saving' && L(language, 'Saving…', '저장 중…')}
+            {saveStatus === 'saved' && L(language, 'Saved', '저장됨')}
+            {saveStatus === 'error' && L(language, 'Save failed — retry', '저장 실패 — 다시 시도')}
+            {saveStatus === 'idle' && L(language, 'Answers save automatically', '답변은 자동 저장됩니다')}
+          </button>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-gray-100">
           <div
@@ -162,7 +227,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
         </aside>
 
         {/* Center — form questions OR chat pane */}
-        <main className="col-span-12 md:col-span-6 space-y-3">
+        <main className="col-span-12 space-y-3 md:col-span-9">
           {mode === 'chat' ? (
             <>
               <ChatPane
@@ -207,6 +272,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
                   value={store((s) => s.getField(q.vaultPath))}
                   onChange={(v) => setField(q.vaultPath, v)}
                   language={language}
+                  error={attemptedChapters.has(chapter.id) ? questionError(q, vault) : null}
                 />
               ))}
 
@@ -233,16 +299,16 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
           )}
         </main>
 
-        {/* Right — extracted data */}
-        <aside className="col-span-12 md:col-span-3">
-          <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto pb-4">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              {L(language, 'What we have so far', '현재까지 입력된 내용')}
-            </h3>
-            <ExtractedDataSidebar vault={vault} onJumpTo={setChapterIdx} language={language} />
-          </div>
-        </aside>
       </div>
+
+      <details className="rounded-xl border border-[#E8E4DF] bg-white p-4 shadow-sm">
+        <summary className="cursor-pointer text-sm font-medium text-[#1B2A4A]">
+          {L(language, 'Review what we have so far', '현재까지 입력한 내용 검토')}
+        </summary>
+        <div className="mt-4">
+          <ExtractedDataSidebar vault={vault} onJumpTo={setChapterIdx} language={language} />
+        </div>
+      </details>
     </div>
   )
 }

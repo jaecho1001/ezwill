@@ -1,6 +1,7 @@
 // API client for EZWill backend at :8003 (proxied via /api/*)
 
 import { getAuthHeaders } from '@/lib/auth'
+import type { WillVault } from '@/types/will-vault'
 
 export interface DraftSyncPayload {
   aboutYou?: Record<string, unknown>
@@ -25,6 +26,9 @@ export interface ResolvedLink {
   status: string
   current_step: number
   completed_steps: number[]
+  vault?: Record<string, unknown> | null
+  client_email?: string | null
+  client_phone?: string | null
 }
 
 export interface CreateLinkResponse {
@@ -166,7 +170,8 @@ export async function saveVaultToServer(
     if (magicToken) {
       headers['X-Magic-Token'] = magicToken
     }
-    const body: Record<string, unknown> = { vault }
+    const projection = projectVaultForServer(vault as unknown as WillVault)
+    const body: Record<string, unknown> = { vault, ...projection }
     if (contact?.email) body.client_email = contact.email
     if (contact?.phone) body.client_phone = contact.phone
     const res = await fetch(`/api/drafts/${draftId}`, {
@@ -178,6 +183,72 @@ export async function saveVaultToServer(
   } catch {
     return false
   }
+}
+
+export function projectVaultForServer(vault: WillVault): {
+  people: Record<string, unknown>[]
+  assets: Record<string, unknown>[]
+  liabilities: Record<string, unknown>[]
+} {
+  const people: Record<string, unknown>[] = []
+  const addPerson = (
+    person: { fullName?: string; relationship?: string; dob?: string; receivesODSP?: boolean; sharePercent?: number },
+    role: string,
+  ) => {
+    if (!person.fullName?.trim()) return
+    const parts = person.fullName.trim().split(/\s+/)
+    people.push({
+      role,
+      firstName: parts[0],
+      lastName: parts.slice(1).join(' '),
+      relationship: person.relationship,
+      birthDate: person.dob,
+      receivesODSP: person.receivesODSP,
+      percentage: person.sharePercent,
+    })
+  }
+  if (vault.spouse?.included) addPerson(vault.spouse, 'spouse')
+  vault.children.forEach((person) => addPerson(person, 'child'))
+  vault.executors.forEach((person) => addPerson(person, person.isBackup ? 'backup_executor' : 'executor'))
+  vault.guardians.forEach((person) => addPerson(person, 'guardian'))
+  vault.beneficiaries.forEach((person) => addPerson(person, 'beneficiary'))
+  vault.contingentBeneficiaries.forEach((person) => addPerson(person, 'contingent_beneficiary'))
+  vault.poa.property.attorneys.forEach((person) =>
+    addPerson(person, person.isBackup ? 'backup_attorney' : 'attorney_property'))
+  vault.poa.personalCare.attorneys.forEach((person) =>
+    addPerson(person, person.isBackup ? 'backup_attorney' : 'attorney_care'))
+
+  const validAssetType: Record<string, string> = {
+    real_estate: 'real_estate',
+    bank: 'bank',
+    investment: 'investment',
+    registered_plan: 'rrsp',
+    insurance: 'insurance',
+    business: 'business',
+    digital: 'digital',
+    foreign: 'personal_property',
+    other: 'personal_property',
+  }
+  const assets = (vault.assets.items ?? [])
+    .filter((asset) => asset.description.trim())
+    .map((asset) => ({
+      assetType: validAssetType[asset.type] ?? 'personal_property',
+      description: asset.description,
+      estimatedValue: asset.estimatedValue,
+      beneficiaryDesignation: asset.hasDesignatedBeneficiary,
+      designatedBeneficiaryName: asset.designatedBeneficiaryName,
+      ownershipType: asset.ownership,
+      outsideCanada: asset.outsideCanada,
+    }))
+  const liabilities = (vault.assets.liabilities ?? [])
+    .filter((liability) => liability.description.trim())
+    .map((liability) => ({
+      liability_type: liability.type,
+      description: liability.description,
+      outstanding_balance: liability.estimatedBalance,
+      ownership_type: liability.jointlyOwed ? 'joint_other' : 'sole',
+    }))
+  return { people, assets, liabilities }
 }
 
 // Submit final draft
