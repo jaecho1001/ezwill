@@ -47,3 +47,9 @@ became a rule) where you wrote it down.
   dashboard read only legacy questionnaire columns. The client-to-lawyer contract must
   be tested end-to-end: question → versioned fact → server resume → lawyer visibility →
   placeholder/flag. Added schema migration, dashboard projection, and coverage tests.
+- 2026-07-26 — An adversarial review found four launch blockers after the happy-path suite
+  was green: a replace-all projection inside autosave, a Zustand selector hook inside a
+  conditionally changing loop, an incorrect gift-recipient data source, and a generated URL
+  for a route that did not exist. Lesson: intake verification must include destructive
+  persistence behavior, conditional rerenders, fact-to-placeholder provenance, and opening
+  the exact URL that notifications send—not only schema and final-page tests.
