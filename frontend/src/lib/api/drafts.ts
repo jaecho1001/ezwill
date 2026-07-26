@@ -21,7 +21,7 @@ export interface DraftSyncPayload {
 
 export interface ResolvedLink {
   draft_id: string
-  client_name: string
+  client_name: string | null
   language: 'en' | 'ko'
   status: string
   current_step: number
@@ -164,14 +164,20 @@ export async function saveVaultToServer(
   vault: Record<string, unknown>,
   contact?: { email?: string; phone?: string },
   magicToken?: string,
+  includeProjection = false,
 ): Promise<boolean> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...getAuthHeaders() }
     if (magicToken) {
       headers['X-Magic-Token'] = magicToken
     }
-    const projection = projectVaultForServer(vault as unknown as WillVault)
-    const body: Record<string, unknown> = { vault, ...projection }
+    // Autosave writes only the canonical vault. The people/assets/liabilities
+    // tables use replace-all persistence, so projecting on every debounce can
+    // erase an in-flight legacy draft before the client has reviewed it.
+    const body: Record<string, unknown> = { vault }
+    if (includeProjection) {
+      Object.assign(body, projectVaultForServer(vault as unknown as WillVault))
+    }
     if (contact?.email) body.client_email = contact.email
     if (contact?.phone) body.client_phone = contact.phone
     const res = await fetch(`/api/drafts/${draftId}`, {

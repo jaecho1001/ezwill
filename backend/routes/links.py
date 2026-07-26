@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Response
 from models import CreateLinkRequest, CreateLinkResponse
 from services.db import EWDbWriter
 from services.notification_service import send_magic_link_to_client
+from services.link_service import build_questionnaire_url
 from routes.auth import verify_dashboard_token
 import os
 import logging
@@ -11,7 +12,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
-BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 
 
 @router.post("/create", response_model=CreateLinkResponse)
@@ -40,9 +40,7 @@ async def create_link(
         )
 
         token = str(link["token"])
-        link_url = f"{BASE_URL}/will?t={token}"
-        if body.language == "ko":
-            link_url += "&lang=ko"
+        link_url = build_questionnaire_url(str(draft["id"]), token, body.language)
 
     # Deliver link via the configured notification provider.
     try:

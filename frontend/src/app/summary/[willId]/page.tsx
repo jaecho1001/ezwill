@@ -74,6 +74,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
         vault as unknown as Record<string, unknown>,
         { email: vault.testator.email, phone: vault.testator.phone },
         magicToken ?? undefined,
+        true,
       )
       if (!saved) {
         setSendError('We could not save your latest answers. Nothing was submitted; please try again.')

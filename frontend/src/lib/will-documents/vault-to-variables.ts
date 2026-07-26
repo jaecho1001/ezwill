@@ -41,17 +41,16 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
   if (vault.corporateTrusteeName) v.corporateTrusteeName = vault.corporateTrusteeName
 
   // ── Beneficiaries / gifts ─────────────────────────────────
-  const firstBeneficiary = vault.beneficiaries.find((b) => b.fullName)
-  if (firstBeneficiary) {
-    v.recipientFullName = firstBeneficiary.fullName
-    v.recipientFirstName = firstBeneficiary.fullName.split(/\s+/)[0]
-  }
   const firstGift = vault.gifts.find((gift) => gift.description || gift.charityName)
   if (firstGift) {
     if (firstGift.description) v.giftDescription = firstGift.description
     if (firstGift.amount != null) v.cashAmount = formatCurrency(firstGift.amount)
     if (firstGift.charityName) v.charityName = firstGift.charityName
     if (firstGift.charityNumber) v.charityNumber = firstGift.charityNumber
+    if (firstGift.recipientName) {
+      v.recipientFullName = firstGift.recipientName
+      v.recipientFirstName = firstGift.recipientName.split(/\s+/)[0]
+    }
   }
 
   // ── Powers of attorney ─────────────────────────────────────

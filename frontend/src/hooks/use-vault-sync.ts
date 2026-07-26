@@ -22,7 +22,7 @@ export function useVaultSync(vault: WillVault, enabled = true, expectedDraftId?:
     const ok = await saveVaultToServer(
       draftId,
       vault as unknown as Record<string, unknown>,
-      { email: vault.testator.email, phone: vault.testator.phone },
+      undefined,
       token ?? undefined,
     )
     if (ok) {

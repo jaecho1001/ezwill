@@ -9,10 +9,9 @@ import {
   shouldAsk,
   chapterProgress,
   overallProgress,
-  questionError,
 } from '@/lib/intake/will-intake-script'
 import { ChapterStepper } from '@/components/intake/chapter-stepper'
-import { QuestionCard } from '@/components/intake/question-card'
+import { IntakeQuestionList } from '@/components/intake/question-list'
 import { ExtractedDataSidebar } from '@/components/intake/extracted-data-sidebar'
 import { ChatPane } from '@/components/intake/chat-pane'
 import { Button } from '@/components/ui/button'
@@ -52,7 +51,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
       setDraftId(result.draft_id)
       setToken(magicToken)
       setLanguage(result.language)
-      const [firstName = '', ...rest] = result.client_name.split(' ')
+      const [firstName = '', ...rest] = (result.client_name ?? '').split(' ')
       const serverVault = result.vault
         ? normalizeVault(result.vault as never)
         : normalizeVault(vault)
@@ -265,16 +264,13 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
                 </div>
               )}
 
-              {visibleQuestions.map((q) => (
-                <QuestionCard
-                  key={q.id}
-                  question={q}
-                  value={store((s) => s.getField(q.vaultPath))}
-                  onChange={(v) => setField(q.vaultPath, v)}
-                  language={language}
-                  error={attemptedChapters.has(chapter.id) ? questionError(q, vault) : null}
-                />
-              ))}
+              <IntakeQuestionList
+                chapter={chapter}
+                vault={vault}
+                language={language}
+                showErrors={attemptedChapters.has(chapter.id)}
+                onChange={setField}
+              />
 
               <div className="flex items-center gap-2 pt-2">
                 <Button variant="outline" onClick={goPrev} disabled={chapterIdx === 0}>

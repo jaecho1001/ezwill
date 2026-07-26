@@ -126,6 +126,7 @@ export const willIntakeChapters: IntakeChapter[] = [
         id: 'spouse-included', vaultPath: 'spouse.included',
         prompt: 'Do you have a spouse or partner to include in this plan?',
         promptKo: '이 계획에 포함할 배우자 또는 동반자가 있습니까?', kind: 'boolean',
+        required: true,
         skipIf: noCurrentPartner,
       },
       {
@@ -226,6 +227,7 @@ export const willIntakeChapters: IntakeChapter[] = [
         promptKo: '특정 유증 (선택 사항)', kind: 'giftList',
         helpText: 'You can add cash, an item, real estate, a charity, or pet-care instructions.',
         helpTextKo: '현금, 물품, 부동산, 자선단체 또는 반려동물 돌봄 지침을 추가할 수 있습니다.',
+        validate: validateGifts,
       },
     ],
   },
@@ -426,6 +428,25 @@ function validatePrimaryPerson(value: unknown, role: string): string | null {
     !(person as { isBackup?: boolean }).isBackup &&
     String((person as { fullName?: string }).fullName ?? '').trim()
   ) ? null : `Add at least one primary ${role}.`
+}
+
+function validateGifts(value: unknown): string | null {
+  if (!Array.isArray(value)) return null
+  for (const raw of value) {
+    const gift = raw as {
+      type?: string
+      description?: string
+      recipientName?: string
+      charityName?: string
+    }
+    if (!gift.description?.trim()) return 'Describe each specific gift.'
+    if (gift.type === 'charity') {
+      if (!gift.charityName?.trim()) return 'Enter the charity name for each charitable gift.'
+    } else if (!gift.recipientName?.trim()) {
+      return 'Enter the intended recipient for each specific gift.'
+    }
+  }
+  return null
 }
 
 export function shouldAsk(q: IntakeQuestion, vault: WillVault): boolean {

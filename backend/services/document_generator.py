@@ -213,12 +213,6 @@ def vault_to_variables(vault: dict) -> dict:
     if vault.get("corporateTrusteeName"):
         v["corporateTrusteeName"] = vault["corporateTrusteeName"]
 
-    beneficiaries = vault.get("beneficiaries") or []
-    first_beneficiary = next((b for b in beneficiaries if b.get("fullName")), None)
-    if first_beneficiary:
-        v["recipientFullName"] = first_beneficiary["fullName"]
-        v["recipientFirstName"] = first_beneficiary["fullName"].split()[0]
-
     gifts = vault.get("gifts") or []
     first_gift = next(
         (gift for gift in gifts if gift.get("description") or gift.get("charityName")),
@@ -233,6 +227,9 @@ def vault_to_variables(vault: dict) -> dict:
             v["charityName"] = first_gift["charityName"]
         if first_gift.get("charityNumber"):
             v["charityNumber"] = first_gift["charityNumber"]
+        if first_gift.get("recipientName"):
+            v["recipientFullName"] = first_gift["recipientName"]
+            v["recipientFirstName"] = first_gift["recipientName"].split()[0]
 
     poa = vault.get("poa") or {}
     property_attorneys = (poa.get("property") or {}).get("attorneys") or []

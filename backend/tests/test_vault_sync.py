@@ -33,6 +33,7 @@ VAULT = {
 
 class FakeDb:
     updated: dict = {}
+    status: str = "opened"
 
     def __init__(self, schema: str):
         self.schema = schema
@@ -51,7 +52,7 @@ class FakeDb:
         return None
 
     def get_draft(self, draft_id: str):
-        return {"id": draft_id, "status": "opened"}
+        return {"id": draft_id, "status": type(self).status}
 
     def update_draft(self, draft_id: str, updates: dict):
         type(self).updated = {"draft_id": draft_id, **updates}
@@ -65,6 +66,7 @@ def client(monkeypatch):
     monkeypatch.setattr(db_mod, "EWDbWriter", FakeDb)
     monkeypatch.setattr(drafts_route, "EWDbWriter", FakeDb)
     FakeDb.updated = {}
+    FakeDb.status = "opened"
 
     app = FastAPI()
     app.include_router(drafts_route.router, prefix="/api/drafts")
@@ -102,6 +104,17 @@ def test_put_without_vault_leaves_vault_untouched(client):
     assert res.status_code == 200
     assert "vault" not in FakeDb.updated
     assert "client_email" not in FakeDb.updated
+
+
+def test_client_cannot_change_vault_after_submission(client):
+    FakeDb.status = "submitted"
+    res = client.put(
+        "/api/drafts/draft-a",
+        headers={"X-Magic-Token": "token-a"},
+        json={"vault": VAULT},
+    )
+    assert res.status_code == 409
+    assert FakeDb.updated == {}
 
 
 # ── firm notification names the client from the vault ───────────────────────

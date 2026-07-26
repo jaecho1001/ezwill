@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from models import AgentInvokeRequest, AgentInvokeResponse
 from routes.auth import AuthContext, verify_agent_or_dashboard_token
 from services.db import EWDbWriter
+from services.link_service import build_questionnaire_url
 import os
 import json
 import logging
@@ -14,7 +15,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
-BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # ── Ontario Dual Will knowledge for AI prompt context ──────────────────────
@@ -150,9 +150,9 @@ async def _capability_draft_will(payload: dict, correlation_id: str) -> AgentInv
         )
 
         token = str(link['token'])
-        magic_link = f"{BASE_URL}/will?t={token}"
-        if prefill.get('language') == 'ko':
-            magic_link += "&lang=ko"
+        magic_link = build_questionnaire_url(
+            str(draft["id"]), token, prefill.get("language", "en")
+        )
 
     return AgentInvokeResponse(
         capability="draft_will",

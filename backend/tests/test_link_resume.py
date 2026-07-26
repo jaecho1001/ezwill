@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from routes import links as links_route
+from services import link_service
 
 
 class FakeDb:
@@ -55,3 +56,11 @@ def test_resolve_link_returns_saved_vault_and_contact(monkeypatch):
     assert response.json()["client_email"] == "jane@example.com"
     assert response.json()["completed_steps"] == [1, 2, 3]
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_questionnaire_url_targets_existing_dynamic_intake_route(monkeypatch):
+    monkeypatch.setattr(link_service, "BASE_URL", "https://ezwill.example")
+
+    assert link_service.build_questionnaire_url(
+        "draft-a", "token-a", "ko"
+    ) == "https://ezwill.example/intake/draft-a?t=token-a&lang=ko"

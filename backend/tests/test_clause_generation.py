@@ -214,8 +214,8 @@ def test_v2_vault_projects_gifts_poa_and_trust_data():
     vault = {
         "beneficiaries": [{"fullName": "Alex Kim"}],
         "gifts": [{
-            "type": "charity", "description": "Legacy gift",
-            "charityName": "Ontario Charity", "charityNumber": "12345", "amount": 5000,
+            "type": "personal_item", "description": "Mother's ring",
+            "recipientName": "Sarah Lee",
         }],
         "poa": {
             "property": {"attorneys": [{"fullName": "Pat Lee"}]},
@@ -224,9 +224,8 @@ def test_v2_vault_projects_gifts_poa_and_trust_data():
         "trustDistributionAge": 30,
     }
     v = vault_to_variables(vault)
-    assert v["recipientFullName"] == "Alex Kim"
-    assert v["charityName"] == "Ontario Charity"
-    assert v["charityNumber"] == "12345"
+    assert v["recipientFullName"] == "Sarah Lee"
+    assert v["recipientFullName"] != "Alex Kim"
     assert v["poaPropertyAttorneyFullName"] == "Pat Lee"
     assert v["poaCareAttorneyFullName"] == "Chris Lee"
     assert v["trustDistributionAge"] == "30"

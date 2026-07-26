@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { emptyVault, normalizeVault, type WillVault } from '@/types/will-vault'
 import {
   intakeErrors,
@@ -7,7 +7,7 @@ import {
   willIntakeChapters,
 } from '@/lib/intake/will-intake-script'
 import { vaultToVariables } from '@/lib/will-documents/vault-to-variables'
-import { projectVaultForServer } from '@/lib/api/drafts'
+import { projectVaultForServer, saveVaultToServer } from '@/lib/api/drafts'
 import { getVaultReviewFlags } from '@/lib/intake/vault-review-flags'
 
 function vault(patch: Partial<WillVault> = {}): WillVault {
@@ -15,6 +15,10 @@ function vault(patch: Partial<WillVault> = {}): WillVault {
 }
 
 describe('unified intake', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
   it('has the nine lawyer-reviewed sections in order', () => {
     expect(willIntakeChapters.map((chapter) => chapter.id)).toEqual([
       'testator', 'family', 'executors', 'beneficiaries', 'gifts',
@@ -71,12 +75,12 @@ describe('unified intake', () => {
     expect(errors.some((error) => error.questionId === 'poa-property')).toBe(true)
   })
 
-  it('maps client-supplied gift and POA facts into document variables', () => {
+  it('uses the specific gift recipient rather than a residue beneficiary', () => {
     const variables = vaultToVariables(vault({
       beneficiaries: [{ id: 'b', fullName: 'Alex Kim' }],
       gifts: [{
-        id: 'g', type: 'charity', description: 'A legacy gift',
-        charityName: 'Ontario Charity', charityNumber: '12345', amount: 5000,
+        id: 'g', type: 'personal_item', description: "My mother's ring",
+        recipientName: 'Sarah Lee',
       }],
       poa: {
         property: { requested: true, attorneys: [{ id: 'p', fullName: 'Pat Lee' }] },
@@ -85,12 +89,24 @@ describe('unified intake', () => {
     }))
 
     expect(variables).toMatchObject({
-      recipientFullName: 'Alex Kim',
-      charityName: 'Ontario Charity',
-      charityNumber: '12345',
+      recipientFullName: 'Sarah Lee',
       poaPropertyAttorneyFullName: 'Pat Lee',
       poaCareAttorneyFullName: 'Chris Lee',
     })
+    expect(variables.recipientFullName).not.toBe('Alex Kim')
+  })
+
+  it('requires a recipient for each non-charitable specific gift', () => {
+    const question = willIntakeChapters
+      .find((item) => item.id === 'gifts')!
+      .questions.find((item) => item.id === 'gifts')!
+    const state = vault({
+      gifts: [{ id: 'g', type: 'personal_item', description: "My mother's ring" }],
+    })
+
+    expect(questionError(question, state)).toContain('intended recipient')
+    state.gifts[0].recipientName = 'Sarah Lee'
+    expect(questionError(question, state)).toBeNull()
   })
 
   it('projects the canonical vault into the lawyer dashboard tables', () => {
@@ -111,6 +127,29 @@ describe('unified intake', () => {
     expect(projection.liabilities[0]).toMatchObject({
       liability_type: 'mortgage', outstanding_balance: 100000,
     })
+  })
+
+  it('autosave does not send replace-all projections, but explicit submit can', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+    const state = vault({
+      executors: [{ id: 'e', fullName: 'Alex Kim' }],
+      assets: { items: [], liabilities: [] },
+    })
+
+    await saveVaultToServer('draft-a', state as unknown as Record<string, unknown>, undefined, 'token-a')
+    const autosaveBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(autosaveBody).toEqual({ vault: state })
+    expect(autosaveBody).not.toHaveProperty('people')
+    expect(autosaveBody).not.toHaveProperty('assets')
+
+    await saveVaultToServer(
+      'draft-a', state as unknown as Record<string, unknown>,
+      { email: 'client@example.com' }, 'token-a', true,
+    )
+    const submitBody = JSON.parse(fetchMock.mock.calls[1][1].body as string)
+    expect(submitBody.people).toHaveLength(1)
+    expect(submitBody.client_email).toBe('client@example.com')
   })
 
   it('turns complex facts into lawyer-review flags without choosing a strategy', () => {

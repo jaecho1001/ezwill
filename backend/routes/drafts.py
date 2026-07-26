@@ -110,6 +110,14 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(ve
         draft = db.get_draft(draft_id)
         if not draft:
             raise HTTPException(404, "Draft not found")
+        if (
+            _auth.kind == "magic_link"
+            and dict(draft)["status"] not in ("link_sent", "opened", "in_progress")
+        ):
+            raise HTTPException(
+                409,
+                "This questionnaire has already been submitted and can no longer be changed",
+            )
 
         updates = {}
 
