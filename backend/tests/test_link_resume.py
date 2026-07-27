@@ -90,3 +90,61 @@ def test_questionnaire_url_targets_existing_dynamic_intake_route(monkeypatch):
     assert link_service.build_questionnaire_url(
         "draft-a", "token-a", "ko"
     ) == "https://ezwill.example/intake/draft-a?t=token-a&lang=ko"
+
+
+class LegacyFakeDb(FakeDb):
+    """A draft with legacy answers and NO vault."""
+
+    def resolve_link(self, token: str):
+        if token != "legacy":
+            return None
+        return {
+            "draft_id": "draft-legacy",
+            "client_name": "Old Wizard",
+            "language": "en",
+            "draft_status": "in_progress",
+            "current_step": 3,
+            "completed_steps": [1, 2],
+            "vault": None,
+            "revision": 0,
+        }
+
+
+def test_resolve_backfills_vault_from_legacy_answers(monkeypatch):
+    # Issue #78: a client mid-way through the legacy wizard must open the
+    # unified intake populated, not blank.
+    monkeypatch.setattr(links_route, "EWDbWriter", LegacyFakeDb)
+    monkeypatch.setattr(links_route, "get_full_draft", lambda draft_id, schema: {
+        "id": draft_id,
+        "about_you": {"legalFirstName": "Old", "legalLastName": "Wizard"},
+        "your_estate": {
+            "beneficiaries": [
+                {"id": "b1", "firstName": "Grace", "lastName": "Kim", "percentage": 100},
+            ],
+            "residueDistribution": "custom",
+        },
+        "people": [],
+        "assets": [],
+    })
+    links_route._resolve_hits.clear()
+    app = FastAPI()
+    app.include_router(links_route.router, prefix="/api/links")
+    client = TestClient(app)
+
+    body = client.get("/api/links/legacy/resolve").json()
+    assert body["vault"]["testator"]["fullName"] == "Old Wizard"
+    assert body["vault"]["beneficiaries"][0]["sharePercent"] == 100
+    assert body["vault"]["residueDistribution"] == "custom"
+
+
+def test_resolve_leaves_vault_none_for_truly_empty_drafts(monkeypatch):
+    monkeypatch.setattr(links_route, "EWDbWriter", LegacyFakeDb)
+    monkeypatch.setattr(links_route, "get_full_draft", lambda draft_id, schema: {
+        "id": draft_id, "about_you": None, "people": [], "assets": [],
+    })
+    links_route._resolve_hits.clear()
+    app = FastAPI()
+    app.include_router(links_route.router, prefix="/api/links")
+    client = TestClient(app)
+
+    assert client.get("/api/links/legacy/resolve").json()["vault"] is None

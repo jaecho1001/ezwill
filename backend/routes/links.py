@@ -4,6 +4,8 @@ from services.db import EWDbWriter
 from services.notification_service import send_magic_link_to_client
 from services.link_service import build_questionnaire_url
 from services.client_ip import client_ip
+from services.legacy_backfill import has_legacy_answers, legacy_draft_to_vault
+from services.draft_service import get_full_draft
 from routes.auth import verify_dashboard_token
 from collections import deque
 import os
@@ -108,17 +110,27 @@ async def resolve_link(token: str, request: Request, response: Response):
 
         db.mark_link_opened(token)
 
-        return {
-            "draft_id": str(link["draft_id"]),
-            "client_name": link["client_name"],
-            "language": link["language"],
-            "status": link["draft_status"],
-            "current_step": link["current_step"],
-            "completed_steps": link["completed_steps"] or [],
-            "vault": link.get("vault") or None,
-            # Concurrency baseline for autosave (issue #92) — a counter, not PII.
-            "revision": link.get("revision", 0),
-        }
+    vault = link.get("vault") or None
+    if not vault:
+        # Legacy backfill (issue #78): a client mid-way through the old
+        # /will/* wizard has answers in the section columns, not the vault.
+        # Project them read-only so the unified intake opens populated
+        # instead of blank; nothing persists until the client's first save.
+        full = get_full_draft(str(link["draft_id"]), DEFAULT_SCHEMA)
+        if full and has_legacy_answers(full):
+            vault = legacy_draft_to_vault(full)
+
+    return {
+        "draft_id": str(link["draft_id"]),
+        "client_name": link["client_name"],
+        "language": link["language"],
+        "status": link["draft_status"],
+        "current_step": link["current_step"],
+        "completed_steps": link["completed_steps"] or [],
+        "vault": vault,
+        # Concurrency baseline for autosave (issue #92) — a counter, not PII.
+        "revision": link.get("revision", 0),
+    }
 
 
 @router.post("/{token}/revoke")
