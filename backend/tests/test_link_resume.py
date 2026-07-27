@@ -148,3 +148,73 @@ def test_resolve_leaves_vault_none_for_truly_empty_drafts(monkeypatch):
     client = TestClient(app)
 
     assert client.get("/api/links/legacy/resolve").json()["vault"] is None
+
+
+def test_create_link_reports_logged_only_in_stdout_mode(monkeypatch):
+    # Issue #88: stdout mode logs and discards the message; the lawyer must
+    # see that, not unqualified success.
+    monkeypatch.setattr(links_route, "EWDbWriter", FakeDb)
+    monkeypatch.setattr(links_route, "notification_mode", lambda: "stdout")
+
+    async def fake_send(**kwargs):
+        return {"email_sent": True, "sms_sent": False}
+
+    monkeypatch.setattr(links_route, "send_magic_link_to_client", fake_send)
+    monkeypatch.setattr(
+        FakeDb, "create_draft",
+        lambda self, **kw: {"id": "draft-a"}, raising=False,
+    )
+    monkeypatch.setattr(
+        FakeDb, "create_link",
+        lambda self, **kw: {"token": "tok", "expires_at": "2026-08-27"},
+        raising=False,
+    )
+    from routes.auth import verify_dashboard_token
+    app = FastAPI()
+    app.include_router(links_route.router, prefix="/api/links")
+    app.dependency_overrides[verify_dashboard_token] = lambda: "t"
+    client = TestClient(app)
+
+    res = client.post("/api/links/create", json={
+        "client_first_name": "Jane", "client_last_name": "Doe",
+        "client_email": "jane@example.com", "language": "en",
+        "send_email": True, "send_sms": False,
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["email_delivery"] == "logged_only"
+    assert body["sms_delivery"] == "not_requested"
+
+
+def test_create_link_reports_failed_when_provider_raises(monkeypatch):
+    monkeypatch.setattr(links_route, "EWDbWriter", FakeDb)
+    monkeypatch.setattr(links_route, "notification_mode", lambda: "smtp")
+
+    async def exploding_send(**kwargs):
+        raise RuntimeError("SMTP down")
+
+    monkeypatch.setattr(links_route, "send_magic_link_to_client", exploding_send)
+    monkeypatch.setattr(
+        FakeDb, "create_draft",
+        lambda self, **kw: {"id": "draft-a"}, raising=False,
+    )
+    monkeypatch.setattr(
+        FakeDb, "create_link",
+        lambda self, **kw: {"token": "tok", "expires_at": "2026-08-27"},
+        raising=False,
+    )
+    from routes.auth import verify_dashboard_token
+    app = FastAPI()
+    app.include_router(links_route.router, prefix="/api/links")
+    app.dependency_overrides[verify_dashboard_token] = lambda: "t"
+    client = TestClient(app)
+
+    res = client.post("/api/links/create", json={
+        "client_first_name": "Jane", "client_last_name": "Doe",
+        "client_email": "jane@example.com", "language": "en",
+        "send_email": True, "send_sms": False,
+    })
+    # Link creation still succeeds — the lawyer needs the URL to copy —
+    # but the delivery status must say the client was NOT reached.
+    assert res.status_code == 200
+    assert res.json()["email_delivery"] == "failed"

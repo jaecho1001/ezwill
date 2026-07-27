@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from models import CreateLinkRequest, CreateLinkResponse
 from services.db import EWDbWriter
-from services.notification_service import send_magic_link_to_client
+from services.notification_service import send_magic_link_to_client, _notification_mode as notification_mode
 from services.link_service import build_questionnaire_url
 from services.client_ip import client_ip
 from services.legacy_backfill import has_legacy_answers, legacy_draft_to_vault
@@ -64,7 +64,13 @@ async def create_link(
         token = str(link["token"])
         link_url = build_questionnaire_url(str(draft["id"]), token, body.language)
 
-    # Deliver link via the configured notification provider.
+    # Deliver link via the configured notification provider. The response
+    # carries HONEST per-channel status (#88): in stdout mode the message is
+    # written to the server log and discarded, which previously surfaced to
+    # the lawyer as unqualified success — a client who never receives their
+    # link then reads as an unresponsive client for weeks.
+    delivery = {"email_sent": False, "sms_sent": False}
+    delivery_failed = False
     try:
         delivery = await send_magic_link_to_client(
             client_email=body.client_email,
@@ -80,13 +86,29 @@ async def create_link(
             f"Magic link delivery: email_sent={delivery['email_sent']} sms_sent={delivery['sms_sent']}"
         )
     except Exception as e:
+        delivery_failed = True
         logger.error(f"Magic link delivery failed: {e}")
+
+    def _channel_status(requested: bool, sent: bool) -> str:
+        if not requested:
+            return "not_requested"
+        if delivery_failed:
+            return "failed"
+        if notification_mode() == "stdout":
+            return "logged_only"
+        return "sent" if sent else "failed"
 
     return CreateLinkResponse(
         token=token,
         draft_id=str(draft["id"]),
         link_url=link_url,
         expires_at=str(link["expires_at"]),
+        email_delivery=_channel_status(
+            bool(body.send_email and body.client_email), delivery["email_sent"]
+        ),
+        sms_delivery=_channel_status(
+            bool(body.send_sms and body.client_phone), delivery["sms_sent"]
+        ),
         client_name=f"{body.client_first_name} {body.client_last_name}",
     )
 

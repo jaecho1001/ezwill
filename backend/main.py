@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import logging
 import os
 from dotenv import load_dotenv
 
@@ -26,6 +27,26 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_pool()
+    # Email fail-loud (#88): NOTIFICATION_MODE=stdout writes client emails to
+    # the log and discards them while the API reports success. Tolerable in
+    # local dev; in anything production-shaped it means every "send link" is
+    # a silent no-op. Secure cookies are our best available production
+    # signal; NOTIFICATION_STRICT=true upgrades the warning to a hard stop.
+    mode = (os.getenv("NOTIFICATION_MODE") or "ghl").strip().lower()
+    looks_production = (
+        (os.getenv("SESSION_COOKIE_SECURE") or "true").strip().lower()
+        in {"1", "true", "yes"}
+    )
+    if mode == "stdout" and looks_production:
+        message = (
+            "NOTIFICATION_MODE=stdout in a production-shaped environment: "
+            "client emails/SMS will be LOGGED AND DISCARDED, and lawyers "
+            "will see delivery status 'logged_only'. Configure a real "
+            "provider before serving clients."
+        )
+        if (os.getenv("NOTIFICATION_STRICT") or "").strip().lower() in {"1", "true", "yes"}:
+            raise RuntimeError(message)
+        logging.getLogger(__name__).critical(message)
     yield
     close_pool()
 

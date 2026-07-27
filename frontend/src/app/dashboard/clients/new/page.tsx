@@ -86,6 +86,17 @@ export default function NewClientPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {(result.email_delivery === 'failed' || result.email_delivery === 'logged_only'
+              || result.sms_delivery === 'failed' || result.sms_delivery === 'logged_only') && (
+              <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                <p className="font-semibold">The link was NOT delivered to the client.</p>
+                <p className="mt-1 text-xs">
+                  {result.email_delivery === 'logged_only' || result.sms_delivery === 'logged_only'
+                    ? 'Email/SMS delivery is not configured on this server (messages are only written to the server log). Copy the link below and send it to the client yourself.'
+                    : 'Sending failed. Copy the link below and send it to the client yourself, and let your administrator know.'}
+                </p>
+              </div>
+            )}
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
               <p className="mb-1 text-xs font-medium text-gray-500">Client Link</p>
               <div className="flex items-center gap-2">

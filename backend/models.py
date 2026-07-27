@@ -80,6 +80,12 @@ class CreateLinkResponse(BaseModel):
     link_url: str
     expires_at: str
     client_name: str
+    # Honest delivery status (#88): 'sent' only when a real provider accepted
+    # the message. 'logged_only' means NOTIFICATION_MODE=stdout swallowed it;
+    # 'failed'/'not_requested' say exactly that. The dashboard must show this
+    # instead of implying the client was reached.
+    email_delivery: str = "not_requested"
+    sms_delivery: str = "not_requested"
 
 class ClauseSelection(BaseModel):
     clause_id: str

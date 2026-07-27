@@ -36,6 +36,10 @@ export interface CreateLinkResponse {
   link_url: string
   expires_at: string
   client_name: string
+  // Honest per-channel delivery status (#88): 'sent' | 'failed' |
+  // 'logged_only' (stdout mode — logged and discarded) | 'not_requested'.
+  email_delivery?: string
+  sms_delivery?: string
 }
 
 export interface DraftListItem {
