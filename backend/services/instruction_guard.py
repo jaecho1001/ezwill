@@ -18,13 +18,12 @@ RESIDUE_INSTRUCTION_GAP = "clientResidueInstructions"
 END_OF_LIFE_INSTRUCTION_GAP = "clientEndOfLifeInstructions"
 ORGAN_DONATION_INSTRUCTION_GAP = "clientOrganDonationInstructions"
 
-_NAMED_RESIDUE_MODES = {
-    "equal",
-    "equal_beneficiaries",
-    "percentages",
-    "custom",
-    "lawyer_help",
-}
+# Modes where the residue goes to a CLASS (no individuals named), so a
+# library clause can express them without naming anyone. Every other mode —
+# including any future or unrecognized value — is treated as named when the
+# client actually named people: an allowlist here failed OPEN for unknown
+# mode strings, delivering wills that ignored the named beneficiaries.
+_NON_NAMED_RESIDUE_MODES = {"per_stirpes", "equal_children"}
 _PERCENTAGE_RESIDUE_MODES = {"percentages", "custom"}
 
 
@@ -193,9 +192,7 @@ def semantic_instruction_gaps(
     if document_type in WILL_TYPES:
         beneficiaries, contingent, mode = _residue_instructions(draft)
         people = beneficiaries + contingent
-        named_distribution = bool(people) and (
-            mode in _NAMED_RESIDUE_MODES or not mode
-        )
+        named_distribution = bool(people) and mode not in _NON_NAMED_RESIDUE_MODES
         if named_distribution:
             text = _plain_custom_residue(included)
             all_names = [_full_name(person) for person in people]

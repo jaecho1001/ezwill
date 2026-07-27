@@ -77,7 +77,7 @@ export const WILL_STEPS: StepConfig[] = [
     description: 'Who manages your finances if incapacitated', descriptionKo: '무능력 시 재정 관리인',
     icon: '🏠',
     subSteps: [
-      { id: 1, key: 'poa-property-attorney', title: 'Attorney for Property', titleKo: '재산 관리 위임자', required: true },
+      { id: 1, key: 'poa-property-attorney', title: 'Attorney for Property', titleKo: '재산 관리 대리인', required: true },
       { id: 2, key: 'poa-property-effective', title: 'When Effective', titleKo: '효력 발생 시점', required: true },
       { id: 3, key: 'poa-property-restrictions', title: 'Restrictions', titleKo: '제한 사항', required: false },
     ]
@@ -88,7 +88,7 @@ export const WILL_STEPS: StepConfig[] = [
     description: 'Who makes health decisions for you', descriptionKo: '건강 관련 결정권자',
     icon: '❤️',
     subSteps: [
-      { id: 1, key: 'poa-care-attorney', title: 'Attorney for Personal Care', titleKo: '개인 돌봄 위임자', required: true },
+      { id: 1, key: 'poa-care-attorney', title: 'Attorney for Personal Care', titleKo: '개인 돌봄 대리인', required: true },
       { id: 2, key: 'poa-care-wishes', title: 'Health Care Wishes', titleKo: '의료 소원', required: false },
       { id: 3, key: 'organ-donation', title: 'Organ Donation', titleKo: '장기 기증', required: false },
     ]

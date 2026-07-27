@@ -112,15 +112,19 @@ def _get_review_documents(draft_id: str) -> list[dict]:
         if clause_count == 0:
             continue
 
-        instruction_gaps = semantic_instruction_gaps(
-            draft,
-            doc_type,
-            [dict(clause) for clause in all_selections.get(doc_type, [])],
+        doc_clauses = [dict(clause) for clause in all_selections.get(doc_type, [])]
+        instruction_gaps = semantic_instruction_gaps(draft, doc_type, doc_clauses)
+        # A document with unfilled [placeholders] is equally unreviewable:
+        # the list must show it blocked instead of letting the client click
+        # into a 422 (or worse, approve brackets).
+        unresolved = (
+            set() if instruction_gaps
+            else _unresolved_clause_placeholders(draft, doc_clauses)
         )
         approved_at = approval_map.get(doc_type)
         status = (
             "blocked"
-            if instruction_gaps
+            if instruction_gaps or unresolved
             else ("approved" if approved_at else "pending")
         )
 
@@ -163,10 +167,35 @@ def _validate_review_target(
             raise HTTPException(400, "Clause is not available for review")
 
 
+def _unresolved_clause_placeholders(draft: dict, clauses: list[dict]) -> set:
+    """Placeholders in the clause texts that no draft data can fill.
+
+    The generation path refuses to deliver documents containing literal
+    [placeholder] text; before this check, the review portal happily rendered
+    the same brackets and let the client APPROVE them — approval of an
+    incomplete will is exactly as bad as delivery of one.
+    """
+    variables = _build_variables(draft)
+    missing: set = set()
+    for clause in clauses:
+        if not clause.get("included", True):
+            continue
+        text = (
+            clause.get("custom_text") or clause.get("customText")
+            or clause.get("template_text") or clause.get("templateText") or ""
+        )
+        resolve_variables(text, variables, missing)
+        title = clause.get("title")
+        if title:
+            resolve_variables(str(title), variables, missing)
+    return missing
+
+
 def _require_instruction_match(
     draft: dict, document_type: str, clauses: list[dict]
 ) -> None:
-    """Keep a client from reading or approving a known-mismatched draft."""
+    """Keep a client from reading or approving a draft that is mismatched
+    against their instructions OR still contains unfilled placeholders."""
     gaps = semantic_instruction_gaps(draft, document_type, clauses)
     if gaps:
         raise HTTPException(422, {
@@ -178,6 +207,18 @@ def _require_instruction_match(
             ),
             "document_type": document_type,
             "instruction_gaps": sorted(gaps),
+        })
+    unresolved = _unresolved_clause_placeholders(draft, clauses)
+    if unresolved:
+        raise HTTPException(422, {
+            "error": "document_not_ready",
+            "message": (
+                "This document still has blanks your lawyer needs to "
+                "complete. It is not available for review yet — please "
+                "contact your lawyer."
+            ),
+            "document_type": document_type,
+            "unresolved": sorted(unresolved),
         })
 
 

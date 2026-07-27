@@ -114,6 +114,9 @@ CLAUSE_COMPLETE = [{
     "title": "Revocation",
 }]
 
+# Deliberately NO "section" key: ew_clause_selections has no such column, so
+# production rows are recognised by the clause_id "res-" prefix alone. Keeping
+# section here would let the test pass through a branch real rows never hit.
 RESIDUE_CLAUSE_MATCHING = [{
     "clause_id": "res-named-shares",
     "included": True,
@@ -121,7 +124,6 @@ RESIDUE_CLAUSE_MATCHING = [{
         "I give 60% of the residue of my estate to Alex Kim and "
         "40% to Sam Lee."
     ),
-    "section": "Residue",
     "sortOrder": 1,
     "title": "Named residue gifts",
 }]

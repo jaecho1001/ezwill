@@ -319,7 +319,7 @@ export const willIntakeChapters: IntakeChapter[] = [
       },
       {
         id: 'poa-property-attorneys', vaultPath: 'poa.property.attorneys',
-        prompt: 'Attorney for Property choices', promptKo: '재산관리 위임자 선택',
+        prompt: 'Attorney for Property choices', promptKo: '재산관리 대리인 선택',
         kind: 'personList', required: true, skipIf: (v) => !v.poa.property.requested,
         validate: (value) => validatePrimaryPerson(value, 'attorney for Property'),
       },
@@ -346,7 +346,7 @@ export const willIntakeChapters: IntakeChapter[] = [
       },
       {
         id: 'poa-care-attorneys', vaultPath: 'poa.personalCare.attorneys',
-        prompt: 'Attorney for Personal Care choices', promptKo: '개인 돌봄 위임자 선택',
+        prompt: 'Attorney for Personal Care choices', promptKo: '개인 돌봄 대리인 선택',
         kind: 'personList', required: true, skipIf: (v) => !v.poa.personalCare.requested,
         validate: (value) => validatePrimaryPerson(value, 'attorney for Personal Care'),
       },
@@ -369,7 +369,7 @@ export const willIntakeChapters: IntakeChapter[] = [
           },
           {
             label: 'Leave the decision to my attorney based on the circumstances',
-            labelKo: '상황에 따라 위임자가 결정하도록 함',
+            labelKo: '상황에 따라 대리인가 결정하도록 함',
             value: 'attorney_decides',
           },
           {
