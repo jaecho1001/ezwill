@@ -76,8 +76,12 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
         magicToken ?? undefined,
         true,
       )
-      if (!saved) {
-        setSendError('We could not save your latest answers. Nothing was submitted; please try again.')
+      if (!saved.ok) {
+        setSendError(
+          saved.conflict
+            ? 'These answers were updated on another device since this page loaded. Reload to review the latest before sending.'
+            : 'We could not save your latest answers. Nothing was submitted; please try again.'
+        )
         return
       }
       const submitted = await submitDraft(id, magicToken ?? undefined)

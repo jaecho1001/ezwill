@@ -114,7 +114,8 @@ class EWDbWriter:
             (draft_id,)
         )
 
-    def update_draft(self, draft_id: str, updates: dict) -> dict:
+    def update_draft(self, draft_id: str, updates: dict,
+                     expected_revision: int = None) -> dict:
         allowed = {
             'status', 'tier', 'will_type', 'language', 'province',
             'current_step', 'completed_steps', 'tier2_clauses',
@@ -136,8 +137,20 @@ class EWDbWriter:
             return self.get_draft(draft_id)
 
         set_clauses = ', '.join(f"{k} = %s" for k in safe)
-        set_clauses += ", updated_at = now()"
+        set_clauses += ", updated_at = now(), revision = revision + 1"
         values = list(safe.values()) + [draft_id]
+
+        # Optimistic concurrency (issue #92): a caller that read the draft at
+        # revision N may demand the row is still at N. Zero rows updated means
+        # someone else wrote in between — the caller gets None and must
+        # re-read rather than silently overwrite the other writer's answers.
+        if expected_revision is not None:
+            values.append(expected_revision)
+            return self.fetchone(
+                f"UPDATE ew_will_drafts SET {set_clauses} "
+                f"WHERE id = %s AND revision = %s RETURNING *",
+                values
+            )
 
         return self.fetchone(
             f"UPDATE ew_will_drafts SET {set_clauses} WHERE id = %s RETURNING *",
@@ -430,9 +443,11 @@ class EWDbWriter:
         """, (draft_id, client_email, client_name))
 
     def resolve_link(self, token: str) -> dict:
+        # client_email/client_phone are intentionally NOT selected: resolve
+        # answers to a bare token and must never return contact PII (#77).
         return self.fetchone("""
             SELECT l.*, d.status as draft_status, d.language, d.current_step,
-                   d.completed_steps, d.vault, d.client_email, d.client_phone
+                   d.completed_steps, d.vault, d.revision
             FROM ew_client_links l
             JOIN ew_will_drafts d ON d.id = l.draft_id
             WHERE l.token = %s

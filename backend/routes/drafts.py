@@ -173,7 +173,22 @@ async def update_draft(draft_id: str, body: UpdateDraftRequest, _auth=Depends(ve
         if dict(draft)['status'] in ('link_sent', 'opened'):
             updates['status'] = 'in_progress'
 
-        updated = db.update_draft(draft_id, updates)
+        updated = db.update_draft(draft_id, updates,
+                                  expected_revision=body.revision)
+        if updated is None:
+            # Someone else (another device, or the lawyer) wrote since this
+            # writer last read. Refuse the overwrite and hand back the fresh
+            # state so the client can re-hydrate (issue #92).
+            fresh = db.get_draft(draft_id)
+            raise HTTPException(409, {
+                "error": "draft_conflict",
+                "message": (
+                    "These answers were updated somewhere else since this "
+                    "device last loaded them. Reload to continue from the "
+                    "latest version."
+                ),
+                "revision": (fresh or {}).get("revision"),
+            })
 
         # Upsert people
         if body.people is not None:

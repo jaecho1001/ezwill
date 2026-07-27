@@ -225,7 +225,7 @@ def test_magic_link_cannot_update_lawyer_only_fields(monkeypatch):
         def get_draft(self, draft_id):
             return {"id": draft_id, "status": "in_progress"}
 
-        def update_draft(self, draft_id, updates):
+        def update_draft(self, draft_id, updates, expected_revision=None):
             type(self).last_updates = updates
             return {"id": draft_id, **updates}
 

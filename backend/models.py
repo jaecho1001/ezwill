@@ -32,6 +32,10 @@ class UpdateDraftRequest(BaseModel):
     # Conversational AI-intake snapshot (the client's WillVault) and the
     # contact info collected on the summary page's send-to-lawyer flow.
     vault: Optional[dict] = None
+    # Optimistic concurrency (issue #92): the revision the writer last read.
+    # When present, the update succeeds only if the draft is still at that
+    # revision; otherwise the API returns 409 and the client re-hydrates.
+    revision: Optional[int] = None
     client_email: Optional[str] = None
     client_phone: Optional[str] = None
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, use, useEffect } from 'react'
+import { useCallback, useMemo, useState, use, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useWillVault } from '@/stores/will-vault-store'
@@ -36,7 +36,15 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   const [linkError, setLinkError] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const hasMagicToken = Boolean(searchParams.get('t'))
-  const { status: saveStatus, retry: retrySave } = useVaultSync(vault, !hasMagicToken || hydrated, willId)
+
+  // On a 409 the server has a newer copy (another device, or the lawyer).
+  // Re-hydrate from it rather than fighting over the draft (issue #92).
+  const handleConflict = useCallback(() => {
+    setHydrated(false)
+  }, [])
+  const { status: saveStatus, retry: retrySave, acceptRevision } = useVaultSync(
+    vault, !hasMagicToken || hydrated, willId, handleConflict,
+  )
 
   // A lawyer-created link is resolved again here so a bookmarked intake URL
   // can restore its server copy on another device.
@@ -66,9 +74,10 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
           // details, and the vault carries them from then on.
         },
       })
+      acceptRevision(result.revision)
       setHydrated(true)
     })
-  }, [hydrated, replaceVault, searchParams, setDraftId, setLanguage, setToken, vault, willId])
+  }, [acceptRevision, hydrated, replaceVault, searchParams, setDraftId, setLanguage, setToken, vault, willId])
 
   // Seed the active chapter from ?chapter=N so deep-links from the summary
   // page / facts panel / external bookmarks land on the right step.

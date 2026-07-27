@@ -35,8 +35,7 @@ class FakeDb:
             "current_step": 4,
             "completed_steps": [1, 2, 3],
             "vault": {"schemaVersion": 2, "testator": {"fullName": "Jane Doe"}},
-            "client_email": "jane@example.com",
-            "client_phone": "416-555-0100",
+            "revision": 7,
         }
 
     def mark_link_opened(self, token: str):
@@ -60,9 +59,10 @@ def test_resolve_link_returns_vault_but_never_contact_fields(monkeypatch):
     # Pin the EXACT key set: this endpoint answers to a bare token, so any
     # field added here is handed to whoever holds (or leaks) the link.
     # Growing this set must be a deliberate, reviewed decision (issue #77).
+    assert body["revision"] == 7
     assert set(body.keys()) == {
         "draft_id", "client_name", "language", "status",
-        "current_step", "completed_steps", "vault",
+        "current_step", "completed_steps", "vault", "revision",
     }
 
 

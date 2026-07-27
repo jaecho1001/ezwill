@@ -27,6 +27,7 @@ export interface ResolvedLink {
   current_step: number
   completed_steps: number[]
   vault?: Record<string, unknown> | null
+  revision?: number
 }
 
 export interface CreateLinkResponse {
@@ -157,13 +158,18 @@ export async function saveDraftToServer(
 // Sync the AI-intake vault (and optional contact info) to the server draft.
 // The summary flow's data lives in the local WillVault, not the WillDocument
 // the questionnaire syncs — without this PUT the lawyer never sees it.
+export type VaultSaveResult =
+  | { ok: true; revision?: number }
+  | { ok: false; conflict: boolean; revision?: number }
+
 export async function saveVaultToServer(
   draftId: string,
   vault: Record<string, unknown>,
   contact?: { email?: string; phone?: string },
   magicToken?: string,
   includeProjection = false,
-): Promise<boolean> {
+  revision?: number,
+): Promise<VaultSaveResult> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...getAuthHeaders() }
     if (magicToken) {
@@ -178,14 +184,25 @@ export async function saveVaultToServer(
     }
     if (contact?.email) body.client_email = contact.email
     if (contact?.phone) body.client_phone = contact.phone
+    // Optimistic concurrency (issue #92): present the revision this device
+    // last read; the server refuses with 409 if another device wrote since.
+    if (revision != null) body.revision = revision
     const res = await fetch(`/api/drafts/${draftId}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(body),
     })
-    return res.ok
+    if (res.ok) {
+      const updated = await res.json().catch(() => null)
+      return { ok: true, revision: updated?.revision }
+    }
+    if (res.status === 409) {
+      const detail = (await res.json().catch(() => null))?.detail
+      return { ok: false, conflict: true, revision: detail?.revision }
+    }
+    return { ok: false, conflict: false }
   } catch {
-    return false
+    return { ok: false, conflict: false }
   }
 }
 

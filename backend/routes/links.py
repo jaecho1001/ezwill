@@ -116,6 +116,8 @@ async def resolve_link(token: str, request: Request, response: Response):
             "current_step": link["current_step"],
             "completed_steps": link["completed_steps"] or [],
             "vault": link.get("vault") or None,
+            # Concurrency baseline for autosave (issue #92) — a counter, not PII.
+            "revision": link.get("revision", 0),
         }
 
 

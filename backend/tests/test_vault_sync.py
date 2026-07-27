@@ -54,7 +54,7 @@ class FakeDb:
     def get_draft(self, draft_id: str):
         return {"id": draft_id, "status": type(self).status}
 
-    def update_draft(self, draft_id: str, updates: dict):
+    def update_draft(self, draft_id: str, updates: dict, expected_revision=None):
         type(self).updated = {"draft_id": draft_id, **updates}
         return {"id": draft_id, **updates}
 

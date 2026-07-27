@@ -56,7 +56,12 @@ def _residue_instructions(draft: dict) -> tuple[list[dict], list[dict], str]:
     vault = draft.get("vault") or {}
     vault_beneficiaries = _people(vault.get("beneficiaries"))
     vault_contingent = _people(vault.get("contingentBeneficiaries"))
-    if vault_beneficiaries or vault_contingent or vault.get("residueDistribution"):
+    # Prefer the vault only when it actually NAMES someone. A hybrid draft
+    # (legacy questionnaire answers plus a vault created by the unified
+    # intake's autosave) can have residueDistribution set with an empty
+    # beneficiary list — keying on the mode alone silently ungated the
+    # legacy beneficiaries stored in your_estate / ew_people.
+    if vault_beneficiaries or vault_contingent:
         return (
             vault_beneficiaries,
             vault_contingent,
@@ -123,37 +128,53 @@ def _plain_custom_residue(clauses: list[dict]) -> str:
     return re.sub(r"\s+", " ", " ".join(custom_residue)).strip()
 
 
+def _name_pattern(name: str) -> str:
+    """A name match that cannot be satisfied by a longer name containing it.
+
+    Plain substring matching let 'Ann' be satisfied by 'Annette', so a will
+    that omitted Ann entirely still delivered. \\w boundaries on both ends
+    keep 'Ann' from matching inside 'Annette' while still matching after
+    punctuation ('to Ann,').
+    """
+    return rf"(?<!\w){re.escape(name)}(?!\w)"
+
+
 def _share_is_associated(
     text: str, name: str, share, all_names: list[str]
 ) -> bool:
     """Require a percentage to be syntactically attached to its beneficiary.
 
     Accepted drafting shapes are ``60% ... to Alex Kim`` and
-    ``Alex Kim (60%)``. The first form cannot cross another percentage or
-    beneficiary name. The second requires the percentage immediately after
-    the name. This intentionally fails closed for ambiguous prose.
+    ``Alex Kim (60%)``. The first form cannot cross another percentage,
+    another beneficiary's name, or a sentence boundary. The second requires
+    the percentage immediately after the name. This intentionally fails
+    closed for ambiguous prose.
     """
     try:
         rendered = f"{float(share):g}"
     except (TypeError, ValueError):
         return False
 
-    escaped_name = re.escape(name)
-    percent = rf"{re.escape(rendered)}\s*%"
+    name_re = _name_pattern(name)
+    # Digit boundary: share 5 must not be satisfied by the '15' in '15%'.
+    percent = rf"(?<![\d.]){re.escape(rendered)}\s*%"
     other_names = [
-        re.escape(other) for other in all_names
+        _name_pattern(other) for other in all_names
         if other.casefold() != name.casefold()
     ]
-    forbidden = r"%"
+    # [.;] stops the association window at a sentence boundary, so a
+    # percentage in one sentence cannot claim a name in the next. Initials
+    # like "J. Kim" inside the window fail closed — acceptable by design.
+    forbidden = r"[%.;]"
     if other_names:
-        forbidden = rf"(?:%|{'|'.join(other_names)})"
+        forbidden = rf"(?:[%.;]|{'|'.join(other_names)})"
 
     percent_before_name = re.compile(
-        rf"{percent}(?:(?!{forbidden}).){{0,120}}?{escaped_name}",
+        rf"{percent}(?:(?!{forbidden}).){{0,120}}?{name_re}",
         re.IGNORECASE,
     )
     name_before_percent = re.compile(
-        rf"{escaped_name}\s*(?:\(|\[|:|,|-|–|—)?\s*{percent}",
+        rf"{name_re}\s*(?:\(|\[|:|,|-|–|—)?\s*{percent}",
         re.IGNORECASE,
     )
     return bool(
@@ -178,11 +199,21 @@ def semantic_instruction_gaps(
         if named_distribution:
             text = _plain_custom_residue(included)
             all_names = [_full_name(person) for person in people]
+            # Word-boundary matching: 'Ann' must not be satisfied by
+            # 'Annette' — that let a will omit a beneficiary entirely.
             names_present = all(
-                name.casefold() in text.casefold() for name in all_names
+                re.search(_name_pattern(name), text, re.IGNORECASE)
+                for name in all_names
             )
             shares_match = True
-            if mode in _PERCENTAGE_RESIDUE_MODES:
+            # Run the share check whenever shares were actually recorded,
+            # not only when the mode says 'percentages' — legacy rows can
+            # carry percentages under any (or no) recorded mode.
+            has_recorded_shares = any(
+                _share(beneficiary) is not None
+                for beneficiary in beneficiaries
+            )
+            if mode in _PERCENTAGE_RESIDUE_MODES or has_recorded_shares:
                 shares_match = all(
                     _share_is_associated(
                         text,
@@ -191,6 +222,8 @@ def semantic_instruction_gaps(
                         all_names,
                     )
                     for beneficiary in beneficiaries
+                    if _share(beneficiary) is not None
+                    or mode in _PERCENTAGE_RESIDUE_MODES
                 )
             if not text or not names_present or not shares_match:
                 gaps.add(RESIDUE_INSTRUCTION_GAP)
