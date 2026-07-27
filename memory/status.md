@@ -29,7 +29,10 @@
   backend 295 passed against a newly migrated temporary PostgreSQL 16 database; frontend
   95 passed across 11 files; TypeScript and Next.js production build clean;
   `git diff --check` clean. The temporary database container and synthetic data were
-  removed after the test.
+  removed after the test. Draft PR #97's GitHub run `30287903274` is green across backend
+  migrations/pytest, clean-install frontend typecheck/tests/build, and Compose image builds.
+  The earlier frontend CI failure exposed an undeclared `jsdom` test dependency; commit
+  `36f745a` declares and locks it.
 - **Important context:** this working copy (`ezwill-main` on Desktop) began as a ZIP
   snapshot and its local history has no merge base with `origin/main`; direct push to main
   would be rejected and force-push is forbidden. The top of stacked PR #74 has the exact
@@ -59,7 +62,7 @@
   full EN/KO parity. Multiple-gift clause projection and the dual-will lawyer workflow need
   explicit coverage. Real-user accessibility/usability testing and a real-Postgres
   cross-device walk remain.
-- **Next step:** review and merge draft PR #97 after CI, then implement recorded lawyer
+- **Next step:** review and merge green draft PR #97, then implement recorded lawyer
   approval (#86). In parallel, obtain lawyer-approved residue and POA wording for the
   engineering work that remains in #83/#85.
 - **Guardrail:** unchanged — legal output draft-only and lawyer-approved; tenant isolation

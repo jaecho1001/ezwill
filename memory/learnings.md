@@ -65,3 +65,8 @@ became a rule) where you wrote it down.
   unrelated even when two commit tips have identical trees. Lesson: trace each public entry
   point through its persisted data shape and every delivery surface, and compare trees
   before attempting to reconcile snapshot-derived commits with a remote PR stack.
+- 2026-07-27 — The frontend suite passed locally because an existing `node_modules`
+  directory contained Vitest's optional `jsdom` environment, but GitHub's clean `npm ci`
+  correctly failed the DOM rendering test. Lesson: every test environment must be an
+  explicit dependency, and new frontend tests should be verified after a clean lockfile
+  install before publication.
