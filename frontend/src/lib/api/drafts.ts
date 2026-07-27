@@ -27,8 +27,6 @@ export interface ResolvedLink {
   current_step: number
   completed_steps: number[]
   vault?: Record<string, unknown> | null
-  client_email?: string | null
-  client_phone?: string | null
 }
 
 export interface CreateLinkResponse {

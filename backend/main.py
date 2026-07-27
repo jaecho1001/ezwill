@@ -44,6 +44,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """Baseline HTTP security headers (issue #91).
+
+    Referrer-Policy matters most here: client magic/review tokens travel in
+    URL query strings, and without it any outbound navigation could leak a
+    live credential in the Referer header. HSTS is opt-in via env because
+    local docker-compose serves plain HTTP.
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Cache-Control", response.headers.get("Cache-Control", "no-store")
+    )
+    if os.getenv("ENABLE_HSTS", "").strip().lower() in {"1", "true", "yes"}:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+        )
+    return response
+
 app.include_router(drafts_router, prefix="/api/drafts", tags=["drafts"])
 app.include_router(links_router, prefix="/api/links", tags=["links"])
 app.include_router(agents_router, prefix="/agents", tags=["agents"])

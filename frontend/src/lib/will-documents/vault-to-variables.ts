@@ -47,9 +47,12 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
     if (firstGift.amount != null) v.cashAmount = formatCurrency(firstGift.amount)
     if (firstGift.charityName) v.charityName = firstGift.charityName
     if (firstGift.charityNumber) v.charityNumber = firstGift.charityNumber
-    if (firstGift.recipientName) {
-      v.recipientFullName = firstGift.recipientName
-      v.recipientFirstName = firstGift.recipientName.split(/\s+/)[0]
+    // Mirror of the Python guard (issue #80): whitespace-only names are
+    // truthy but have no first token.
+    const recipient = (firstGift.recipientName ?? '').trim()
+    if (recipient) {
+      v.recipientFullName = recipient
+      v.recipientFirstName = recipient.split(/\s+/)[0]
     }
   }
 

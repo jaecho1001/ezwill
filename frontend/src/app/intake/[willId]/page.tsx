@@ -60,8 +60,10 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
         testator: {
           ...serverVault.testator,
           fullName: serverVault.testator.fullName || [firstName, ...rest].join(' ').trim(),
-          email: serverVault.testator.email || result.client_email || undefined,
-          phone: serverVault.testator.phone || result.client_phone || undefined,
+          // Contact prefill deliberately NOT sourced from the resolve
+          // endpoint: it answers to a bare token, so it no longer returns
+          // email/phone (issue #77). The client enters their own contact
+          // details, and the vault carries them from then on.
         },
       })
       setHydrated(true)

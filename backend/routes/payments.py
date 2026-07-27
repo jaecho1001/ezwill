@@ -5,12 +5,15 @@ Checkout is authorized by the client's own draft token or a dashboard session.
 Without a STRIPE_SECRET_KEY the flow runs in simulation so it's testable locally.
 """
 
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from routes.auth import verify_client_or_dashboard_draft_access
 from services.db import EWDbWriter
@@ -121,12 +124,18 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("stripe-signature")
     secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    # No secret, no webhook (issue #91). The old fallback parsed unsigned
+    # JSON, which let anyone who could reach this endpoint mark any draft
+    # paid. Live Stripe without a webhook secret is a deployment error and
+    # must fail loudly, not degrade into an open payment bypass.
+    if not secret:
+        logger.error(
+            "STRIPE_WEBHOOK_SECRET is not set while Stripe is configured; "
+            "rejecting webhook delivery"
+        )
+        raise HTTPException(503, "Stripe webhook secret not configured")
     try:
-        if secret:
-            event = stripe.Webhook.construct_event(payload, sig, secret)
-        else:
-            import json as _json
-            event = _json.loads(payload)
+        event = stripe.Webhook.construct_event(payload, sig, secret)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"Invalid webhook: {exc}")
 

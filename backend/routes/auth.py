@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import json
+from services.client_ip import client_ip
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -297,7 +298,7 @@ def verify_agent_or_dashboard_token(
 
 @router.post("/login")
 async def login(req: LoginRequest, request: Request, response: Response):
-    client = request.client.host if request.client else "unknown"
+    client = client_ip(request)
     _check_rate_limit(client)
     configured = _configured_password()
     if not configured:
@@ -337,7 +338,7 @@ async def change_password(
     # Require a valid dashboard session AND throttle by client so this endpoint
     # can't be used as an unauthenticated, unlimited password-verification oracle
     # that bypasses the login rate limiter.
-    client = request.client.host if request.client else "unknown"
+    client = client_ip(request)
     _check_rate_limit(client)
     configured = _configured_password()
     if not _verify_password(req.current_password, configured):

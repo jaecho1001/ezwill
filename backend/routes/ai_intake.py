@@ -132,7 +132,12 @@ TOOLS = [
             "properties": {
                 "list_path": {
                     "type": "string",
-                    "description": "One of: 'children', 'executors', 'guardians', 'beneficiaries'.",
+                    "description": (
+                        "One of: 'children', 'executors', 'guardians', "
+                        "'beneficiaries', 'contingentBeneficiaries', 'gifts', "
+                        "'assets.items', 'assets.liabilities', "
+                        "'poa.property.attorneys', 'poa.personalCare.attorneys'."
+                    ),
                 },
                 "item": {
                     "type": "object",
@@ -229,14 +234,46 @@ def _apply_patch(vault: dict, path: str, value: Any) -> None:
     cursor[parts[-1]] = value
 
 
+# Every list the nine-section intake script can write (issue #82). This must
+# stay a superset of the listOf/personList/childList vaultPaths in
+# frontend/src/lib/intake/will-intake-script.ts — test_ai_intake_allowlist.py
+# pins the correspondence so the two cannot drift silently again.
+APPEND_LIST_PATHS = frozenset({
+    "children",
+    "executors",
+    "guardians",
+    "beneficiaries",
+    "contingentBeneficiaries",
+    "gifts",
+    "assets.items",
+    "assets.liabilities",
+    "poa.property.attorneys",
+    "poa.personalCare.attorneys",
+})
+
+
 def _append_list(vault: dict, list_path: str, item: dict) -> dict:
-    """Ensure vault[list_path] is a list and append. Assigns id if missing."""
-    if list_path not in vault or not isinstance(vault[list_path], list):
-        vault[list_path] = []
+    """Ensure the (possibly nested) list at list_path exists and append.
+
+    Nested paths ("assets.items", "poa.property.attorneys") walk intermediate
+    dicts, creating them as needed — the flat version silently created a
+    literal top-level key named "assets.items", which nothing else reads.
+    """
+    parts = list_path.split(".")
+    cursor = vault
+    for key in parts[:-1]:
+        nxt = cursor.get(key)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cursor[key] = nxt
+        cursor = nxt
+    leaf = parts[-1]
+    if not isinstance(cursor.get(leaf), list):
+        cursor[leaf] = []
     if "id" not in item:
         import uuid
         item["id"] = str(uuid.uuid4())
-    vault[list_path].append(item)
+    cursor[leaf].append(item)
     return item
 
 
@@ -434,7 +471,7 @@ def _execute_tool(name: str, tool_input: dict, vault: dict) -> dict:
         if name == "append_vault_list_item":
             list_path = tool_input["list_path"]
             item = dict(tool_input.get("item") or {})
-            if list_path not in {"children", "executors", "guardians", "beneficiaries"}:
+            if list_path not in APPEND_LIST_PATHS:
                 return {"ok": False, "error": f"unsupported list_path {list_path}"}
             stored = _append_list(vault, list_path, item)
             return {"ok": True, "item": stored}

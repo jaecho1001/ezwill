@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from models import CreateDraftRequest, UpdateDraftRequest
 from routes.auth import verify_dashboard_token, verify_client_or_dashboard_draft_access
 from services.db import EWDbWriter
+from services.client_ip import client_ip
 import os
 import json
 
@@ -42,7 +43,7 @@ async def create_self_serve_draft(body: SelfServeDraftRequest, request: Request)
     draft plus a client link token bound to it, so the existing magic-token
     autosave/submit path works. The lawyer sees the draft in the dashboard as it
     fills in."""
-    client = request.client.host if request.client else "unknown"
+    client = client_ip(request)
     _self_serve_rate_limit(client)
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.create_draft(

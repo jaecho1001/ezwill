@@ -43,22 +43,42 @@ class EWDbWriter:
 
     def __enter__(self):
         self._conn = _pool.getconn()
-        self._conn.autocommit = False
-        with self._conn.cursor() as cur:
-            cur.execute(
-                sql.SQL("SET search_path TO {}").format(
-                    sql.Identifier(self.schema)
+        try:
+            self._conn.autocommit = False
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("SET search_path TO {}").format(
+                        sql.Identifier(self.schema)
+                    )
                 )
-            )
+        except Exception:
+            # Never keep a connection we failed to initialise — a leak here
+            # shrinks the pool permanently until the app stops serving.
+            _pool.putconn(self._conn, close=True)
+            self._conn = None
+            raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self._conn.rollback()
-        else:
-            self._conn.commit()
-        _pool.putconn(self._conn)
-        self._conn = None
+        # The connection MUST return to the pool no matter what commit or
+        # rollback does: a dead TCP session raises InterfaceError on both,
+        # and before this try/finally each such error leaked one pooled
+        # connection until the pool was exhausted (issue #92).
+        conn, self._conn = self._conn, None
+        broken = False
+        try:
+            if exc_type:
+                conn.rollback()
+            else:
+                conn.commit()
+        except Exception:
+            broken = True
+            if exc_type is None:
+                # A failed COMMIT means the write did not happen; the caller
+                # must hear about it rather than assume success.
+                raise
+        finally:
+            _pool.putconn(conn, close=broken or bool(conn.closed))
 
     def execute(self, query: str, params=None):
         with self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:

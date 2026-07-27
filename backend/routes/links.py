@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends, Response
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from models import CreateLinkRequest, CreateLinkResponse
 from services.db import EWDbWriter
 from services.notification_service import send_magic_link_to_client
 from services.link_service import build_questionnaire_url
+from services.client_ip import client_ip
 from routes.auth import verify_dashboard_token
+from collections import deque
 import os
+import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,6 +15,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+
+# Resolve is public (a bare token is the only credential), so cap probing:
+# generous enough for a client reopening their link across devices, far too
+# slow for enumerating 122-bit random tokens.
+RESOLVE_WINDOW_SECONDS = int(os.getenv("LINK_RESOLVE_RATE_WINDOW_SECS", "60"))
+RESOLVE_MAX_PER_WINDOW = int(os.getenv("LINK_RESOLVE_RATE_MAX_REQS", "30"))
+_resolve_hits: dict = {}
+
+
+def _resolve_rate_limit(client: str) -> None:
+    now = time.time()
+    hits = _resolve_hits.setdefault(client, deque())
+    while hits and now - hits[0] > RESOLVE_WINDOW_SECONDS:
+        hits.popleft()
+    if len(hits) >= RESOLVE_MAX_PER_WINDOW:
+        raise HTTPException(429, "Too many link lookups; please try again shortly")
+    hits.append(now)
 
 
 @router.post("/create", response_model=CreateLinkResponse)
@@ -70,8 +90,16 @@ async def create_link(
 
 
 @router.get("/{token}/resolve")
-async def resolve_link(token: str, response: Response):
-    """Client-facing — resolves a magic link token (no auth)."""
+async def resolve_link(token: str, request: Request, response: Response):
+    """Client-facing — resolves a magic link token (no auth).
+
+    Scope discipline (issue #77): this endpoint answers to a bare token, so it
+    returns only what resuming the questionnaire needs. The vault is required
+    for cross-device resume; the client's email and phone are NOT — the
+    summary flow collects contact details from the client directly, and a
+    leaked link must not also hand out how to reach them.
+    """
+    _resolve_rate_limit(client_ip(request))
     response.headers["Cache-Control"] = "no-store"
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         link = db.resolve_link(token)
@@ -88,8 +116,6 @@ async def resolve_link(token: str, response: Response):
             "current_step": link["current_step"],
             "completed_steps": link["completed_steps"] or [],
             "vault": link.get("vault") or None,
-            "client_email": link.get("client_email"),
-            "client_phone": link.get("client_phone"),
         }
 
 

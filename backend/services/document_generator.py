@@ -227,9 +227,13 @@ def vault_to_variables(vault: dict) -> dict:
             v["charityName"] = first_gift["charityName"]
         if first_gift.get("charityNumber"):
             v["charityNumber"] = first_gift["charityNumber"]
-        if first_gift.get("recipientName"):
-            v["recipientFullName"] = first_gift["recipientName"]
-            v["recipientFirstName"] = first_gift["recipientName"].split()[0]
+        # The vault is client-supplied JSON: a whitespace-only name is truthy
+        # but has no first token, and split()[0] on it would 500 the lawyer's
+        # generate call (issue #80).
+        recipient = str(first_gift.get("recipientName") or "").strip()
+        if recipient:
+            v["recipientFullName"] = recipient
+            v["recipientFirstName"] = recipient.split()[0]
 
     poa = vault.get("poa") or {}
     property_attorneys = (poa.get("property") or {}).get("attorneys") or []
