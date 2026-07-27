@@ -67,3 +67,24 @@
   engineering work that remains in #83/#85.
 - **Guardrail:** unchanged — legal output draft-only and lawyer-approved; tenant isolation
   intact; no secrets/PII committed.
+
+## 2026-07-27 (later) — remaining engineering backlog closed on PR #97
+
+- Commits `21d013a`..`b29a679` (CI green): #78 legacy backfill (resolve-time
+  projection, lawyer-note carryover), #86 recorded lawyer approval gating the
+  review portal + link creation (migration 40; regeneration clears approval),
+  #79 engineering defaults (not-applicable vs complete, validate-on-next,
+  spouse required, unnamed shares rejected), #88 honest delivery status +
+  startup guard, #84 signing-record capture + derived dual-will titles +
+  data-conditional clause defaults + dashboard override button, #87 end-to-end
+  journey test (real Postgres, real API, 21 assertions).
+- The journey test caught a real bug first run: update_document_generated was
+  an UPDATE against a config row most drafts never have — zero rows matched,
+  approval impossible on the default path. Now an upsert.
+- Gotcha recorded: TestClient(main.app) lifespan shutdown closes the shared
+  pool; test fixtures must reset services.db._pool to None afterwards.
+- Backend 333 passed / 0 skipped vs migrated PG16 (migrations 00 + 25-40);
+  frontend 110 tests + typecheck + build. What remains is decisions, not
+  code — see issue #95's decision table (owner: self-serve/checkout, email
+  provider, approval workflow; lawyer: residue drafting, POA wording, Korean
+  translation, hasDualWill, display thresholds).
