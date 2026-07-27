@@ -199,7 +199,10 @@ def test_review_target_requires_enabled_document_and_real_clause(monkeypatch):
         enabled = True
 
         def get_document_configs(self, draft_id):
-            return [{"document_type": "single_will", "enabled": self.enabled}]
+            # lawyer_approved_at present: these tests exercise enablement and
+            # clause validity, not the #86 release gate (tested separately).
+            return [{"document_type": "single_will", "enabled": self.enabled,
+                     "lawyer_approved_at": "2026-07-27T00:00:00Z"}]
 
         def get_clause_selections(self, draft_id, document_type):
             return [{"clause_id": "real-clause", "included": True}]
@@ -396,7 +399,8 @@ def test_review_preview_and_approval_block_instruction_mismatch(monkeypatch):
         approval_saved = False
 
         def get_document_configs(self, draft_id):
-            return [{"document_type": "single_will", "enabled": True}]
+            return [{"document_type": "single_will", "enabled": True,
+                     "lawyer_approved_at": "2026-07-27T00:00:00Z"}]
 
         def get_clause_selections(self, draft_id, document_type):
             return [{

@@ -534,9 +534,72 @@ async def list_documents(draft_id: str, _token: str = Depends(verify_dashboard_t
             "clause_count": clause_count,
             "generated_at": config.get("generated_at"),
             "generated_file_path": config.get("generated_file_path"),
+            "lawyer_approved_at": config.get("lawyer_approved_at"),
+            "lawyer_approved_by": config.get("lawyer_approved_by"),
         })
 
     return {"draft_id": draft_id, "documents": documents}
+
+
+@router.post("/{draft_id}/{document_type}/approve")
+async def approve_document(
+    draft_id: str,
+    document_type: str,
+    _token: str = Depends(verify_dashboard_token),
+):
+    """Record the lawyer's explicit approval of a generated document (#86).
+
+    Approval is what makes a document eligible for client review: the review
+    portal refuses to create links for, list, display, or accept approval of
+    documents the lawyer has not signed off. Re-generating a document clears
+    its approval automatically.
+    """
+    if document_type not in DOCUMENT_TITLES:
+        raise HTTPException(400, "Invalid document_type")
+    draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
+    if not draft:
+        raise HTTPException(404, "Draft not found")
+
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        # Approval must be of the ACTUAL current text: run the same guards
+        # delivery runs, so a lawyer cannot approve a document that the
+        # system itself refuses to deliver.
+        clauses = [dict(c) for c in db.get_clause_selections(draft_id, document_type) or []]
+        if not clauses:
+            raise HTTPException(409, "Nothing to approve: no clause selections saved")
+        gaps = semantic_instruction_gaps(draft, document_type, clauses)
+        if gaps:
+            raise HTTPException(422, {
+                "error": "approval_blocked",
+                "message": instruction_gap_message(gaps),
+                "instruction_gaps": sorted(gaps),
+            })
+        # NOTE: lawyer_approved_by is the shared dashboard identity until
+        # per-lawyer accounts (#52) land; the column is ready for real names.
+        row = db.set_lawyer_approval(draft_id, document_type, "dashboard")
+        if row is None:
+            raise HTTPException(409, "Generate the document before approving it")
+
+    return {
+        "approved": True,
+        "document_type": document_type,
+        "approved_at": str(row["lawyer_approved_at"]),
+        "approved_by": row["lawyer_approved_by"],
+    }
+
+
+@router.delete("/{draft_id}/{document_type}/approve")
+async def revoke_document_approval(
+    draft_id: str,
+    document_type: str,
+    _token: str = Depends(verify_dashboard_token),
+):
+    """Withdraw a recorded approval (e.g. instructions changed)."""
+    if document_type not in DOCUMENT_TITLES:
+        raise HTTPException(400, "Invalid document_type")
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        db.revoke_lawyer_approval(draft_id, document_type)
+    return {"approved": False, "document_type": document_type}
 
 
 @router.get("/{draft_id}/generations")

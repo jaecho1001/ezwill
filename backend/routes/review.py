@@ -108,6 +108,11 @@ def _get_review_documents(draft_id: str) -> list[dict]:
         config = configs_map.get(doc_type, {})
         if not config.get("enabled", True):
             continue
+        # Unreleased documents don't appear in the client's list at all —
+        # the client should never learn of drafts the lawyer hasn't
+        # approved for review (#86).
+        if not config.get("lawyer_approved_at"):
+            continue
         clause_count = len(all_selections.get(doc_type, []))
         if clause_count == 0:
             continue
@@ -155,6 +160,18 @@ def _validate_review_target(
         )
         if config is not None and not config.get("enabled", True):
             raise HTTPException(400, "Document is not enabled for review")
+        # Lawyer approval gate (#86): a client may only see, approve, or
+        # comment on documents a lawyer has explicitly released. 'Generated'
+        # is not 'approved' — that distinction is the firm's standing rule.
+        if config is None or not config.get("lawyer_approved_at"):
+            raise HTTPException(403, {
+                "error": "not_released",
+                "message": (
+                    "This document has not been released for your review "
+                    "yet. Your lawyer will send it when it is ready."
+                ),
+                "document_type": document_type,
+            })
 
         selections = db.get_clause_selections(draft_id, document_type) or []
         included = [dict(c) for c in selections if dict(c).get("included", True)]
@@ -304,6 +321,18 @@ async def create_review_link(
     client_phone = draft.get("client_phone")
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
+        # No approved documents, no review link (#86): sending a client a
+        # portal with nothing released reads as a broken product, and the
+        # gate exists precisely so nothing unapproved reaches them.
+        configs = db.get_document_configs(draft_id) or []
+        if not any(dict(c).get("lawyer_approved_at") for c in configs):
+            raise HTTPException(409, {
+                "error": "nothing_approved",
+                "message": (
+                    "Approve at least one generated document before "
+                    "sending the client a review link."
+                ),
+            })
         link = db.create_review_link(draft_id, client_name, language)
 
     token = str(link["token"])

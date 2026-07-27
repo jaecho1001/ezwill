@@ -25,6 +25,8 @@ interface DocumentEntry {
   icon: string
   status: DocStatus
   lastGenerated: string | null
+  /** Lawyer release for client review (#86); null = not approved. */
+  approvedAt: string | null
 }
 
 const DOC_STATUS_STYLES: Record<DocStatus, { label: string; className: string }> = {
@@ -81,14 +83,69 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
             icon: config?.icon ?? '',
             status: 'pending' as DocStatus,
             lastGenerated: null,
+            approvedAt: null,
           }
         })
 
-        setDocuments(docs)
+        // Server truth: generation + lawyer-approval state survive reloads
+        // (#86); without this merge the page forgot every generated document.
+        return fetch(`/api/documents/${id}/list`, { headers: getAuthHeaders() })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((listing) => {
+            if (!listing?.documents) {
+              setDocuments(docs)
+              return
+            }
+            const byType = new Map<string, { generated_at?: string | null; lawyer_approved_at?: string | null }>(
+              (listing.documents as Array<{ document_type: string; generated_at?: string | null; lawyer_approved_at?: string | null }>)
+                .map((d) => [d.document_type, d])
+            )
+            setDocuments(docs.map((doc) => {
+              const server = byType.get(doc.docType)
+              if (!server?.generated_at) return doc
+              return {
+                ...doc,
+                status: 'generated' as DocStatus,
+                lastGenerated: server.generated_at,
+                approvedAt: server.lawyer_approved_at ?? null,
+              }
+            }))
+          })
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
   }, [id])
+
+  async function handleApprove(docType: string) {
+    setActionError(null)
+    const res = await fetch(`/api/documents/${id}/${docType}/approve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    })
+    if (res.ok) {
+      const body = await res.json()
+      setDocuments((prev) => prev.map((doc) =>
+        doc.docType === docType ? { ...doc, approvedAt: body.approved_at } : doc
+      ))
+    } else {
+      setActionError(await extractApiErrorDetail(res))
+    }
+  }
+
+  async function handleRevokeApproval(docType: string) {
+    setActionError(null)
+    const res = await fetch(`/api/documents/${id}/${docType}/approve`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    })
+    if (res.ok) {
+      setDocuments((prev) => prev.map((doc) =>
+        doc.docType === docType ? { ...doc, approvedAt: null } : doc
+      ))
+    } else {
+      setActionError(await extractApiErrorDetail(res))
+    }
+  }
 
   async function handleGenerate(docType: string) {
     setGenerating(docType)
@@ -304,6 +361,20 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
                             </svg>
                             .pdf
                           </Button>
+                          {doc.approvedAt ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Badge className="bg-[#7BA68C]/15 text-[#3d6650]">
+                                Approved for client review
+                              </Badge>
+                              <Button size="sm" variant="ghost" onClick={() => handleRevokeApproval(doc.docType)}>
+                                Revoke
+                              </Button>
+                            </span>
+                          ) : (
+                            <Button size="sm" variant="outline" onClick={() => handleApprove(doc.docType)}>
+                              Approve for client review
+                            </Button>
+                          )}
                         </>
                       )}
                     </div>

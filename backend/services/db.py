@@ -555,11 +555,40 @@ class EWDbWriter:
             (draft_id,)
         )
 
-    def update_document_generated(self, draft_id: str, document_type: str, file_path: str) -> bool:
-        """Mark a document as generated with its file path."""
+    def set_lawyer_approval(self, draft_id: str, document_type: str,
+                            approved_by: str) -> dict:
+        """Record a lawyer's explicit approval of one generated document (#86)."""
+        return self.fetchone("""
+            UPDATE ew_document_configs
+            SET lawyer_approved_at = now(), lawyer_approved_by = %s,
+                updated_at = now()
+            WHERE draft_id = %s AND document_type = %s
+              AND generated_at IS NOT NULL
+            RETURNING document_type, lawyer_approved_at, lawyer_approved_by
+        """, (approved_by, draft_id, document_type))
+
+    def revoke_lawyer_approval(self, draft_id: str, document_type: str) -> bool:
+        """Withdraw approval — e.g. after re-generating with changed clauses."""
         self.execute("""
             UPDATE ew_document_configs
-            SET generated_at = now(), generated_file_path = %s, updated_at = now()
+            SET lawyer_approved_at = NULL, lawyer_approved_by = NULL,
+                updated_at = now()
+            WHERE draft_id = %s AND document_type = %s
+        """, (draft_id, document_type))
+        return True
+
+    def update_document_generated(self, draft_id: str, document_type: str, file_path: str) -> bool:
+        """Mark a document as generated with its file path.
+
+        Re-generation clears any prior lawyer approval (#86): the approved
+        text no longer exists, so the approval must be given again on the
+        new bytes rather than silently carrying over.
+        """
+        self.execute("""
+            UPDATE ew_document_configs
+            SET generated_at = now(), generated_file_path = %s,
+                lawyer_approved_at = NULL, lawyer_approved_by = NULL,
+                updated_at = now()
             WHERE draft_id = %s AND document_type = %s
         """, (file_path, draft_id, document_type))
         return True
