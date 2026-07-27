@@ -34,7 +34,9 @@
   snapshot and its local history has no merge base with `origin/main`; direct push to main
   would be rejected and force-push is forbidden. The top of stacked PR #74 has the exact
   same file tree as local `e09bcc7`, so commits after that point can be replayed safely onto
-  a new branch based on `origin/feat/self-serve-intake-to-firm`.
+  a new branch based on `origin/feat/self-serve-intake-to-firm`. The eight source/brain
+  commits were replayed without conflicts and published as draft PR #97 on
+  `agent/audit-safety-followup`, stacked on #74.
 - **Previously completed launch safeguards:** unresolved-placeholder refusal with logged
   lawyer override; durable generated-document bytes and SHA-256; payment gate; vault sync;
   send-to-lawyer; deterministic generation ordering; adversarial review fixes. See commits
@@ -43,9 +45,10 @@
   gift-over residue drafting plus real repeating-block rendering; #85 needs a lawyer review
   of consolidated execution copy (the unified-intake life-support choice is now wired).
   #86 still needs an enforced, attributable lawyer approval state before client delivery.
-  #87 still needs the complete intake/assets/flags/editor workflow in the lawyer workspace.
   Privacy/consent (#90), Korean legal-document posture (#93), and the remaining security,
-  concurrency, notification, and placeholder work remain launch gates under #95.
+  concurrency, notification, and placeholder work remain launch gates under #95. PR #97
+  now carries the complete intake context (answers, people, assets, and flags) into the
+  lawyer workspace for #87.
 - **Known issue #75 follow-up:** the public self-serve CTA still enters the
   legacy `/will/*` flow; only lawyer-created magic links are switched. Legacy questionnaire
   rows are now protected from autosave deletion, but are not backfilled into the new vault.
@@ -56,8 +59,7 @@
   full EN/KO parity. Multiple-gift clause projection and the dual-will lawyer workflow need
   explicit coverage. Real-user accessibility/usability testing and a real-Postgres
   cross-device walk remain.
-- **Next step:** publish the replayed follow-up branch for CI, then reconnect the complete
-  nine-section intake to the lawyer's working views (#87) and implement recorded lawyer
+- **Next step:** review and merge draft PR #97 after CI, then implement recorded lawyer
   approval (#86). In parallel, obtain lawyer-approved residue and POA wording for the
   engineering work that remains in #83/#85.
 - **Guardrail:** unchanged — legal output draft-only and lawyer-approved; tenant isolation
