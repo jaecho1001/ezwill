@@ -399,6 +399,135 @@ def test_generate_accepts_custom_residue_clause_matching_client_shares(
     assert len(FakeDb.generated_records) == 1
 
 
+def test_generate_rejects_legacy_residue_instructions_without_matching_clause(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = CLAUSE_COMPLETE
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={},
+            your_estate={
+                "beneficiaries": [
+                    {"firstName": "Alex", "lastName": "Kim", "percentage": 60},
+                    {"firstName": "Sam", "lastName": "Lee", "percentage": 40},
+                ],
+                "residueDistribution": "custom",
+            },
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+
+    assert res.status_code == 422
+    assert (
+        documents_route.RESIDUE_INSTRUCTION_GAP
+        in res.json()["detail"]["instruction_gaps"]
+    )
+
+
+def test_generate_uses_stored_legacy_beneficiary_rows_as_guard_fallback(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = CLAUSE_COMPLETE
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={},
+            your_estate={"residueDistribution": "custom"},
+            people=[
+                {
+                    "role": "beneficiary",
+                    "first_name": "Alex",
+                    "last_name": "Kim",
+                    "percentage": 100,
+                },
+            ],
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+
+    assert res.status_code == 422
+    assert (
+        documents_route.RESIDUE_INSTRUCTION_GAP
+        in res.json()["detail"]["instruction_gaps"]
+    )
+
+
+def test_generate_rejects_residue_clause_with_swapped_percentages(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = [{
+        **RESIDUE_CLAUSE_MATCHING[0],
+        "customText": (
+            "I give 40% of the residue of my estate to Alex Kim and "
+            "60% to Sam Lee."
+        ),
+    }]
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={
+                "beneficiaries": [
+                    {"fullName": "Alex Kim", "sharePercent": 60},
+                    {"fullName": "Sam Lee", "sharePercent": 40},
+                ],
+                "residueDistribution": "percentages",
+            },
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+
+    assert res.status_code == 422
+    assert (
+        documents_route.RESIDUE_INSTRUCTION_GAP
+        in res.json()["detail"]["instruction_gaps"]
+    )
+
+
+def test_child_per_stirpes_choice_ignores_stale_named_beneficiary_list(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = CLAUSE_COMPLETE
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={
+                "beneficiaries": [
+                    {"fullName": "Old beneficiary", "sharePercent": 100},
+                ],
+                "residueDistribution": "per_stirpes",
+            },
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+
+    assert res.status_code == 200
+
+
 def test_generate_rejects_end_of_life_clause_without_client_instruction(
     client, monkeypatch
 ):
@@ -446,6 +575,28 @@ def test_generate_accepts_end_of_life_clause_after_affirmative_instruction(
 
     assert res.status_code == 200
     assert len(FakeDb.generated_records) == 1
+
+
+def test_generate_accepts_legacy_end_of_life_instruction(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = POA_CARE_WISHES
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={},
+            poa_personal_care={"lifeSupport": "withhold"},
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "poa_personal_care", "format": "docx"},
+    )
+
+    assert res.status_code == 200
 
 
 def test_generate_all_rejects_batch_when_any_document_incomplete(client):

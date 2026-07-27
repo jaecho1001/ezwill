@@ -19,11 +19,30 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from services.payment_gate import payment_required, enforcement_mode
+from services.pricing import PRICING_TIERS
 from routes import documents as documents_route
 from routes.auth import verify_dashboard_token
 
 
 # ── policy unit tests ────────────────────────────────────────────────────────
+
+def test_checkout_tiers_do_not_publish_unimplemented_service_promises():
+    public_copy = " ".join(
+        str(text)
+        for tier in PRICING_TIERS.values()
+        for text in [
+            str(tier.get("description", "")),
+            *[str(feature) for feature in tier.get("features", [])],
+        ]
+    )
+    unsupported = (
+        "free updates",
+        "priority lawyer review",
+        "dedicated lawyer support",
+        "mirror wills option",
+    )
+    assert not any(claim in public_copy.casefold() for claim in unsupported)
+
 
 def test_lawyer_draft_is_exempt_under_default_policy(monkeypatch):
     monkeypatch.delenv("PAYMENT_ENFORCEMENT", raising=False)

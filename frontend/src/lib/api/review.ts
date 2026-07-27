@@ -4,10 +4,11 @@
 export interface ReviewDocument {
   document_type: string
   title: string
-  status: 'pending' | 'reviewed' | 'approved'
+  status: 'pending' | 'reviewed' | 'approved' | 'blocked'
   clause_count: number
   approved_at: string | null
   comments_count: number
+  instruction_gaps?: string[]
 }
 
 export interface ReviewData {

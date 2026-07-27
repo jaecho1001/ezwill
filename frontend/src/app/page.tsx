@@ -360,8 +360,8 @@ function HomePageInner() {
               <motion.ul variants={stagger} className="space-y-4">
                 {[
                   { icon: UserCheck, text: 'The file is prepared for review by the Ontario legal team, not approved by an algorithm.' },
-                  { icon: ShieldCheck, text: 'Compliance with the Ontario Succession Law Reform Act is verified before you sign.' },
-                  { icon: ScrollText, text: 'You receive step-by-step signing and witnessing instructions so your will is actually valid.' },
+                  { icon: ShieldCheck, text: 'Ontario-specific execution requirements are surfaced for the lawyer to confirm.' },
+                  { icon: ScrollText, text: 'The firm explains the signing and witnessing steps that apply to your documents.' },
                 ].map((item, i) => (
                   <motion.li key={i} variants={fadeUp} className="flex items-start gap-3">
                     <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7BA68C]/10">
@@ -388,8 +388,8 @@ function HomePageInner() {
           </motion.div>
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-50px' }} variants={stagger} className="grid gap-8 md:grid-cols-4">
             {[
-              { step: '01', title: 'Answer Questions', desc: 'Simple questions about your life, family, and wishes — like a conversation with a trusted advisor. No credit card. Save and come back with your private link whenever.', time: '15 min' },
-              { step: '02', title: 'Review Your Plan', desc: 'See a clear summary of every choice, with Ontario-specific alerts surfaced for lawyer review.', time: '3 min' },
+              { step: '01', title: 'Answer Questions', desc: 'Simple questions about your life, family, and wishes — like a conversation with a trusted advisor. No credit card. Save and come back with your private link whenever.', time: 'Your pace' },
+              { step: '02', title: 'Review Your Plan', desc: 'See a clear summary of every choice, with Ontario-specific alerts surfaced for lawyer review.', time: 'Your review' },
               { step: '03', title: 'Lawyer Drafting', desc: 'Your lawyer reviews the answers, selects clauses, and generates the Will and Powers of Attorney.', time: 'Firm-led' },
               { step: '04', title: 'Sign Properly', desc: 'Get signing instructions for Ontario requirements, including two witnesses and in-person execution.', time: 'Guided' },
             ].map((item, i) => (

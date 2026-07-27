@@ -4,6 +4,7 @@ import {
   getClausesForDocumentType,
   buildDefaultSelections,
   mergeSelectionsWithDefaults,
+  affirmedPersonalCareClauseIds,
   getClauseTree,
   resolveTemplateText,
   getClauseTemplate,
@@ -117,6 +118,58 @@ describe('mergeSelectionsWithDefaults', () => {
 
     expect(merged.filter((clause) => clause.clauseId === optional.clauseId)).toHaveLength(1)
     expect(merged.at(-1)?.clauseId).toBe(optional.clauseId)
+  })
+
+  it('turns off stored sensitive POA clauses without affirmative answers', () => {
+    const stored = [
+      {
+        clauseId: 'poa-care-wishes',
+        section: 'POA — Personal Care',
+        included: true,
+        aiGenerated: false,
+        sortOrder: 2,
+      },
+      {
+        clauseId: 'poa-care-organ',
+        section: 'POA — Personal Care',
+        included: true,
+        aiGenerated: false,
+        sortOrder: 3,
+      },
+    ]
+
+    const merged = mergeSelectionsWithDefaults('poa_personal_care', stored)
+
+    expect(merged.find((c) => c.clauseId === 'poa-care-wishes')?.included).toBe(false)
+    expect(merged.find((c) => c.clauseId === 'poa-care-organ')?.included).toBe(false)
+  })
+
+  it('retains sensitive POA clauses supported by affirmative client answers', () => {
+    const stored = [{
+      clauseId: 'poa-care-wishes',
+      section: 'POA — Personal Care',
+      included: true,
+      aiGenerated: false,
+      sortOrder: 2,
+    }]
+    const affirmed = affirmedPersonalCareClauseIds({
+      vault: {
+        poa: {
+          personalCare: {
+            lifeSupport: 'withhold',
+            organDonation: false,
+          },
+        },
+      },
+    })
+
+    const merged = mergeSelectionsWithDefaults(
+      'poa_personal_care',
+      stored,
+      affirmed,
+    )
+
+    expect(merged.find((c) => c.clauseId === 'poa-care-wishes')?.included).toBe(true)
   })
 })
 

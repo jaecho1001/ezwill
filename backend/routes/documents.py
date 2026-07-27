@@ -5,7 +5,6 @@ Generates DOCX/PDF documents from clause selections.
 
 import io
 import os
-import re
 import uuid
 import zipfile
 import logging
@@ -21,11 +20,17 @@ from services.jurisdictions import resolve as resolve_jurisdiction
 from services.document_generator import (
     DocumentGenerator,
     DOCUMENT_TITLES,
-    WILL_TYPES,
     resolve_variables,
     map_people_to_variables,
     vault_to_variables,
     firm_variables,
+)
+from services.instruction_guard import (
+    RESIDUE_INSTRUCTION_GAP,
+    END_OF_LIFE_INSTRUCTION_GAP,
+    ORGAN_DONATION_INSTRUCTION_GAP,
+    semantic_instruction_gaps,
+    instruction_gap_message,
 )
 from services.pdf_converter import convert_to_pdf
 from services.payment_gate import payment_required
@@ -38,11 +43,6 @@ router = APIRouter()
 DEFAULT_SCHEMA = os.getenv("DEFAULT_SCHEMA", "firm_demo")
 
 _generator = DocumentGenerator()
-
-RESIDUE_INSTRUCTION_GAP = "clientResidueInstructions"
-END_OF_LIFE_INSTRUCTION_GAP = "clientEndOfLifeInstructions"
-ORGAN_DONATION_INSTRUCTION_GAP = "clientOrganDonationInstructions"
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -142,98 +142,6 @@ def _clause_to_html(clause: dict, variables: dict, missing: set = None) -> str:
     return resolve_variables(text, variables, missing)
 
 
-def _semantic_instruction_gaps(
-    draft: dict, document_type: str, clauses: list[dict]
-) -> set[str]:
-    """Find selected clauses that are not supported by the client's answers.
-
-    Placeholder checks catch blank names, but not a grammatical clause that
-    says something different from the intake. These markers make that mismatch
-    delivery-blocking while preserving the existing deliberate
-    ``allow_incomplete`` lawyer override and generation audit trail.
-    """
-    vault = draft.get("vault") or {}
-    gaps: set[str] = set()
-    included = [c for c in clauses if c.get("included", True)]
-
-    if document_type in WILL_TYPES:
-        beneficiaries = [
-            b for b in (vault.get("beneficiaries") or [])
-            if isinstance(b, dict) and str(b.get("fullName") or "").strip()
-        ]
-        contingent = [
-            b for b in (vault.get("contingentBeneficiaries") or [])
-            if isinstance(b, dict) and str(b.get("fullName") or "").strip()
-        ]
-        if beneficiaries:
-            custom_residue = []
-            for clause in included:
-                clause_id = str(clause.get("clause_id") or clause.get("clauseId") or "")
-                section = str(clause.get("section") or "")
-                custom_text = clause.get("custom_text") or clause.get("customText")
-                if custom_text and (
-                    clause_id.startswith("res-") or section.casefold() == "residue"
-                ):
-                    custom_residue.append(re.sub(r"<[^>]+>", " ", str(custom_text)))
-            combined = " ".join(custom_residue).casefold()
-            expected_names = [
-                str(person["fullName"]).strip()
-                for person in beneficiaries + contingent
-            ]
-            names_present = all(name.casefold() in combined for name in expected_names)
-
-            shares_present = True
-            if vault.get("residueDistribution") == "percentages":
-                for beneficiary in beneficiaries:
-                    share = beneficiary.get("sharePercent")
-                    if share is None:
-                        shares_present = False
-                        break
-                    try:
-                        rendered = f"{float(share):g}"
-                    except (TypeError, ValueError):
-                        shares_present = False
-                        break
-                    if f"{rendered}%" not in combined and f"{rendered} %" not in combined:
-                        shares_present = False
-                        break
-            if not custom_residue or not names_present or not shares_present:
-                gaps.add(RESIDUE_INSTRUCTION_GAP)
-
-    if document_type == "poa_personal_care":
-        clause_ids = {
-            str(c.get("clause_id") or c.get("clauseId") or "")
-            for c in included
-        }
-        personal_care = ((vault.get("poa") or {}).get("personalCare") or {})
-        if (
-            "poa-care-wishes" in clause_ids
-            and personal_care.get("lifeSupport") != "withhold"
-        ):
-            gaps.add(END_OF_LIFE_INSTRUCTION_GAP)
-        if (
-            "poa-care-organ" in clause_ids
-            and personal_care.get("organDonation") is not True
-        ):
-            gaps.add(ORGAN_DONATION_INSTRUCTION_GAP)
-
-    return gaps
-
-
-def _instruction_gap_message(gaps: set[str]) -> str:
-    if RESIDUE_INSTRUCTION_GAP in gaps:
-        return (
-            "Document was not delivered: the selected residue clauses do not "
-            "express the beneficiaries and shares recorded in the client intake. "
-            "A lawyer must draft and review a matching residue clause."
-        )
-    return (
-        "Document was not delivered: a selected personal-care clause records "
-        "an end-of-life or organ-donation instruction the client did not "
-        "affirmatively provide."
-    )
-
-
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 def _enforce_payment_gate(draft: dict, draft_id: str, override_payment: bool) -> None:
@@ -308,7 +216,7 @@ async def generate_document(
         logger.exception("Document generation failed for %s", document_type)
         raise HTTPException(500, "Document generation failed")
 
-    instruction_gaps = _semantic_instruction_gaps(draft, document_type, clauses)
+    instruction_gaps = semantic_instruction_gaps(draft, document_type, clauses)
     missing.update(instruction_gaps)
 
     # Refuse to deliver a legal document containing literal [placeholder]
@@ -317,7 +225,7 @@ async def generate_document(
         raise HTTPException(422, {
             "error": "unresolved_placeholders",
             "message": (
-                _instruction_gap_message(instruction_gaps)
+                instruction_gap_message(instruction_gaps)
                 if instruction_gaps
                 else (
                     "Document was not delivered: it still contains unresolved "
@@ -432,7 +340,7 @@ async def generate_all_documents(
 
     instruction_gaps_by_doc: dict[str, set[str]] = {}
     for doc_type, clauses in filtered_selections.items():
-        gaps = _semantic_instruction_gaps(draft, doc_type, clauses)
+        gaps = semantic_instruction_gaps(draft, doc_type, clauses)
         if gaps:
             instruction_gaps_by_doc[doc_type] = gaps
             missing_by_doc.setdefault(doc_type, set()).update(gaps)
@@ -586,7 +494,7 @@ async def preview_document(
         )
     except Exception:
         logger.exception("Preview parity pass failed for %s", document_type)
-    missing.update(_semantic_instruction_gaps(draft, document_type, clauses))
+    missing.update(semantic_instruction_gaps(draft, document_type, clauses))
 
     return {
         "document_type": document_type,

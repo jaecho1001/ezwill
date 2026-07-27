@@ -44,12 +44,12 @@ export default function SubmittedPage() {
           <ol className="space-y-3">
             {(lang === 'ko' ? [
               { icon: '📋', text: '변호사가 귀하의 답변을 검토합니다.' },
-              { icon: '📞', text: '변호사가 2영업일 이내에 연락하여 추가 질문을 할 수 있습니다.' },
+              { icon: '📞', text: '변호사가 추가 질문을 위해 연락할 수 있습니다.' },
               { icon: '📄', text: '유언장 및 위임장 서류를 준비합니다.' },
               { icon: '✍️', text: '직접 방문하여 2명의 증인과 함께 서류에 서명합니다. (SLRA 제4조)' },
             ] : [
               { icon: '📋', text: 'Your lawyer will review your answers.' },
-              { icon: '📞', text: 'They may contact you within 2 business days with follow-up questions.' },
+              { icon: '📞', text: 'They may contact you with follow-up questions.' },
               { icon: '📄', text: 'Your Will and Powers of Attorney will be prepared.' },
               { icon: '✍️', text: 'You will sign your documents in person with 2 witnesses (SLRA s.4).' },
             ]).map((step, i) => (

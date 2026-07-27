@@ -197,23 +197,66 @@ export function buildDefaultSelections(docType: WillDocumentType): SelectedWillC
   })
 }
 
+const SENSITIVE_PERSONAL_CARE_CLAUSES = new Set([
+  'poa-care-wishes',
+  'poa-care-organ',
+])
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object'
+    ? value as Record<string, unknown>
+    : {}
+}
+
+/** Clause IDs supported by an affirmative canonical or legacy client answer. */
+export function affirmedPersonalCareClauseIds(
+  draft: Record<string, unknown>
+): ReadonlySet<string> {
+  const vault = asRecord(draft.vault)
+  const poa = asRecord(vault.poa)
+  const vaultCare = asRecord(poa.personalCare)
+  const legacyCare = asRecord(
+    draft.poa_personal_care ?? draft.poaPersonalCare
+  )
+  const lifeSupport = Object.hasOwn(vaultCare, 'lifeSupport')
+    ? vaultCare.lifeSupport
+    : legacyCare.lifeSupport
+  const organDonation = Object.hasOwn(vaultCare, 'organDonation')
+    ? vaultCare.organDonation
+    : legacyCare.organDonation
+  const affirmed = new Set<string>()
+  if (lifeSupport === 'withhold') affirmed.add('poa-care-wishes')
+  if (organDonation === true) affirmed.add('poa-care-organ')
+  return affirmed
+}
+
 /**
  * Merge persisted selections with the current default set.
  *
  * Persisted rows always win, including an explicit `included: false`. Defaults
  * that were introduced after a draft was last saved are appended so the Will
- * Editor never opens with an incomplete legacy default set.
+ * Editor never opens with an incomplete legacy default set. Personal-care
+ * clauses that used to be defaults are forced off unless the client supplied
+ * the matching affirmative instruction.
  */
 export function mergeSelectionsWithDefaults(
   docType: WillDocumentType,
-  stored: SelectedWillClause[]
+  stored: SelectedWillClause[],
+  affirmedSensitiveClauseIds: ReadonlySet<string> = new Set(),
 ): SelectedWillClause[] {
   const defaults = buildDefaultSelections(docType)
-  const storedById = new Map(stored.map((clause) => [clause.clauseId, clause]))
+  const safeStored = stored.map((clause) => (
+    docType === 'poa_personal_care'
+    && SENSITIVE_PERSONAL_CARE_CLAUSES.has(clause.clauseId)
+    && !affirmedSensitiveClauseIds.has(clause.clauseId)
+      ? { ...clause, included: false }
+      : clause
+  ))
+  const storedById = new Map(safeStored.map((clause) => [clause.clauseId, clause]))
   const merged = defaults.map((defaultClause) => storedById.get(defaultClause.clauseId) ?? defaultClause)
   const defaultIds = new Set(defaults.map((clause) => clause.clauseId))
 
-  for (const clause of stored) {
+  for (const clause of safeStored) {
     if (!defaultIds.has(clause.clauseId)) merged.push(clause)
   }
 

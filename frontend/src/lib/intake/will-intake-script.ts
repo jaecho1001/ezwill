@@ -351,6 +351,35 @@ export const willIntakeChapters: IntakeChapter[] = [
         validate: (value) => validatePrimaryPerson(value, 'attorney for Personal Care'),
       },
       {
+        id: 'poa-care-life-support', vaultPath: 'poa.personalCare.lifeSupport',
+        prompt: 'Which life-support wish should your lawyer review?',
+        promptKo: '변호사가 검토해야 할 생명 유지 치료 관련 희망은 무엇입니까?',
+        kind: 'select', required: true,
+        skipIf: (v) => !v.poa.personalCare.requested,
+        options: [
+          {
+            label: 'Take reasonable measures to maintain my life',
+            labelKo: '생명을 유지하기 위한 합리적인 조치를 취함',
+            value: 'maintain',
+          },
+          {
+            label: 'If there is no reasonable hope of recovery, do not use extraordinary measures',
+            labelKo: '회복에 대한 합리적인 희망이 없다면 특별한 연명 조치를 사용하지 않음',
+            value: 'withhold',
+          },
+          {
+            label: 'Leave the decision to my attorney based on the circumstances',
+            labelKo: '상황에 따라 위임자가 결정하도록 함',
+            value: 'attorney_decides',
+          },
+          {
+            label: 'I need my lawyer to explain these choices',
+            labelKo: '이 선택 사항에 대한 변호사의 설명이 필요함',
+            value: 'unsure',
+          },
+        ],
+      },
+      {
         id: 'poa-care-wishes', vaultPath: 'poa.personalCare.careInstructions',
         prompt: 'Personal-care or health-care wishes (optional)',
         promptKo: '개인 돌봄 또는 의료 관련 희망 (선택 사항)', kind: 'textarea',

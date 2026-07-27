@@ -52,6 +52,27 @@ describe('unified intake', () => {
     }))).toBe(true)
   })
 
+  it('requires an explicit life-support answer when personal-care POA is requested', () => {
+    const chapter = willIntakeChapters.find((item) => item.id === 'poa')!
+    const question = chapter.questions.find(
+      (item) => item.id === 'poa-care-life-support'
+    )!
+    const state = vault({
+      poa: {
+        property: { requested: false, attorneys: [] },
+        personalCare: {
+          requested: true,
+          attorneys: [{ id: 'c', fullName: 'Chris Lee' }],
+        },
+      },
+    })
+
+    expect(shouldAsk(question, state)).toBe(true)
+    expect(questionError(question, state)).toBeTruthy()
+    state.poa.personalCare.lifeSupport = 'withhold'
+    expect(questionError(question, state)).toBeNull()
+  })
+
   it('blocks percentage allocations that do not total 100', () => {
     const question = willIntakeChapters
       .find((item) => item.id === 'beneficiaries')!

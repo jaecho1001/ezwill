@@ -32,6 +32,11 @@ const STATUS_CONFIG = {
     ko: '\uC2B9\uC778 \uC644\uB8CC',
     color: 'bg-emerald-100 text-emerald-800',
   },
+  blocked: {
+    en: 'Needs Lawyer Correction',
+    ko: '\uBCC0\uD638\uC0AC\uC758 \uC218\uC815\uC774 \uD544\uC694\uD569\uB2C8\uB2E4',
+    color: 'bg-red-100 text-red-800',
+  },
 }
 
 const t = {
@@ -42,6 +47,7 @@ const t = {
       'Please review each document carefully. Once you understand and agree with the contents, approve each document.',
     review: 'Review',
     viewAgain: 'View Again',
+    notReady: 'Not Ready',
     progress: 'Overall Progress',
     loading: 'Loading your documents...',
     expired: 'This review link has expired or is invalid.',
@@ -59,6 +65,7 @@ const t = {
       '\uAC01 \uBB38\uC11C\uB97C \uC8FC\uC758 \uAE4A\uAC8C \uAC80\uD1A0\uD574 \uC8FC\uC2ED\uC2DC\uC624. \uB0B4\uC6A9\uC744 \uC774\uD574\uD558\uACE0 \uB3D9\uC758\uD558\uC2DC\uBA74 \uAC01 \uBB38\uC11C\uB97C \uC2B9\uC778\uD574 \uC8FC\uC138\uC694.',
     review: '\uAC80\uD1A0\uD558\uAE30',
     viewAgain: '\uB2E4\uC2DC \uBCF4\uAE30',
+    notReady: '\uC544\uC9C1 \uC900\uBE44\uB418\uC9C0 \uC54A\uC74C',
     progress: '\uC804\uCCB4 \uC9C4\uD589 \uC0C1\uD669',
     loading: '\uBB38\uC11C\uB97C \uBD88\uB7EC\uC624\uB294 \uC911...',
     expired: '\uC774 \uAC80\uD1A0 \uB9C1\uD06C\uAC00 \uB9CC\uB8CC\uB418\uC5C8\uAC70\uB098 \uC720\uD6A8\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.',
@@ -230,14 +237,21 @@ function DocumentCard({
       </div>
 
       <button
+        disabled={doc.status === 'blocked'}
         onClick={() => router.push(`/review/${doc.document_type}?t=${token}`)}
         className={`flex-shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-          doc.status === 'approved'
+          doc.status === 'blocked'
+            ? 'cursor-not-allowed bg-stone-100 text-stone-400'
+            : doc.status === 'approved'
             ? 'border border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
             : 'bg-stone-800 text-white hover:bg-stone-700'
         }`}
       >
-        {doc.status === 'approved' ? labels.viewAgain : labels.review}
+        {doc.status === 'blocked'
+          ? labels.notReady
+          : doc.status === 'approved'
+            ? labels.viewAgain
+            : labels.review}
       </button>
     </div>
   )

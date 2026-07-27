@@ -391,6 +391,76 @@ def test_review_comment_route_rejects_cross_draft_token(monkeypatch):
     assert res.status_code == 403
 
 
+def test_review_preview_and_approval_block_instruction_mismatch(monkeypatch):
+    class MismatchedReviewDb(FakeDb):
+        approval_saved = False
+
+        def get_document_configs(self, draft_id):
+            return [{"document_type": "single_will", "enabled": True}]
+
+        def get_clause_selections(self, draft_id, document_type):
+            return [{
+                "clause_id": "res-spouse",
+                "included": True,
+                "section": "Residue",
+                "template_text": "I give the residue of my estate to my spouse.",
+            }]
+
+        def get_all_clause_selections(self, draft_id):
+            return {"single_will": self.get_clause_selections(draft_id, "single_will")}
+
+        def get_review_approvals(self, draft_id):
+            return []
+
+        def get_review_comments(self, draft_id):
+            return []
+
+        def save_review_approval(self, *_args):
+            type(self).approval_saved = True
+
+    monkeypatch.setattr(review, "EWDbWriter", MismatchedReviewDb)
+    monkeypatch.setattr(
+        review,
+        "get_full_draft",
+        lambda draft_id, schema: {
+            "id": draft_id,
+            "client_first_name": "Client",
+            "client_last_name": "A",
+            "province": "ON",
+            "vault": {
+                "beneficiaries": [
+                    {"fullName": "Alex Kim", "sharePercent": 60},
+                    {"fullName": "Sam Lee", "sharePercent": 40},
+                ],
+                "residueDistribution": "percentages",
+            },
+        },
+    )
+    app = FastAPI()
+    app.include_router(review.router, prefix="/api/review")
+    client = TestClient(app)
+
+    preview = client.get(
+        "/api/review/draft-a/preview/single_will",
+        params={"token": "token-a"},
+    )
+    approval = client.post(
+        "/api/review/draft-a/approve/single_will",
+        json={"token": "token-a"},
+    )
+    listing = client.post("/api/review/token/token-a/resolve")
+
+    assert preview.status_code == 422
+    assert approval.status_code == 422
+    assert listing.status_code == 200
+    assert listing.json()["documents"][0]["status"] == "blocked"
+    assert (
+        preview.json()["detail"]["error"]
+        == "document_instruction_mismatch"
+    )
+    assert MismatchedReviewDb.approval_saved is False
+
+
 def test_document_preview_route_requires_dashboard_auth():
     # H1: the documents-router preview leaks full will PII; it must reject
     # requests with no dashboard bearer token.

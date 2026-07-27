@@ -867,7 +867,7 @@ Please click the link below to begin:
 
 {magic_link_url}
 
-The questionnaire takes about 20 minutes. You can save your progress and return later.
+Complete the questionnaire at your own pace. You can save your progress and return later.
 
 If you have any questions, please don't hesitate to contact us.
 

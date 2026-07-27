@@ -70,14 +70,14 @@ export default function CheckoutPage({ params }: { params: Promise<{ draftId: st
             <h1 className="text-display text-2xl font-bold text-[#1B2A4A]">Payment complete</h1>
             <p className="mt-2 text-[#2D2D2D]/70">
               Thank you. Your {status?.payment_tier ? <span className="font-medium capitalize">{status.payment_tier}</span> : 'estate-plan'} package is paid.
-              Your lawyer will finalize your documents and arrange signing.
+              The firm will contact you about document review and the next steps.
             </p>
           </div>
         ) : (
           <>
             <div className="mb-8 text-center">
               <h1 className="text-display text-3xl font-bold text-[#1B2A4A]">Complete your estate plan</h1>
-              <p className="mt-2 text-[#2D2D2D]/60">Choose the package that fits your family. Pay once — no subscription.</p>
+              <p className="mt-2 text-[#2D2D2D]/60">Choose the intake and drafting scope you want the firm to review. Pay once — no subscription.</p>
               {processor === 'simulated' && (
                 <p className="mt-3 inline-block rounded-full bg-[#C9A84C]/15 px-3 py-1 text-xs font-medium text-[#8a6a1e]">
                   Test mode — no card required

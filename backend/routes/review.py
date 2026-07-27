@@ -23,6 +23,10 @@ from services.document_generator import (
     vault_to_variables,
     firm_variables,
 )
+from services.instruction_guard import (
+    semantic_instruction_gaps,
+    instruction_gap_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +81,10 @@ def _validate_review_token_for_draft(token: str, draft_id: str) -> dict:
 
 def _get_review_documents(draft_id: str) -> list[dict]:
     """Get all documents for a draft with their review status."""
+    draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
+    if not draft:
+        return []
+
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         configs = db.get_document_configs(draft_id)
         all_selections = db.get_all_clause_selections(draft_id)
@@ -104,8 +112,17 @@ def _get_review_documents(draft_id: str) -> list[dict]:
         if clause_count == 0:
             continue
 
+        instruction_gaps = semantic_instruction_gaps(
+            draft,
+            doc_type,
+            [dict(clause) for clause in all_selections.get(doc_type, [])],
+        )
         approved_at = approval_map.get(doc_type)
-        status = "approved" if approved_at else "pending"
+        status = (
+            "blocked"
+            if instruction_gaps
+            else ("approved" if approved_at else "pending")
+        )
 
         documents.append({
             "document_type": doc_type,
@@ -114,6 +131,7 @@ def _get_review_documents(draft_id: str) -> list[dict]:
             "clause_count": clause_count,
             "approved_at": str(approved_at) if approved_at else None,
             "comments_count": comment_map.get(doc_type, 0),
+            "instruction_gaps": sorted(instruction_gaps),
         })
 
     return documents
@@ -143,6 +161,24 @@ def _validate_review_target(
             for c in included
         ):
             raise HTTPException(400, "Clause is not available for review")
+
+
+def _require_instruction_match(
+    draft: dict, document_type: str, clauses: list[dict]
+) -> None:
+    """Keep a client from reading or approving a known-mismatched draft."""
+    gaps = semantic_instruction_gaps(draft, document_type, clauses)
+    if gaps:
+        raise HTTPException(422, {
+            "error": "document_instruction_mismatch",
+            "message": (
+                f"{instruction_gap_message(gaps)} "
+                "Please contact your lawyer; this draft is not available "
+                "for client review yet."
+            ),
+            "document_type": document_type,
+            "instruction_gaps": sorted(gaps),
+        })
 
 
 def _build_variables(draft: dict) -> dict:
@@ -329,6 +365,8 @@ async def get_review_preview(draft_id: str, document_type: str, token: str = Que
         clause_rows = db.get_clause_selections(draft_id, document_type)
         clause_rows = [dict(c) for c in clause_rows] if clause_rows else []
 
+    _require_instruction_match(draft, document_type, clause_rows)
+
     variables = _build_variables(draft)
     # The clause "html" fields are rendered client-side via dangerouslySetInnerHTML.
     # The template markup is trusted, but variable VALUES are client-supplied — escape
@@ -393,6 +431,11 @@ async def approve_document(draft_id: str, document_type: str, body: ApproveReque
     draft = get_full_draft(draft_id, DEFAULT_SCHEMA)
     if not draft:
         raise HTTPException(404, "Draft not found")
+
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        clause_rows = db.get_clause_selections(draft_id, document_type)
+        clause_rows = [dict(c) for c in clause_rows] if clause_rows else []
+    _require_instruction_match(draft, document_type, clause_rows)
 
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         db.save_review_approval(
