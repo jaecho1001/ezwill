@@ -88,3 +88,29 @@
   code — see issue #95's decision table (owner: self-serve/checkout, email
   provider, approval workflow; lawyer: residue drafting, POA wording, Korean
   translation, hasDualWill, display thresholds).
+
+## 2026-07-28 — second adversarial review round closed (commit 27b9a16)
+
+- Codex's review of PR #97 found 9 defect groups; ALL verified real against
+  code before fixing. Highest severity: clause edits did not revoke lawyer
+  approval while the client portal renders LIVE clauses (approve A, edit to
+  B, B ships under A's approval). save_clause_selections now revokes;
+  journey test walks the bypass sequence.
+- Own-goal recorded honestly: the 위임자→대리인 fix broke nine Korean
+  particles (대리인를/는/가 → 대리인을/은/이). Particle agreement follows the
+  final consonant of the replaced noun — blanket noun replacement in Korean
+  is never safe without a particle pass.
+- Guard: prefix-name fail-open (Ann satisfied by 'Ann Park') closed; review
+  portal now scans clause text for bracket literals + malformed {{tokens}}.
+- #87 truly complete now (payload carries assets/ai_flags/review_comments/
+  approvals; tier2 hydrates vault from server; comments panel). Lesson: my
+  own journey test asserted a SUBSET of the claimed payload — an E2E test
+  only protects what it actually asserts.
+- #84: FIVE raw buildDefaultSelections callers (review found one) all now
+  filtered. #78: liability-only detection, deterministic uuid5 ids, address
+  composition. #88: review links get honest delivery status; runbook env
+  list fixed. #79: totals in every mode; stepper gated like Next.
+- Backend 341 passed / 0 skipped vs real PG16; frontend 110; CI green.
+- Remaining open scope on PR: generation-hash approval binding, clause
+  whitelist, per-lawyer identity (#52), delivery persistence/resend,
+  commissioner capture flow — plus the standing owner/lawyer decisions.
