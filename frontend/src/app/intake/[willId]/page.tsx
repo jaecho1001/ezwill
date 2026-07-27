@@ -9,9 +9,10 @@ import {
   shouldAsk,
   chapterProgress,
   overallProgress,
+  questionError,
 } from '@/lib/intake/will-intake-script'
 import { ChapterStepper } from '@/components/intake/chapter-stepper'
-import { IntakeQuestionList } from '@/components/intake/question-list'
+import { IntakeQuestionList, intakeQuestionAnchorId } from '@/components/intake/question-list'
 import { ExtractedDataSidebar } from '@/components/intake/extracted-data-sidebar'
 import { ChatPane } from '@/components/intake/chat-pane'
 import { Button } from '@/components/ui/button'
@@ -127,9 +128,24 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
 
   const overall = useMemo(() => overallProgress(vault), [vault])
 
+  // Back navigation stays unrestricted; only forward navigation validates.
   const goPrev = () => setChapterIdx((i) => Math.max(0, i - 1))
   const goNext = () => {
+    // Mark the chapter attempted so its per-question errors render, then
+    // refuse to advance while any question in it still has an error — the
+    // first pass must not walk straight past unanswered required questions
+    // (issue #79). Blocking on any error (required-missing or invalid data)
+    // matches the summary page's submission gate.
     setAttemptedChapters((current) => new Set(current).add(chapter.id))
+    const firstError = chapter.questions.find((q) => questionError(q, vault) !== null)
+    if (firstError) {
+      requestAnimationFrame(() => {
+        const card = document.getElementById(intakeQuestionAnchorId(firstError.id))
+        card?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        card?.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true })
+      })
+      return
+    }
     setChapterIdx((i) => Math.min(willIntakeChapters.length - 1, i + 1))
   }
   const isLast = chapterIdx === willIntakeChapters.length - 1

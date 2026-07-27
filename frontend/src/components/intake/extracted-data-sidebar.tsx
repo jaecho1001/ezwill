@@ -33,7 +33,10 @@ export function ExtractedDataSidebar({ vault, onJumpTo, language }: Props) {
                 <span>{ch.icon}</span>
                 {L(language, ch.title, ch.titleKo)}
               </span>
-              <span className="text-[10px] text-gray-400">{p.pct}%</span>
+              {/* "Not applicable" is distinct from a completion % (issue #79). */}
+              <span className="text-[10px] text-gray-400">
+                {p.applicable ? `${p.pct}%` : L(language, 'Not applicable', '해당 없음')}
+              </span>
             </button>
             <dl className="divide-y divide-gray-50 text-xs">
               {rows.length === 0 ? (

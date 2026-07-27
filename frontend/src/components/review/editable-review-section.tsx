@@ -6,12 +6,15 @@ interface Props {
   title: string
   icon: string
   completenessPct: number
+  /** Chapter has no applicable questions — shown instead of a completion badge (issue #79). */
+  notApplicable?: boolean
   onJumpToIntake?: () => void
   children: React.ReactNode
 }
 
-export function EditableReviewSection({ title, icon, completenessPct, onJumpToIntake, children }: Props) {
-  const isComplete = completenessPct === 100
+export function EditableReviewSection({ title, icon, completenessPct, notApplicable, onJumpToIntake, children }: Props) {
+  // "Not applicable" must never read as "Complete" (issue #79).
+  const isComplete = !notApplicable && completenessPct === 100
   return (
     <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
       <header className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
@@ -20,10 +23,14 @@ export function EditableReviewSection({ title, icon, completenessPct, onJumpToIn
         <span
           className={cn(
             'ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium',
-            isComplete ? 'bg-green-100 text-green-700' : 'bg-[#C9A84C]/15 text-[#8a6a1e]'
+            notApplicable
+              ? 'bg-gray-100 text-gray-500'
+              : isComplete
+                ? 'bg-green-100 text-green-700'
+                : 'bg-[#C9A84C]/15 text-[#8a6a1e]'
           )}
         >
-          {isComplete ? '✓ Complete' : `${completenessPct}%`}
+          {notApplicable ? 'Not applicable' : isComplete ? '✓ Complete' : `${completenessPct}%`}
         </span>
         {onJumpToIntake && (
           <button

@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { emptyVault, normalizeVault, type WillVault } from '@/types/will-vault'
 import {
+  chapterProgress,
   intakeErrors,
+  overallProgress,
   questionError,
   shouldAsk,
   willIntakeChapters,
+  UNNAMED_SHARE_ERROR,
+  type IntakeChapter,
 } from '@/lib/intake/will-intake-script'
 import { vaultToVariables } from '@/lib/will-documents/vault-to-variables'
 import { projectVaultForServer, saveVaultToServer } from '@/lib/api/drafts'
@@ -184,5 +188,118 @@ describe('unified intake', () => {
       'vault-separated', 'vault-dual-will',
     ]))
     expect(flags.find((flag) => flag.id === 'vault-dual-will')?.description).toContain('before deciding')
+  })
+})
+
+describe('intake progress semantics (issue #79)', () => {
+  // A chapter that is skipped entirely until the vault says otherwise —
+  // exercises the applicable/not-applicable distinction, which no chapter
+  // in the current script triggers at the chapter level.
+  const conditionalChapter: IntakeChapter = {
+    id: 'synthetic-conditional',
+    title: 'Synthetic conditional chapter',
+    icon: '0',
+    intro: '',
+    questions: [{
+      id: 'synthetic-spouse-dob', vaultPath: 'spouse.dob',
+      prompt: 'Spouse date of birth', kind: 'date', required: true,
+      skipIf: (v) => !v.spouse?.included,
+    }],
+  }
+
+  it('never reports any chapter of an empty vault as complete', () => {
+    for (const chapter of willIntakeChapters) {
+      const progress = chapterProgress(chapter, vault())
+      // Every chapter is either not applicable or genuinely at 0%.
+      expect(progress.pct === 0 || !progress.applicable).toBe(true)
+      // No chapter may look "completable-100" (the green-tick condition).
+      expect(progress.applicable && progress.pct === 100 && progress.requiredUnanswered === 0).toBe(false)
+    }
+  })
+
+  it('reports a fully skipped chapter as not applicable with pct 0, never 100', () => {
+    expect(chapterProgress(conditionalChapter, vault())).toEqual({
+      asked: 0, answered: 0, pct: 0, requiredUnanswered: 0, applicable: false,
+    })
+  })
+
+  it('makes a chapter applicable mid-flow once its skip rules release', () => {
+    const state = vault({ spouse: { included: true } })
+    const progress = chapterProgress(conditionalChapter, state)
+    expect(progress.applicable).toBe(true)
+    expect(progress.requiredUnanswered).toBe(1)
+    expect(progress.pct).toBe(0)
+    state.spouse!.dob = '1980-01-01'
+    expect(chapterProgress(conditionalChapter, state).pct).toBe(100)
+  })
+
+  it('tracks optional-only chapters by answers given, not as instant 100%', () => {
+    const gifts = willIntakeChapters.find((chapter) => chapter.id === 'gifts')!
+    expect(chapterProgress(gifts, vault()).pct).toBe(0)
+    const withGift = vault({
+      gifts: [{ id: 'g', type: 'personal_item', description: 'Watch', recipientName: 'Sarah Lee' }],
+    })
+    expect(chapterProgress(gifts, withGift).pct).toBe(100)
+  })
+
+  it('requires a spouse name for married and common-law clients', () => {
+    const spouseName = willIntakeChapters
+      .find((chapter) => chapter.id === 'family')!
+      .questions.find((question) => question.id === 'spouse-name')!
+
+    for (const maritalStatus of ['married', 'common_law'] as const) {
+      const state = vault({ testator: { maritalStatus } })
+      expect(shouldAsk(spouseName, state)).toBe(true)
+      expect(questionError(spouseName, state)).toBeTruthy()
+      const family = chapterProgress(willIntakeChapters.find((c) => c.id === 'family')!, state)
+      expect(family.requiredUnanswered).toBeGreaterThan(0)
+    }
+    // Declining to benefit the spouse does not remove the identity requirement.
+    const declined = vault({ testator: { maritalStatus: 'married' }, spouse: { included: false } })
+    expect(shouldAsk(spouseName, declined)).toBe(true)
+    expect(questionError(spouseName, declined)).toBeTruthy()
+    // Naming the spouse satisfies it; single clients are never asked.
+    const namedSpouse = vault({ testator: { maritalStatus: 'married' }, spouse: { included: true, fullName: 'Alex Kim' } })
+    expect(questionError(spouseName, namedSpouse)).toBeNull()
+    expect(shouldAsk(spouseName, vault({ testator: { maritalStatus: 'single' } }))).toBe(false)
+  })
+
+  it('rejects a share percentage on a blank-named beneficiary in any mode', () => {
+    const question = willIntakeChapters
+      .find((chapter) => chapter.id === 'beneficiaries')!
+      .questions.find((item) => item.id === 'beneficiaries')!
+    // Previously 60 + 40 passed the 100% check even though one row had no name.
+    const state = vault({
+      residueDistribution: 'percentages',
+      beneficiaries: [
+        { id: 'a', fullName: 'Alex Kim', sharePercent: 60 },
+        { id: 'b', fullName: '   ', sharePercent: 40 },
+      ],
+    })
+    expect(questionError(question, state)).toBe(UNNAMED_SHARE_ERROR)
+    // The blank-named share is an error even outside percentage mode.
+    state.residueDistribution = 'equal'
+    expect(questionError(question, state)).toBe(UNNAMED_SHARE_ERROR)
+    // A blank row WITHOUT a share is ignored and does not distort the total.
+    const ignoredBlank = vault({
+      residueDistribution: 'percentages',
+      beneficiaries: [
+        { id: 'a', fullName: 'Alex Kim', sharePercent: 100 },
+        { id: 'b', fullName: '' },
+      ],
+    })
+    expect(questionError(question, ignoredBlank)).toBeNull()
+  })
+
+  it('computes overall progress over applicable chapters only', () => {
+    const empty = vault()
+    // A not-applicable chapter contributes nothing to the overall numbers.
+    expect(overallProgress(empty, [...willIntakeChapters, conditionalChapter]))
+      .toEqual(overallProgress(empty))
+    // A vault with only not-applicable chapters reads 0, never 100.
+    expect(overallProgress(empty, [conditionalChapter])).toEqual({ pct: 0, requiredUnanswered: 0 })
+    // Once the chapter becomes applicable its requirements start counting.
+    const included = vault({ spouse: { included: true } })
+    expect(overallProgress(included, [conditionalChapter]).requiredUnanswered).toBe(1)
   })
 })

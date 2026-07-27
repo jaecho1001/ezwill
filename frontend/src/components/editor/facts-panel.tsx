@@ -18,15 +18,24 @@ interface Props {
  */
 export function FactsPanel({ willId, vault }: Props) {
   const [open, setOpen] = useState(false)
-  const summary = willIntakeChapters.map((ch) => ({
-    id: ch.id,
-    title: ch.title,
-    icon: ch.icon,
-    pct: chapterProgress(ch, vault).pct,
-    requiredUnanswered: chapterProgress(ch, vault).requiredUnanswered,
-    index: willIntakeChapters.indexOf(ch),
-  }))
-  const avgPct = Math.round(summary.reduce((s, c) => s + c.pct, 0) / summary.length)
+  const summary = willIntakeChapters.map((ch, index) => {
+    const progress = chapterProgress(ch, vault)
+    return {
+      id: ch.id,
+      title: ch.title,
+      icon: ch.icon,
+      pct: progress.pct,
+      requiredUnanswered: progress.requiredUnanswered,
+      applicable: progress.applicable,
+      index,
+    }
+  })
+  // Average over applicable chapters only — "not applicable" is neither
+  // complete nor incomplete, so it must not skew the headline % (issue #79).
+  const applicableSummary = summary.filter((c) => c.applicable)
+  const avgPct = applicableSummary.length
+    ? Math.round(applicableSummary.reduce((s, c) => s + c.pct, 0) / applicableSummary.length)
+    : 0
   const anyMissing = summary.some((c) => c.requiredUnanswered > 0)
 
   return (
@@ -64,7 +73,7 @@ export function FactsPanel({ willId, vault }: Props) {
                   s.requiredUnanswered > 0 ? 'text-[#8a6a1e]' : 'text-gray-400'
                 )}
               >
-                {s.pct}%
+                {s.applicable ? `${s.pct}%` : 'Not applicable'}
               </span>
             </Link>
           ))}

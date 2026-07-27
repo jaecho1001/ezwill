@@ -58,6 +58,14 @@ const maritalOptions = [
 const noCurrentPartner = (v: WillVault) =>
   ['single', 'divorced', 'widowed'].includes(v.testator.maritalStatus ?? '')
 
+/**
+ * Married and common-law clients have a legally significant spouse (FLA
+ * election, dependant-support exposure), so the lawyer must know who that
+ * spouse is even when the client chooses not to benefit them (issue #79).
+ */
+const hasCurrentPartner = (v: WillVault) =>
+  ['married', 'common_law'].includes(v.testator.maritalStatus ?? '')
+
 export const willIntakeChapters: IntakeChapter[] = [
   {
     id: 'testator',
@@ -132,7 +140,13 @@ export const willIntakeChapters: IntakeChapter[] = [
       {
         id: 'spouse-name', vaultPath: 'spouse.fullName', prompt: 'Spouse or partner full legal name',
         promptKo: '배우자 또는 동반자의 법적 성명 전체', kind: 'text', required: true,
-        skipIf: (v) => noCurrentPartner(v) || !v.spouse?.included,
+        // Always asked (and required) for married / common-law clients, even if
+        // they answered "No" to including the spouse — a married client must not
+        // reach 100% with no spouse recorded (issue #79). Other statuses keep
+        // the previous behaviour: asked only once a partner is included.
+        skipIf: (v) => noCurrentPartner(v) || (!hasCurrentPartner(v) && !v.spouse?.included),
+        helpText: 'If you are married or in a common-law relationship, your lawyer needs your spouse’s name even if this plan does not benefit them.',
+        helpTextKo: '기혼이거나 사실혼 관계인 경우, 이 계획이 배우자에게 혜택을 주지 않더라도 변호사는 배우자의 성함을 알아야 합니다.',
       },
       {
         id: 'separated', vaultPath: 'spouse.separated',
@@ -438,15 +452,24 @@ function isMinor(dob?: string): boolean {
   return (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25) < 18
 }
 
+/** Error shown when a share percentage sits on a row with no name (issue #79). */
+export const UNNAMED_SHARE_ERROR = 'Name each person before assigning their share.'
+
 function validateBeneficiaries(value: unknown, method?: WillVault['residueDistribution']): string | null {
   const beneficiaries = Array.isArray(value) ? value : []
-  if (!beneficiaries.some((b) => b && typeof b === 'object' && String((b as { fullName?: string }).fullName ?? '').trim())) {
-    return 'Add at least one residue beneficiary.'
-  }
-  if (method !== 'percentages') return null
-  const total = beneficiaries.reduce(
-    (sum, b) => sum + Number((b as { sharePercent?: number }).sharePercent ?? 0), 0
+  const rows = beneficiaries.filter((b): b is { fullName?: string; sharePercent?: number } =>
+    Boolean(b) && typeof b === 'object'
   )
+  const named = rows.filter((b) => String(b.fullName ?? '').trim())
+  // A share attached to a blank-named row is always an error: it must never
+  // silently count toward (or be dropped from) the 100% total (issue #79).
+  if (rows.some((b) => !String(b.fullName ?? '').trim() && b.sharePercent != null)) {
+    return UNNAMED_SHARE_ERROR
+  }
+  if (named.length === 0) return 'Add at least one residue beneficiary.'
+  if (method !== 'percentages') return null
+  // Only rows with a non-blank name count toward the 100% check.
+  const total = named.reduce((sum, b) => sum + Number(b.sharePercent ?? 0), 0)
   return Math.abs(total - 100) < 0.001 ? null : `Beneficiary percentages currently total ${total}%. They must total 100%.`
 }
 
@@ -498,17 +521,40 @@ export function intakeErrors(vault: WillVault): Array<{ chapterId: string; quest
   )
 }
 
+/**
+ * Per-chapter progress. "Not applicable" is deliberately distinct from
+ * "complete" (issue #79): a chapter whose questions are all skipped reports
+ * `applicable: false` and pct 0 — never 100 — so an empty vault cannot show
+ * a completion tick. For applicable chapters with no required questions,
+ * pct tracks how many of the optional questions were actually answered, so
+ * an untouched chapter reads 0%, not "complete". Display thresholds remain
+ * subject to lawyer sign-off per issue #79.
+ */
 export function chapterProgress(
   chapter: IntakeChapter,
   vault: WillVault
-): { asked: number; answered: number; pct: number; requiredUnanswered: number } {
-  const required = chapter.questions.filter((q) => q.required && shouldAsk(q, vault))
+): { asked: number; answered: number; pct: number; requiredUnanswered: number; applicable: boolean } {
+  const askedQuestions = chapter.questions.filter((q) => shouldAsk(q, vault))
+  if (askedQuestions.length === 0) {
+    return { asked: 0, answered: 0, pct: 0, requiredUnanswered: 0, applicable: false }
+  }
+  const required = askedQuestions.filter((q) => q.required)
   const answered = required.filter((q) => !questionError(q, vault)).length
+  let pct: number
+  if (required.length > 0) {
+    pct = Math.round((answered / required.length) * 100)
+  } else {
+    const answeredOptional = askedQuestions.filter(
+      (q) => isFilled(getAtPath(vault, q.vaultPath)) && !questionError(q, vault)
+    ).length
+    pct = Math.round((answeredOptional / askedQuestions.length) * 100)
+  }
   return {
     asked: required.length,
     answered,
-    pct: required.length === 0 ? 100 : Math.round((answered / required.length) * 100),
+    pct,
     requiredUnanswered: required.length - answered,
+    applicable: true,
   }
 }
 
@@ -528,12 +574,22 @@ function isFilled(v: unknown): boolean {
   return true
 }
 
-export function overallProgress(vault: WillVault): { pct: number; requiredUnanswered: number } {
+/**
+ * Overall completeness over APPLICABLE chapters only (issue #79) — chapters
+ * whose every question is skipped contribute nothing, so "not applicable"
+ * can never inflate the overall percentage. `chapters` is injectable for
+ * tests; production callers use the default script.
+ */
+export function overallProgress(
+  vault: WillVault,
+  chapters: IntakeChapter[] = willIntakeChapters
+): { pct: number; requiredUnanswered: number } {
   let asked = 0
   let answered = 0
   let requiredUnanswered = 0
-  for (const chapter of willIntakeChapters) {
+  for (const chapter of chapters) {
     const progress = chapterProgress(chapter, vault)
+    if (!progress.applicable) continue
     asked += progress.asked
     answered += progress.answered
     requiredUnanswered += progress.requiredUnanswered

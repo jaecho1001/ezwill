@@ -33,9 +33,9 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
   const [confirmed, setConfirmed] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
 
-  const pctByChapter = useMemo(() => {
-    const out: Record<string, number> = {}
-    for (const chapter of willIntakeChapters) out[chapter.id] = chapterProgress(chapter, vault).pct
+  const progressByChapter = useMemo(() => {
+    const out: Record<string, ReturnType<typeof chapterProgress>> = {}
+    for (const chapter of willIntakeChapters) out[chapter.id] = chapterProgress(chapter, vault)
     return out
   }, [vault])
 
@@ -136,7 +136,8 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
       )}
 
       <div className="space-y-4">
-        <EditableReviewSection title="About you" icon="1" completenessPct={pctByChapter.testator} onJumpToIntake={() => jumpToChapter('testator')}>
+        <EditableReviewSection title="About you" icon="1" completenessPct={progressByChapter.testator.pct}
+          notApplicable={!progressByChapter.testator.applicable} onJumpToIntake={() => jumpToChapter('testator')}>
           <EditableField label="Full legal name" value={vault.testator.fullName} onSave={(value) => setField('testator.fullName', value)} />
           <EditableField label="Date of birth" value={vault.testator.dob} kind="date" onSave={(value) => setField('testator.dob', value)} />
           <EditableField label="Address" value={vault.testator.address} onSave={(value) => setField('testator.address', value)} />
@@ -144,21 +145,21 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
           <EditableField label="Marital status" value={vault.testator.maritalStatus} onSave={(value) => setField('testator.maritalStatus', value)} />
         </EditableReviewSection>
 
-        <ReviewListSection title="Family and dependants" icon="2" pct={pctByChapter.family}
+        <ReviewListSection title="Family and dependants" icon="2" progress={progressByChapter.family}
           onOpen={() => jumpToChapter('family')} rows={[
             ['Spouse or partner', vault.spouse?.included ? vault.spouse.fullName || 'Name not provided' : 'Not included'],
             ['Children and dependants', names(vault.children)],
             ['Separated', yesNo(vault.spouse?.separated)],
           ]} />
 
-        <ReviewListSection title="Executors and guardians" icon="3" pct={pctByChapter.executors}
+        <ReviewListSection title="Executors and guardians" icon="3" progress={progressByChapter.executors}
           onOpen={() => jumpToChapter('executors')} rows={[
             ['Executors', names(vault.executors)],
             ['Guardians', names(vault.guardians)],
             ['Trust company fallback', vault.corporateTrusteeName],
           ]} />
 
-        <ReviewListSection title="Beneficiaries and residue" icon="4" pct={pctByChapter.beneficiaries}
+        <ReviewListSection title="Beneficiaries and residue" icon="4" progress={progressByChapter.beneficiaries}
           onOpen={() => jumpToChapter('beneficiaries')} rows={[
             ['Distribution method', vault.residueDistribution],
             ['Residue beneficiaries', vault.beneficiaries.map((person) =>
@@ -166,12 +167,12 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
             ['Backup beneficiaries', names(vault.contingentBeneficiaries)],
           ]} />
 
-        <ReviewListSection title="Specific gifts and charities" icon="5" pct={pctByChapter.gifts}
+        <ReviewListSection title="Specific gifts and charities" icon="5" progress={progressByChapter.gifts}
           onOpen={() => jumpToChapter('gifts')} rows={[
             ['Gifts', vault.gifts.length ? vault.gifts.map((gift) => gift.description || gift.charityName || gift.type).join('; ') : 'None provided'],
           ]} />
 
-        <ReviewListSection title="Children and trusts" icon="6" pct={pctByChapter.trusts}
+        <ReviewListSection title="Children and trusts" icon="6" progress={progressByChapter.trusts}
           onOpen={() => jumpToChapter('trusts')} rows={[
             ['Young-beneficiary trust', yesNo(vault.goals.minorChildrenTrust)],
             ['Preferred distribution age', vault.trustDistributionAge],
@@ -179,7 +180,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
             ['Spousal trust discussion', yesNo(vault.goals.spousalTrust)],
           ]} />
 
-        <ReviewListSection title="Assets and debts" icon="7" pct={pctByChapter.assets}
+        <ReviewListSection title="Assets and debts" icon="7" progress={progressByChapter.assets}
           onOpen={() => jumpToChapter('assets')} rows={[
             ['Approximate net value', vault.assets.estimatedNetWorth != null ? `$${vault.assets.estimatedNetWorth.toLocaleString()}` : undefined],
             ['Assets listed', vault.assets.items?.length],
@@ -188,7 +189,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
             ['Dual-will review requested', yesNo(vault.goals.dualWillReviewRequested)],
           ]} />
 
-        <ReviewListSection title="Powers of attorney" icon="8" pct={pctByChapter.poa}
+        <ReviewListSection title="Powers of attorney" icon="8" progress={progressByChapter.poa}
           onOpen={() => jumpToChapter('poa')} rows={[
             ['Property POA requested', yesNo(vault.poa.property.requested)],
             ['Property attorneys', names(vault.poa.property.attorneys)],
@@ -196,7 +197,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
             ['Personal Care attorneys', names(vault.poa.personalCare.attorneys)],
           ]} />
 
-        <ReviewListSection title="Final wishes" icon="9" pct={pctByChapter.final}
+        <ReviewListSection title="Final wishes" icon="9" progress={progressByChapter.final}
           onOpen={() => jumpToChapter('final')} rows={[
             ['Resting place', vault.finalWishes.restingPlace],
             ['Ceremony wishes', vault.finalWishes.ceremonyWishes],
@@ -231,16 +232,17 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
 }
 
 function ReviewListSection({
-  title, icon, pct, onOpen, rows,
+  title, icon, progress, onOpen, rows,
 }: {
   title: string
   icon: string
-  pct: number
+  progress: { pct: number; applicable: boolean }
   onOpen: () => void
   rows: Array<[string, unknown]>
 }) {
   return (
-    <EditableReviewSection title={title} icon={icon} completenessPct={pct} onJumpToIntake={onOpen}>
+    <EditableReviewSection title={title} icon={icon} completenessPct={progress.pct}
+      notApplicable={!progress.applicable} onJumpToIntake={onOpen}>
       {rows.map(([label, value]) => (
         <EditableField key={label} label={label} value={displayValue(value)} onSave={onOpen} />
       ))}

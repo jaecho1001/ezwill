@@ -5,6 +5,12 @@ import { questionError, shouldAsk, type IntakeChapter } from '@/lib/intake/will-
 import { getByPath } from '@/stores/will-vault-store'
 import type { Language } from '@/lib/types/will'
 import type { WillVault } from '@/types/will-vault'
+import { localizeIntakeMessage } from '@/lib/intake/localize'
+
+/** DOM id for a question's card, used to scroll/focus the first error (issue #79). */
+export function intakeQuestionAnchorId(questionId: string): string {
+  return `intake-q-${questionId}`
+}
 
 export function IntakeQuestionList({
   chapter,
@@ -20,13 +26,14 @@ export function IntakeQuestionList({
   onChange: (path: string, value: unknown) => void
 }) {
   return chapter.questions.filter((question) => shouldAsk(question, vault)).map((question) => (
-    <QuestionCard
-      key={question.id}
-      question={question}
-      value={getByPath(vault, question.vaultPath)}
-      onChange={(value) => onChange(question.vaultPath, value)}
-      language={language}
-      error={showErrors ? questionError(question, vault) : null}
-    />
+    <div key={question.id} id={intakeQuestionAnchorId(question.id)}>
+      <QuestionCard
+        question={question}
+        value={getByPath(vault, question.vaultPath)}
+        onChange={(value) => onChange(question.vaultPath, value)}
+        language={language}
+        error={showErrors ? localizeIntakeMessage(language, questionError(question, vault)) : null}
+      />
+    </div>
   ))
 }

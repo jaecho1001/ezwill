@@ -8,7 +8,7 @@ import { L } from '@/lib/intake/localize'
 interface Props {
   chapters: IntakeChapter[]
   currentIndex: number
-  progressByChapter: Record<string, { pct: number; requiredUnanswered: number; asked: number }>
+  progressByChapter: Record<string, { pct: number; requiredUnanswered: number; asked: number; applicable: boolean }>
   onSelect: (index: number) => void
   language: Language
 }
@@ -19,7 +19,10 @@ export function ChapterStepper({ chapters, currentIndex, progressByChapter, onSe
       {chapters.map((ch, i) => {
         const p = progressByChapter[ch.id]
         const isCurrent = i === currentIndex
-        const isComplete = p && p.pct === 100 && p.requiredUnanswered === 0
+        // "Not applicable" never earns the completion tick (issue #79);
+        // display thresholds remain subject to lawyer sign-off.
+        const isNotApplicable = p ? !p.applicable : false
+        const isComplete = p && p.applicable && p.pct === 100 && p.requiredUnanswered === 0
         return (
           <li key={ch.id}>
             <button
@@ -34,13 +37,17 @@ export function ChapterStepper({ chapters, currentIndex, progressByChapter, onSe
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium">{L(language, ch.title, ch.titleKo)}</span>
-                  {isComplete ? (
+                  {isNotApplicable ? (
+                    <span className="shrink-0 text-[10px] text-gray-400">
+                      {L(language, 'Not applicable', '해당 없음')}
+                    </span>
+                  ) : isComplete ? (
                     <span className="shrink-0 text-xs text-[#7BA68C]">✓</span>
                   ) : p ? (
                     <span className="shrink-0 text-[10px] text-gray-400">{p.pct}%</span>
                   ) : null}
                 </div>
-                {p && p.asked !== undefined && p.pct < 100 && (
+                {p && p.applicable && p.asked !== undefined && p.pct < 100 && (
                   <div className="mt-1 h-1 rounded-full bg-gray-100">
                     <div
                       className="h-1 rounded-full bg-[#1B2A4A] transition-all"
