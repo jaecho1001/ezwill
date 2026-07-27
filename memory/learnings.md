@@ -59,3 +59,9 @@ became a rule) where you wrote it down.
   shared module. Lesson: legal delivery tests must compare client instructions to selected
   clause meaning, and integration fixtures must skip only verified infrastructure failures;
   programming errors must fail the full suite.
+- 2026-07-27 — The first semantic guard was correct but connected to only the versioned
+  vault, while public CTAs still entered the legacy questionnaire; a clean unit test hid the
+  journey-level hole. A follow-up also showed local and remote Git histories can be
+  unrelated even when two commit tips have identical trees. Lesson: trace each public entry
+  point through its persisted data shape and every delivery surface, and compare trees
+  before attempting to reconcile snapshot-derived commits with a remote PR stack.

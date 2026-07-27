@@ -45,9 +45,10 @@
 
 ## Testing expectations
 
-- **Backend:** `cd backend && python -m pytest` (289 passing as of 2026-07-27 across
+- **Backend:** `cd backend && python -m pytest` (295 passing as of 2026-07-27 with the
+  real database available, across
   models, routes, guards, DOCX generation, persistence, payments, notifications).
-- **Frontend:** `cd frontend && npm run test` (Vitest, 91 passing as of 2026-07-26) +
+- **Frontend:** `cd frontend && npm run test` (Vitest, 95 passing as of 2026-07-27) +
   production build/typecheck.
 - **Real-DB tests are mandatory for SQL/migration changes** (mocked cursors pass reversed
   COALESCE, bytea, and ordering bugs straight through). Pattern:
@@ -74,6 +75,10 @@
 - **Rows inserted in one transaction share `now()`** (transaction timestamp) — never rely
   on `created_at` alone to order batch inserts; use `clock_timestamp()` at insert and/or a
   deterministic tiebreaker (caught by the real-DB persistence test, 2026-07-19).
+- **Two client-intake shapes remain live (verified 2026-07-27):** public landing-page starts
+  enter legacy `/will/*` and save `your_estate`/`poa_personal_care`; lawyer magic links use
+  the versioned vault. Legal-safety checks must read both until routing/retirement is
+  complete—testing only the vault does not cover most public starts.
 - **Payment gate (2026-07-19):** `ew_will_drafts.origin` (`lawyer` default / `self_serve`)
   decides who must pay before document delivery under `PAYMENT_ENFORCEMENT=self_serve`;
   `refunded` counts as unpaid; overrides are per-request (`override_payment=true`) and

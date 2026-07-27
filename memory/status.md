@@ -3,7 +3,7 @@
 > Last updated: 2026-07-27.
 
 - **This session:** reviewed the production-readiness audit in issues #83–#95 and
-  implemented the first containment tranche in source commit `35f4018`:
+  implemented the first containment tranche in source commits `35f4018` and `9b57b67`:
   1. #89: removed the collection-time psycopg2 mock, narrowed real-DB skip conditions to
      actual connection failures, and made CI run the complete backend suite with the real
      driver and migrated database;
@@ -18,22 +18,30 @@
   4. #94: removed fabricated client quotes, performance/savings figures, completion-time
      claims, “most popular” claims, and the unsupported pay-at-download promise from the
      public page. Replaced them with factual descriptions of intake scope and draft status.
-- **Verified:** backend 287 passed / 2 real-DB tests skipped when no database was running;
-  backend 289 passed against a newly migrated temporary PostgreSQL 16 database; focused
-  frontend document tests 23 passed; TypeScript and Next.js production build clean;
+  5. Follow-up review found the residue rule covered only the canonical vault while public
+     starts still use the legacy questionnaire. The shared instruction guard now reads both
+     models and stored beneficiary rows, binds each percentage to the correct name, and
+     blocks mismatched client preview/approval as well as generation;
+  6. the unified intake now asks an explicit life-support question; previously saved
+     sensitive POA clauses open deselected unless an affirmative client answer supports
+     them; and the remaining timing/checkout/support commitments were removed.
+- **Verified:** backend 293 passed / 2 real-DB tests skipped when no database was running;
+  backend 295 passed against a newly migrated temporary PostgreSQL 16 database; frontend
+  95 passed across 11 files; TypeScript and Next.js production build clean;
   `git diff --check` clean. The temporary database container and synthetic data were
   removed after the test.
-- **Important context:** this working copy (`ezwill-main` on Desktop) was a ZIP snapshot
-  with no git history. A local git repo was initialized 2026-07-19 (baseline `e696d89`);
-  there is no remote, although the GitHub app/CLI can access `jaecho1001/ezwill`. Local
-  commits must still be exported or reconciled with the real repository.
+- **Important context:** this working copy (`ezwill-main` on Desktop) began as a ZIP
+  snapshot and its local history has no merge base with `origin/main`; direct push to main
+  would be rejected and force-push is forbidden. The top of stacked PR #74 has the exact
+  same file tree as local `e09bcc7`, so commits after that point can be replayed safely onto
+  a new branch based on `origin/feat/self-serve-intake-to-firm`.
 - **Previously completed launch safeguards:** unresolved-placeholder refusal with logged
   lawyer override; durable generated-document bytes and SHA-256; payment gate; vault sync;
   send-to-lawyer; deterministic generation ordering; adversarial review fixes. See commits
   `1c5e0ef` through `ed5e19f`.
 - **Still open from the audit:** #83 needs lawyer-approved named-share, equal-share, and
   gift-over residue drafting plus real repeating-block rendering; #85 needs a lawyer review
-  of consolidated execution copy and an explicit unified-intake life-support choice.
+  of consolidated execution copy (the unified-intake life-support choice is now wired).
   #86 still needs an enforced, attributable lawyer approval state before client delivery.
   #87 still needs the complete intake/assets/flags/editor workflow in the lawyer workspace.
   Privacy/consent (#90), Korean legal-document posture (#93), and the remaining security,
@@ -48,8 +56,9 @@
   full EN/KO parity. Multiple-gift clause projection and the dual-will lawyer workflow need
   explicit coverage. Real-user accessibility/usability testing and a real-Postgres
   cross-device walk remain.
-- **Next step:** reconnect the complete nine-section intake to the lawyer's working views
-  (#87), then implement recorded lawyer approval (#86). In parallel, obtain lawyer-approved
-  residue and POA wording for the engineering work that remains in #83/#85.
+- **Next step:** publish the replayed follow-up branch for CI, then reconnect the complete
+  nine-section intake to the lawyer's working views (#87) and implement recorded lawyer
+  approval (#86). In parallel, obtain lawyer-approved residue and POA wording for the
+  engineering work that remains in #83/#85.
 - **Guardrail:** unchanged — legal output draft-only and lawyer-approved; tenant isolation
   intact; no secrets/PII committed.

@@ -5,17 +5,18 @@
 
 ## 2026-07-27 — Semantic client-instruction gaps block document delivery
 
-- **Decision:** generation checks more than unresolved placeholders. If a will does not
-  express the named residue beneficiaries/shares in the canonical vault, or a personal-care
-  POA includes end-of-life/organ-donation language without an affirmative client answer,
-  generation returns 422. The existing explicit lawyer override remains and records the
-  semantic gap in the document audit trail.
+- **Decision:** generation and client review check more than unresolved placeholders. If a
+  will does not express the named residue beneficiaries/shares in either the canonical or
+  legacy intake, or a personal-care POA includes end-of-life/organ-donation language without
+  an affirmative client answer, generation/review returns 422. Review lists the document as
+  blocked; the generation-only lawyer override remains and records the gap in the audit
+  trail.
 - **Why:** a complete, grammatical clause that contradicts the intake is more dangerous
   than a visible blank. It must fail loudly until lawyer-approved clause wording and
   list-rendering support are complete.
 - **Consequence:** this is an interim safety barrier, not a substitute for the remaining
-  lawyer drafting in #83/#85. End-of-life and organ-donation clauses are also no longer
-  default selections.
+  lawyer drafting in #83/#85. End-of-life and organ-donation clauses are no longer defaults,
+  and older stored selections are forced off unless supported by an affirmative answer.
 
 ## 2026-07-26 — One versioned intake vault; clients submit facts, lawyers generate drafts
 
