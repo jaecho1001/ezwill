@@ -9,6 +9,8 @@ import {
   getDocumentTypeConfig,
   getClausesForDocumentType,
   buildDefaultSelections,
+  mergeSelectionsWithDefaults,
+  supportedConditionalClauseIds,
 } from '@/lib/will-documents/index'
 import { formatClauseText, generateWillContent, type SimpleClause } from '@/lib/will-documents/format-clause'
 import { FactsPanel } from './facts-panel'
@@ -380,7 +382,10 @@ export function ClauseEditor({
     if (!confirm('Reset all clauses to their defaults?\n\nThis will discard every custom edit in this document and restore the default clause selection.')) {
       return
     }
-    const defaults = buildDefaultSelections(documentType)
+    const defaults = mergeSelectionsWithDefaults(
+      documentType, [], new Set(),
+      vault ? supportedConditionalClauseIds({ vault: vault as unknown as Record<string, unknown> }) : null,
+    )
     // If we have vault context, auto-exclude clauses the applicability
     // engine rejects — users can still toggle them back on manually.
     const filtered = vault

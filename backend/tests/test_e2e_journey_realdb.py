@@ -150,7 +150,11 @@ def test_full_lawyer_led_journey(client):
         body = dash.json()
         assert body["vault"]["testator"]["fullName"] == "HYUN JUNG KIM"
         assert body["vault"]["beneficiaries"][0]["sharePercent"] == 60
-        for key in ("people", "liabilities"):
+        # The FULL lawyer payload (#87): the first journey-test version
+        # asserted only a subset and the endpoint was missing the rest —
+        # exactly the overstatement the second review caught.
+        for key in ("people", "liabilities", "assets", "ai_flags",
+                    "review_comments", "review_approvals"):
             assert key in body, f"dashboard payload missing {key}"
 
         # 6 — lawyer saves a residue clause CONTRADICTING the client split:
@@ -225,6 +229,39 @@ def test_full_lawyer_led_journey(client):
             json={"token": review_token},
         )
         assert client_ok.status_code == 200, client_ok.text
+
+        # 11 — a client comment must surface in the lawyer's payload (#87).
+        commented = client.post(
+            f"/api/review/{created_draft}/comment",
+            json={"token": review_token, "document_type": "single_will",
+                  "clause_id": "res-custom",
+                  "comment": "Can we discuss the 60% share?"},
+        )
+        assert commented.status_code == 200, commented.text
+        dash2 = client.get(f"/api/drafts/{created_draft}").json()
+        assert any(
+            "60% share" in c["comment_text"] for c in dash2["review_comments"]
+        ), "client comment not surfaced to the lawyer"
+
+        # 12 — editing the clauses REVOKES the lawyer approval (approval
+        # integrity: the client must never read edited text under an old
+        # approval — the second review demonstrated exactly that bypass).
+        client.put(
+            f"/api/drafts/{created_draft}/clauses/single_will",
+            json={"clauses": _clauses(RIGHT_RESIDUE + " Amended.")},
+        )
+        listing = client.get(f"/api/documents/{created_draft}/list").json()
+        will_row = next(
+            d for d in listing["documents"]
+            if d["document_type"] == "single_will"
+        )
+        assert will_row["lawyer_approved_at"] is None, (
+            "clause edit did not revoke the lawyer approval"
+        )
+        relist = client.post(f"/api/review/token/{review_token}/resolve")
+        assert relist.json()["documents"] == [], (
+            "client can still see a document whose approval was revoked"
+        )
     finally:
         if created_draft:
             schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")

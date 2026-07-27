@@ -57,10 +57,27 @@ Vercel serverless functions are the wrong shape for this backend, for two concre
      DEFAULT_SCHEMA=firm_demo \
      AUTH_SESSION_SECRET="…" DASHBOARD_PASSWORD="…" \
      ANTHROPIC_API_KEY="…" OPENAI_API_KEY="…" \
-     STRIPE_SECRET_KEY="…" \
-     CORS_ALLOW_ORIGINS="https://<your-vercel-domain>" \
+     STRIPE_SECRET_KEY="…" STRIPE_WEBHOOK_SECRET="…" \
+     BASE_URL="https://<your-vercel-domain>" \
+     FRONTEND_URL="https://<your-vercel-domain>" \
+     NOTIFICATION_MODE=smtp NOTIFICATION_STRICT=true \
+     TRUST_PROXY=true \
      SESSION_COOKIE_SECURE=true
    ```
+
+   Why these matter (each one silently breaks production when omitted):
+   - `BASE_URL` — every client magic link and Stripe redirect is built from
+     it; the default is `http://localhost:3000`, so omitting it emails
+     localhost links to real clients.
+   - `NOTIFICATION_MODE` — without it (or as `stdout`) client emails are
+     written to the server log and DISCARDED while the API reports success.
+     `NOTIFICATION_STRICT=true` makes the backend refuse to start in that
+     state instead of degrading silently (#88).
+   - `STRIPE_WEBHOOK_SECRET` — the webhook rejects deliveries outright when
+     this is unset (#91); without it real payments never mark drafts paid.
+   - `TRUST_PROXY=true` — behind Fly/Vercel the client IP arrives in
+     X-Forwarded-For; without this every rate-limit bucket collapses into
+     one shared bucket for all clients (#91).
 3. Health check: the app serves `GET /` (returns `{"status": ...}`); point the platform health check there.
 4. Note the public URL (e.g. `https://ezwill-backend.fly.dev`).
 
@@ -79,6 +96,9 @@ Vercel serverless functions are the wrong shape for this backend, for two concre
 | `DASHBOARD_PASSWORD` | Fly secrets — **rotate** off the local dev value before launch |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Fly secrets |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Fly secrets |
+| `BASE_URL`, `FRONTEND_URL` | Fly secrets — the public frontend origin |
+| `NOTIFICATION_MODE` (+ SMTP/GHL creds), `NOTIFICATION_STRICT=true` | Fly secrets |
+| `TRUST_PROXY=true` | Fly env (behind any reverse proxy) |
 | `NEXT_PUBLIC_API_URL` | Vercel env (frontend, "Production") |
 
 Rules:

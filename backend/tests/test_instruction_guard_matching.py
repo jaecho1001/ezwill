@@ -144,3 +144,26 @@ def test_legacy_people_without_shares_still_only_need_names():
     text = "I give the residue of my estate to Grace Lee absolutely."
     gaps = semantic_instruction_gaps(draft, "single_will", _clause(text))
     assert RESIDUE_INSTRUCTION_GAP not in gaps
+
+
+# ── prefix names (second review round) ───────────────────────────────────────
+
+def test_short_name_not_satisfied_by_longer_name_it_prefixes():
+    # 'Ann' and 'Ann Park' are DIFFERENT beneficiaries. A clause naming only
+    # 'Ann Park' must not satisfy 'Ann' — word boundaries alone pass because
+    # the character after 'Ann' is a space.
+    draft = _draft(
+        [{"fullName": "Ann"}, {"fullName": "Ann Park"}], mode="equal",
+    )
+    text = "I give the residue to Ann Park absolutely."
+    gaps = semantic_instruction_gaps(draft, "single_will", _clause(text))
+    assert RESIDUE_INSTRUCTION_GAP in gaps
+
+
+def test_both_prefix_names_present_passes():
+    draft = _draft(
+        [{"fullName": "Ann"}, {"fullName": "Ann Park"}], mode="equal",
+    )
+    text = "I give the residue to Ann Park and to Ann in equal shares."
+    gaps = semantic_instruction_gaps(draft, "single_will", _clause(text))
+    assert RESIDUE_INSTRUCTION_GAP not in gaps

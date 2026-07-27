@@ -175,3 +175,52 @@ def test_projection_is_pure_and_repeatable():
     # ids for entries lacking one are generated, so compare everything else.
     for key in ("testator", "residueDistribution", "goals", "poa"):
         assert first[key] == second[key]
+
+
+# ── second review round: determinism, liabilities, address ──────────────────
+
+def test_projection_ids_are_deterministic_across_resolves():
+    # Two devices resolving the same draft must receive IDENTICAL entries;
+    # random ids made every resolve look like a different set of people.
+    draft = {
+        "id": "draft-fixed",
+        "people": [
+            {"role": "beneficiary", "first_name": "Grace", "last_name": "Kim",
+             "percentage": 100},
+            {"role": "executor", "first_name": "Dan", "last_name": "Cho"},
+        ],
+    }
+    assert legacy_draft_to_vault(draft) == legacy_draft_to_vault(draft)
+
+
+def test_liability_only_draft_is_detected_and_projected():
+    draft = {
+        "id": "d-liab",
+        "liabilities": [
+            {"id": "l1", "liabilityType": "credit_card",
+             "description": "Visa", "outstandingBalance": 4200},
+        ],
+    }
+    assert has_legacy_answers(draft)
+    vault = legacy_draft_to_vault(draft)
+    assert vault["assets"]["liabilities"][0]["type"] == "credit"
+    assert vault["assets"]["liabilities"][0]["estimatedBalance"] == 4200
+
+
+def test_city_province_compose_into_testator_address():
+    vault = legacy_draft_to_vault({
+        "id": "d-addr",
+        "about_you": {"legalFirstName": "A", "legalLastName": "B",
+                      "city": "Vaughan", "province": "ON"},
+    })
+    assert vault["testator"]["address"] == "Vaughan, ON"
+
+
+def test_explicit_address_wins_over_city_composite():
+    vault = legacy_draft_to_vault({
+        "id": "d-addr2",
+        "about_you": {"legalFirstName": "A", "legalLastName": "B",
+                      "address": "12 King St, Vaughan, ON",
+                      "city": "Vaughan", "province": "ON"},
+    })
+    assert vault["testator"]["address"] == "12 King St, Vaughan, ON"

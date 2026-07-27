@@ -130,12 +130,10 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
 
   // Back navigation stays unrestricted; only forward navigation validates.
   const goPrev = () => setChapterIdx((i) => Math.max(0, i - 1))
-  const goNext = () => {
-    // Mark the chapter attempted so its per-question errors render, then
-    // refuse to advance while any question in it still has an error — the
-    // first pass must not walk straight past unanswered required questions
-    // (issue #79). Blocking on any error (required-missing or invalid data)
-    // matches the summary page's submission gate.
+  // Shared forward gate (issue #79 review): the chapter STEPPER could jump
+  // ahead without running the Next button's validation, so the two paths
+  // now share it. Returns true when navigation may proceed.
+  const validateCurrentChapter = () => {
     setAttemptedChapters((current) => new Set(current).add(chapter.id))
     const firstError = chapter.questions.find((q) => questionError(q, vault) !== null)
     if (firstError) {
@@ -144,8 +142,15 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
         card?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         card?.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true })
       })
-      return
+      return false
     }
+    return true
+  }
+  const selectChapter = (index: number) => {
+    if (index <= chapterIdx || validateCurrentChapter()) setChapterIdx(index)
+  }
+  const goNext = () => {
+    if (!validateCurrentChapter()) return
     setChapterIdx((i) => Math.min(willIntakeChapters.length - 1, i + 1))
   }
   const isLast = chapterIdx === willIntakeChapters.length - 1
@@ -246,7 +251,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
               chapters={willIntakeChapters}
               currentIndex={chapterIdx}
               progressByChapter={progressByChapter}
-              onSelect={setChapterIdx}
+              onSelect={selectChapter}
               language={language}
             />
           </div>

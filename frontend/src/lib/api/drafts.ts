@@ -364,6 +364,8 @@ export async function createReviewLink(
   link_url: string
   email_sent?: boolean
   sms_sent?: boolean
+  email_delivery?: string
+  sms_delivery?: string
 } | null> {
   try {
     const qs = new URLSearchParams()

@@ -3,7 +3,7 @@
 import { useEffect, useState, use, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -12,7 +12,7 @@ import { AiFlagsSummary } from '@/components/dashboard/ai-flags-summary'
 import { EstateOverview } from '@/components/dashboard/estate-overview'
 import { getDraft, createReviewLink, invokeQuickDraft, type QuickDraftResult } from '@/lib/api/drafts'
 import { getAuthHeaders } from '@/lib/auth'
-import { buildDefaultSelections } from '@/lib/will-documents/index'
+import { affirmedPersonalCareClauseIds, mergeSelectionsWithDefaults, supportedConditionalClauseIds } from '@/lib/will-documents/index'
 import { serializeSelectionsForSave } from '@/lib/will-documents/clause-serialization'
 import type { WillDocumentType } from '@/types/will-document'
 import { cn } from '@/lib/utils'
@@ -137,7 +137,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [reviewLink, setReviewLink] = useState<string | null>(null)
   const [reviewLinkLoading, setReviewLinkLoading] = useState(false)
   const [reviewLinkCopied, setReviewLinkCopied] = useState(false)
-  const [reviewDeliveryStatus, setReviewDeliveryStatus] = useState<{ email: boolean; sms: boolean } | null>(null)
+  const [reviewDeliveryStatus, setReviewDeliveryStatus] = useState<{ email: string; sms: string } | null>(null)
   const [reviewSendEmail, setReviewSendEmail] = useState(true)
   const [reviewSendSms, setReviewSendSms] = useState(true)
   const [aiDrafting, setAiDrafting] = useState(false)
@@ -156,8 +156,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         const url = `${window.location.origin}/review?t=${result.token}`
         setReviewLink(url)
         setReviewDeliveryStatus({
-          email: result.email_sent ?? false,
-          sms: result.sms_sent ?? false,
+          email: result.email_delivery ?? (result.email_sent ? 'sent' : 'failed'),
+          sms: result.sms_delivery ?? (result.sms_sent ? 'sent' : 'failed'),
         })
       }
     } finally {
@@ -201,7 +201,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         const docTypes = result.saved_document_types ?? result.document_types ?? []
         const saveResults = await Promise.all(
           docTypes.map(async (dt) => {
-            const clauses = buildDefaultSelections(dt as WillDocumentType)
+            // #84: defaults must respect the client's data — the raw set
+            // includes gift/Henson/RESP clauses nothing can fill, and rows
+            // saved here would permanently override the data filter.
+            const draftRec = draft as unknown as Record<string, unknown>
+            const clauses = mergeSelectionsWithDefaults(
+              dt as WillDocumentType, [],
+              affirmedPersonalCareClauseIds(draftRec),
+              supportedConditionalClauseIds(draftRec),
+            )
             if (clauses.length === 0) return true
             try {
               const r = await fetch(`/api/drafts/${id}/clauses/${dt}`, {
@@ -302,6 +310,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       }
     }
   }
+
+  const reviewComments = ((draft as unknown as Record<string, unknown>).review_comments ?? []) as Array<{
+    id?: string; document_type: string; clause_id: string; comment_text: string;
+    commenter_name?: string; created_at?: string;
+  }>
 
   // Build section data map
   const sectionData: Record<string, unknown> = {
@@ -511,14 +524,21 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 </Button>
               </div>
               {reviewDeliveryStatus && (
-                <p className="text-xs text-gray-500">
-                  Delivered via GHL:
-                  {reviewDeliveryStatus.email && <span className="ml-1 text-green-600">✓ Email sent</span>}
-                  {reviewDeliveryStatus.sms && <span className="ml-1 text-green-600">✓ SMS sent</span>}
-                  {!reviewDeliveryStatus.email && !reviewDeliveryStatus.sms && (
-                    <span className="ml-1 text-[#8a6a1e]">⚠ Copy link manually (no channels sent)</span>
-                  )}
-                </p>
+                (reviewDeliveryStatus.email === 'sent' || reviewDeliveryStatus.sms === 'sent') ? (
+                  <p className="text-xs text-gray-500">
+                    Delivery:
+                    {reviewDeliveryStatus.email === 'sent' && <span className="ml-1 text-green-600">✓ Email sent</span>}
+                    {reviewDeliveryStatus.sms === 'sent' && <span className="ml-1 text-green-600">✓ SMS sent</span>}
+                  </p>
+                ) : (
+                  <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">
+                    The review link was NOT delivered to the client
+                    {(reviewDeliveryStatus.email === 'logged_only' || reviewDeliveryStatus.sms === 'logged_only')
+                      ? ' (email/SMS is not configured on this server — messages are only written to the log)'
+                      : ''}
+                    . Copy the link above and send it yourself.
+                  </p>
+                )
               )}
             </>
           )}
@@ -527,6 +547,31 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
       {/* AI Flags */}
       <AiFlagsSummary flags={flags} />
+
+      {/* Client review comments (#87): what the client said about specific
+          clauses in the review portal — previously written to the database
+          and surfaced nowhere. */}
+      {reviewComments.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Client comments from the review portal</CardTitle>
+            <CardDescription>
+              {reviewComments.length} comment{reviewComments.length === 1 ? '' : 's'} — each is a question or concern about a specific clause.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {reviewComments.map((comment, index) => (
+              <div key={comment.id ?? index} className="rounded-md border border-[#E8E4DF] bg-[#FAF8F5] p-3 text-sm">
+                <p className="text-xs font-medium text-gray-500">
+                  {comment.document_type} · clause {comment.clause_id}
+                  {comment.created_at ? ` · ${new Date(comment.created_at).toLocaleString()}` : ''}
+                </p>
+                <p className="mt-1 text-gray-800">{comment.comment_text}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Timestamps */}
       <div className="flex gap-6 text-xs text-gray-400">

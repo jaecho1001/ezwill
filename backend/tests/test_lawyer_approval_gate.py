@@ -202,3 +202,28 @@ def test_regeneration_must_clear_approval():
     source = inspect.getsource(EWDbWriter.update_document_generated)
     assert "lawyer_approved_at = NULL" in source
     assert "lawyer_approved_by = NULL" in source
+
+
+def test_clause_save_revokes_approval_sql_contract():
+    # The review portal renders LIVE clause selections, so a clause edit
+    # after approval must revoke it — otherwise document A is approved and
+    # edited document B reaches the client under A's approval.
+    import inspect
+    from services.db import EWDbWriter
+    source = inspect.getsource(EWDbWriter.save_clause_selections)
+    assert "lawyer_approved_at = NULL" in source
+    assert "lawyer_approved_by = NULL" in source
+
+
+def test_review_gate_catches_literals_and_stray_tokens(monkeypatch):
+    # Second review round: a literal '[Client Name]' or a malformed
+    # '{{ token }}' in clause text slipped past the collector-only check.
+    monkeypatch.setattr(review_route, "EWDbWriter", FakeDb)
+    draft = dict(DRAFT)
+    clauses = [{
+        "clause_id": "x", "included": True,
+        "template_text": "I leave everything to [Client Name] and {{ broken }}.",
+    }]
+    missing = review_route._unresolved_clause_placeholders(draft, clauses)
+    assert "[Client Name]" in missing
+    assert "{{ broken }}" in missing

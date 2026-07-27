@@ -458,8 +458,23 @@ class EWDbWriter:
     # ── Clause Selections ─────────────────────────────────────────────────────
 
     def save_clause_selections(self, draft_id: str, document_type: str, clauses: list) -> bool:
-        """Save all clause selections for a draft + document type (delete + insert)."""
+        """Save all clause selections for a draft + document type (delete + insert).
+
+        Every clause save REVOKES any lawyer approval for this document.
+        The review portal renders the LIVE clause selections, so without
+        this an approved document could be silently edited and the edited
+        text would reach the client under the old approval — document A
+        approved, document B delivered. The approval must be re-given on
+        the text the client will actually see.
+        """
         with self._conn.cursor() as cur:
+            cur.execute("""
+                UPDATE ew_document_configs
+                SET lawyer_approved_at = NULL, lawyer_approved_by = NULL,
+                    updated_at = now()
+                WHERE draft_id = %s AND document_type = %s
+                  AND lawyer_approved_at IS NOT NULL
+            """, (draft_id, document_type))
             cur.execute(
                 "DELETE FROM ew_clause_selections WHERE draft_id = %s AND document_type = %s",
                 (draft_id, document_type)

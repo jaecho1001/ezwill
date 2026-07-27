@@ -93,16 +93,35 @@ async def list_drafts(
 
 @router.get("/{draft_id}")
 async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)):
+    """The lawyer's working payload (#87): everything the client supplied.
+
+    Assets and AI flags were structurally absent here, which is why the
+    dashboard's Overview and flag panel rendered empty for every client.
+    Client review comments/approvals are included so the lawyer actually
+    sees what the client said about each clause.
+    """
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         draft = db.get_draft(draft_id)
         if not draft:
             raise HTTPException(404, "Draft not found")
         people = db.get_people(draft_id)
         liabilities = db.get_liabilities(draft_id)
+        assets = db.fetchall(
+            "SELECT * FROM ew_assets WHERE draft_id = %s", (draft_id,)
+        )
+        ai_flags = db.fetchall(
+            "SELECT * FROM ew_ai_flags WHERE draft_id = %s", (draft_id,)
+        )
+        review_comments = db.get_review_comments(draft_id) or []
+        review_approvals = db.get_review_approvals(draft_id) or []
         return {
             **dict(draft),
             "people": [dict(p) for p in people],
             "liabilities": liabilities,
+            "assets": [dict(a) for a in assets],
+            "ai_flags": [dict(f) for f in ai_flags],
+            "review_comments": [dict(c) for c in review_comments],
+            "review_approvals": [dict(a) for a in review_approvals],
         }
 
 @router.put("/{draft_id}")

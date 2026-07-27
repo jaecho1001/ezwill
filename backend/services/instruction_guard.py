@@ -127,15 +127,29 @@ def _plain_custom_residue(clauses: list[dict]) -> str:
     return re.sub(r"\s+", " ", " ".join(custom_residue)).strip()
 
 
-def _name_pattern(name: str) -> str:
+def _name_pattern(name: str, all_names: list[str] | None = None) -> str:
     """A name match that cannot be satisfied by a longer name containing it.
 
-    Plain substring matching let 'Ann' be satisfied by 'Annette', so a will
-    that omitted Ann entirely still delivered. \\w boundaries on both ends
-    keep 'Ann' from matching inside 'Annette' while still matching after
-    punctuation ('to Ann,').
+    Two containment failure modes, both real:
+    - 'Ann' inside 'Annette' — handled by \\w boundaries on both ends.
+    - 'Ann' as a PREFIX of another beneficiary 'Ann Park' — the boundary
+      after 'Ann' is a space, so boundaries alone pass. When the other
+      names are known, refuse a match that continues into one of them:
+      a clause naming only 'Ann Park' must not satisfy a distinct
+      beneficiary named 'Ann'.
     """
-    return rf"(?<!\w){re.escape(name)}(?!\w)"
+    base = rf"(?<!\w){re.escape(name)}(?!\w)"
+    if not all_names:
+        return base
+    lookaheads = []
+    for other in all_names:
+        if other.casefold() == name.casefold():
+            continue
+        if other.casefold().startswith(name.casefold()):
+            extension = other[len(name):]
+            if extension:
+                lookaheads.append(rf"(?!{re.escape(extension)}(?!\w))")
+    return base + "".join(lookaheads)
 
 
 def _share_is_associated(
@@ -154,7 +168,7 @@ def _share_is_associated(
     except (TypeError, ValueError):
         return False
 
-    name_re = _name_pattern(name)
+    name_re = _name_pattern(name, all_names)
     # Digit boundary: share 5 must not be satisfied by the '15' in '15%'.
     percent = rf"(?<![\d.]){re.escape(rendered)}\s*%"
     other_names = [
@@ -199,7 +213,7 @@ def semantic_instruction_gaps(
             # Word-boundary matching: 'Ann' must not be satisfied by
             # 'Annette' — that let a will omit a beneficiary entirely.
             names_present = all(
-                re.search(_name_pattern(name), text, re.IGNORECASE)
+                re.search(_name_pattern(name, all_names), text, re.IGNORECASE)
                 for name in all_names
             )
             shares_match = True

@@ -22,9 +22,21 @@ from __future__ import annotations
 
 import uuid
 
+# Deterministic id namespace: resolving the same draft twice (two devices,
+# a refresh, a retry) must produce IDENTICAL vault entries, or the client's
+# devices each hold a differently-keyed copy of the same person and every
+# comparison/merge downstream sees phantom changes.
+_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "ezwill:legacy-backfill")
 
-def _uid() -> str:
-    return str(uuid.uuid4())
+
+def _make_uid(seed: str):
+    counter = {"n": 0}
+
+    def uid(*parts: str) -> str:
+        counter["n"] += 1
+        material = ":".join([seed, str(counter["n"]), *[str(p) for p in parts]])
+        return str(uuid.uuid5(_ID_NAMESPACE, material))
+    return uid
 
 
 def _s(value) -> str:
@@ -42,9 +54,9 @@ def _full_name(person: dict) -> str:
     return f"{first} {last}".strip()
 
 
-def _person(person: dict, is_backup: bool = False) -> dict:
+def _person(person: dict, is_backup: bool = False, uid=None) -> dict:
     return {
-        "id": _s(person.get("id")) or _uid(),
+        "id": _s(person.get("id")) or (uid() if uid else str(uuid.uuid4())),
         "fullName": _full_name(person),
         "relationship": person.get("relationship"),
         "address": person.get("address"),
@@ -108,13 +120,14 @@ def has_legacy_answers(draft: dict) -> bool:
         "your_arrangements", "poa_property", "poa_personal_care",
     )):
         return True
-    if draft.get("people") or draft.get("assets"):
+    if draft.get("people") or draft.get("assets") or draft.get("liabilities"):
         return True
     return False
 
 
 def legacy_draft_to_vault(draft: dict) -> dict:
     """Project the legacy sections + relational rows into a v2 vault dict."""
+    _uid = _make_uid(str(draft.get("id") or ""))
     about = draft.get("about_you") or {}
     family = draft.get("your_family") or {}
     estate = draft.get("your_estate") or {}
@@ -137,10 +150,17 @@ def legacy_draft_to_vault(draft: dict) -> dict:
         "firstName": about.get("legalFirstName") or draft.get("client_first_name"),
         "lastName": about.get("legalLastName") or draft.get("client_last_name"),
     })
+    address = _s(about.get("address"))
+    if not address and _s(about.get("city")):
+        address = ", ".join(
+            part for part in (_s(about.get("city")), _s(about.get("province")))
+            if part
+        )
     testator = {
         "fullName": testator_name or None,
         "preferredName": about.get("preferredName"),
         "dob": about.get("dateOfBirth"),
+        "address": address or None,
         "email": about.get("email") or draft.get("client_email"),
         "phone": about.get("phone") or draft.get("client_phone"),
         "maritalStatus": _MARITAL_MAP.get(legacy_status.lower()) if legacy_status else None,
@@ -175,20 +195,20 @@ def legacy_draft_to_vault(draft: dict) -> dict:
     # ── executors / guardians (arrangements first, people rows as fallback) ─
     executors: list[dict] = []
     if _full_name(arrangements.get("primaryExecutor") or {}):
-        executors.append(_person(arrangements["primaryExecutor"], is_backup=False))
+        executors.append(_person(arrangements["primaryExecutor"], is_backup=False, uid=_uid))
     for backup in arrangements.get("backupExecutors") or []:
         if _full_name(backup):
-            executors.append(_person(backup, is_backup=True))
+            executors.append(_person(backup, is_backup=True, uid=_uid))
     if not executors:
         rows = rows_with_role("executor")
         executors = [
-            _person(row, is_backup=index > 0)
+            _person(row, is_backup=index > 0, uid=_uid)
             for index, row in enumerate(rows)
             if _full_name(row)
         ]
 
     guardians = [
-        _person(guardian, is_backup=index > 0)
+        _person(guardian, is_backup=index > 0, uid=_uid)
         for index, guardian in enumerate(
             family.get("guardians") or rows_with_role("guardian")
         )
@@ -200,7 +220,7 @@ def legacy_draft_to_vault(draft: dict) -> dict:
         share = entry.get("percentage")
         if share is None:
             share = entry.get("sharePercent")
-        out = _person(entry)
+        out = _person(entry, uid=_uid)
         if share is not None:
             out["sharePercent"] = share
         return out
@@ -275,12 +295,12 @@ def legacy_draft_to_vault(draft: dict) -> dict:
     def poa_attorneys(section: dict, *roles: str) -> list[dict]:
         attorneys = []
         if _full_name(section.get("attorney") or {}):
-            attorneys.append(_person(section["attorney"], is_backup=False))
+            attorneys.append(_person(section["attorney"], is_backup=False, uid=_uid))
         if _full_name(section.get("backupAttorney") or {}):
-            attorneys.append(_person(section["backupAttorney"], is_backup=True))
+            attorneys.append(_person(section["backupAttorney"], is_backup=True, uid=_uid))
         if not attorneys:
             attorneys = [
-                _person(row, is_backup=index > 0)
+                _person(row, is_backup=index > 0, uid=_uid)
                 for index, row in enumerate(rows_with_role(*roles))
                 if _full_name(row)
             ]

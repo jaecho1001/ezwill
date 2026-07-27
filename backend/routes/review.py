@@ -7,6 +7,7 @@ generated will documents via magic link tokens.
 import os
 import html
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Depends
@@ -19,6 +20,7 @@ from services.jurisdictions import resolve as resolve_jurisdiction
 from services.document_generator import (
     DOCUMENT_TITLES,
     resolve_variables,
+    FALLBACK_LITERALS,
     map_people_to_variables,
     vault_to_variables,
     firm_variables,
@@ -201,10 +203,20 @@ def _unresolved_clause_placeholders(draft: dict, clauses: list[dict]) -> set:
             clause.get("custom_text") or clause.get("customText")
             or clause.get("template_text") or clause.get("templateText") or ""
         )
-        resolve_variables(text, variables, missing)
+        resolved = resolve_variables(text, variables, missing)
         title = clause.get("title")
         if title:
-            resolve_variables(str(title), variables, missing)
+            resolved += " " + resolve_variables(str(title), variables, missing)
+        # The collector only sees {{tokens}} the substitution regex matched.
+        # Two things slip past it and must be caught here just as the
+        # generation-side document scan catches them: hardcoded bracket
+        # literals already sitting in clause text ('[Client Name]'), and
+        # malformed {{ tokens }} the regex can never match.
+        for literal in FALLBACK_LITERALS:
+            if literal in resolved:
+                missing.add(literal)
+        for stray in re.findall(r"\{\{[^{}]*\}\}", resolved):
+            missing.add(stray)
     return missing
 
 
@@ -338,8 +350,13 @@ async def create_review_link(
     token = str(link["token"])
     link_url = f"{BASE_URL}/review?t={token}"
 
-    # Deliver via the configured notification provider.
+    # Deliver via the configured notification provider. Same honest
+    # per-channel status as questionnaire links (#88): 'logged_only' means
+    # NOTIFICATION_MODE=stdout wrote the message to the server log and
+    # discarded it — the client was NOT reached.
+    from services.notification_service import _notification_mode
     delivery = {"email_sent": False, "sms_sent": False}
+    delivery_failed = False
     try:
         delivery = await send_review_link_to_client(
             client_email=client_email,
@@ -355,15 +372,32 @@ async def create_review_link(
             f"Review link delivery: email_sent={delivery['email_sent']} sms_sent={delivery['sms_sent']}"
         )
     except Exception as e:
+        delivery_failed = True
         logger.error(f"Review link delivery failed: {e}")
+
+    def _channel_status(requested: bool, sent: bool) -> str:
+        if not requested:
+            return "not_requested"
+        if delivery_failed:
+            return "failed"
+        if _notification_mode() == "stdout":
+            return "logged_only"
+        return "sent" if sent else "failed"
 
     return {
         "token": token,
         "link_url": link_url,
         "draft_id": draft_id,
         "client_name": client_name,
+        # Legacy booleans kept one release for older dashboard bundles.
         "email_sent": delivery["email_sent"],
         "sms_sent": delivery["sms_sent"],
+        "email_delivery": _channel_status(
+            bool(send_email and client_email), delivery["email_sent"]
+        ),
+        "sms_delivery": _channel_status(
+            bool(send_sms and client_phone), delivery["sms_sent"]
+        ),
     }
 
 

@@ -383,7 +383,7 @@ export const willIntakeChapters: IntakeChapter[] = [
           },
           {
             label: 'Leave the decision to my attorney based on the circumstances',
-            labelKo: '상황에 따라 대리인가 결정하도록 함',
+            labelKo: '상황에 따라 대리인이 결정하도록 함',
             value: 'attorney_decides',
           },
           {
@@ -467,9 +467,14 @@ function validateBeneficiaries(value: unknown, method?: WillVault['residueDistri
     return UNNAMED_SHARE_ERROR
   }
   if (named.length === 0) return 'Add at least one residue beneficiary.'
-  if (method !== 'percentages') return null
-  // Only rows with a non-blank name count toward the 100% check.
-  const total = named.reduce((sum, b) => sum + Number(b.sharePercent ?? 0), 0)
+  // Totals are checked whenever ANY share was actually entered, not only in
+  // 'percentages' mode (issue #79 review): shares recorded under another
+  // mode still reach the document guard, so a 70/20 split must not sail
+  // through the intake as valid.
+  const withShares = named.filter((b) => b.sharePercent != null)
+  if (method !== 'percentages' && withShares.length === 0) return null
+  const counted = method === 'percentages' ? named : withShares
+  const total = counted.reduce((sum, b) => sum + Number(b.sharePercent ?? 0), 0)
   return Math.abs(total - 100) < 0.001 ? null : `Beneficiary percentages currently total ${total}%. They must total 100%.`
 }
 

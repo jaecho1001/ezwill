@@ -20,12 +20,14 @@ import {
 import type { WillDocumentType, SelectedWillClause } from '@/types/will-document'
 import { ClauseEditor } from '@/components/editor/clause-editor'
 import { useWillVault } from '@/stores/will-vault-store'
+import { normalizeVault } from '@/types/will-vault'
 import { vaultToVariables } from '@/lib/will-documents/vault-to-variables'
 
 export default function Tier2Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const vaultStore = useWillVault(id)
   const vault = vaultStore((s) => s.vault)
+  const replaceVault = vaultStore((s) => s.replaceVault)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +45,14 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
           return
         }
         setDraftData(res as unknown as Record<string, unknown>)
+        // Hydrate the editor's vault from the SERVER draft (#87): the local
+        // store belongs to whichever browser last edited it — on the
+        // lawyer's machine it is empty, which blanked clause previews and
+        // hid every data-gated clause from the tree.
+        const serverVault = (res as { vault?: unknown }).vault
+        if (serverVault) {
+          replaceVault(normalizeVault(serverVault as never))
+        }
         const affirmedSensitiveClauses = affirmedPersonalCareClauseIds(
           res as unknown as Record<string, unknown>
         )
@@ -70,17 +80,17 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
                   supportedConditional,
                 )
               } else {
-                initial[docType.id] = buildDefaultSelections(docType.id)
+                initial[docType.id] = mergeSelectionsWithDefaults(docType.id, [], affirmedSensitiveClauses, supportedConditional)
               }
             }
           } else {
             for (const docType of willDocumentTypes) {
-              initial[docType.id] = buildDefaultSelections(docType.id)
+              initial[docType.id] = mergeSelectionsWithDefaults(docType.id, [], affirmedSensitiveClauses, supportedConditional)
             }
           }
         } catch {
           for (const docType of willDocumentTypes) {
-            initial[docType.id] = buildDefaultSelections(docType.id)
+            initial[docType.id] = mergeSelectionsWithDefaults(docType.id, [], affirmedSensitiveClauses, supportedConditional)
           }
         }
         setClausesByDocType(initial)
