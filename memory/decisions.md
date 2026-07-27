@@ -1,7 +1,21 @@
 # Decision Log
 
-> Last updated: 2026-07-26. Newest first. Product/architecture decisions live in the code
+> Last updated: 2026-07-27. Newest first. Product/architecture decisions live in the code
 > and issues; this log captures the ones a future agent needs to know without re-deriving.
+
+## 2026-07-27 — Semantic client-instruction gaps block document delivery
+
+- **Decision:** generation checks more than unresolved placeholders. If a will does not
+  express the named residue beneficiaries/shares in the canonical vault, or a personal-care
+  POA includes end-of-life/organ-donation language without an affirmative client answer,
+  generation returns 422. The existing explicit lawyer override remains and records the
+  semantic gap in the document audit trail.
+- **Why:** a complete, grammatical clause that contradicts the intake is more dangerous
+  than a visible blank. It must fail loudly until lawyer-approved clause wording and
+  list-rendering support are complete.
+- **Consequence:** this is an interim safety barrier, not a substitute for the remaining
+  lawyer drafting in #83/#85. End-of-life and organ-donation clauses are also no longer
+  default selections.
 
 ## 2026-07-26 — One versioned intake vault; clients submit facts, lawyers generate drafts
 

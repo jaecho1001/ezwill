@@ -1,6 +1,6 @@
 # Conventions, standing rules, and gotchas
 
-> Last verified: 2026-07-19. Add a rule when a verified mistake teaches one.
+> Last verified: 2026-07-27. Add a rule when a verified mistake teaches one.
 
 ## Tenancy & data (from the platform Bible, enforced in code)
 
@@ -45,13 +45,15 @@
 
 ## Testing expectations
 
-- **Backend:** `cd backend && python -m pytest` (271 passing as of 2026-07-19 across
+- **Backend:** `cd backend && python -m pytest` (289 passing as of 2026-07-27 across
   models, routes, guards, DOCX generation, persistence, payments, notifications).
-- **Frontend:** `cd frontend && npm run test` (Vitest, 80 passing) + `npm run typecheck`.
+- **Frontend:** `cd frontend && npm run test` (Vitest, 91 passing as of 2026-07-26) +
+  production build/typecheck.
 - **Real-DB tests are mandatory for SQL/migration changes** (mocked cursors pass reversed
   COALESCE, bytea, and ordering bugs straight through). Pattern:
-  `tests/test_*_realdb.py`, self-isolating, skip without a DB; CI runs them in a separate
-  process against a migrated `firm_ci` schema (see `.github/workflows/ci.yml`).
+  `tests/test_*_realdb.py`, self-isolating, skip only for real connection failures when no
+  DB is available; CI runs the complete suite in one process with the real psycopg2 driver
+  against a migrated `firm_ci` schema (see `.github/workflows/ci.yml`).
 - CI: issue #55 (CI pipeline — tests + typecheck + build on every PR) is closed; keep new
   work green under it.
 
@@ -65,10 +67,10 @@
   committed secret defaults (`${VAR:?}`). Older docs describing a `vaturi2026` default and
   in-memory-only tokens are stale. Still single-account: real per-lawyer SSO/JWT remains
   issue #52.
-- **`tests/test_routes.py` replaces `sys.modules['docx']`/psycopg2 with MagicMocks at
-  collection time.** A test that imports docx at runtime (inside a test body) gets the
-  mock and fails only in full-suite runs. Bind real modules at module level, in test files
-  that sort alphabetically before `test_routes`.
+- **`tests/test_routes.py` still replaces `sys.modules['docx']` with a MagicMock at
+  collection time, but no longer mocks psycopg2.** A test that imports docx at runtime
+  (inside a test body) gets the mock and fails only in full-suite runs. Bind the real docx
+  module at module level in test files that sort alphabetically before `test_routes`.
 - **Rows inserted in one transaction share `now()`** (transaction timestamp) — never rely
   on `created_at` alone to order batch inserts; use `clock_timestamp()` at insert and/or a
   deterministic tiebreaker (caught by the real-DB persistence test, 2026-07-19).

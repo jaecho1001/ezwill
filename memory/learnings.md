@@ -1,6 +1,6 @@
 # Learnings — self-improvement journal
 
-> Last updated: 2026-07-26.
+> Last updated: 2026-07-27.
 
 Append-only. One dated bullet per lesson: what happened, what you learned, and (if it
 became a rule) where you wrote it down.
@@ -53,3 +53,9 @@ became a rule) where you wrote it down.
   for a route that did not exist. Lesson: intake verification must include destructive
   persistence behavior, conditional rerenders, fact-to-placeholder provenance, and opening
   the exact URL that notifications send—not only schema and final-page tests.
+- 2026-07-27 — Placeholder completeness is not semantic correctness: the generator could
+  produce a polished residue clause while silently omitting named 60/40 instructions, and
+  the real-database tests could silently skip because a collection-time mock altered a
+  shared module. Lesson: legal delivery tests must compare client instructions to selected
+  clause meaning, and integration fixtures must skip only verified infrastructure failures;
+  programming errors must fail the full suite.
