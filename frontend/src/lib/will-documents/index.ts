@@ -110,7 +110,7 @@ export const willDocumentTypes: WillDocumentTypeConfig[] = [
     icon: "❤️",
     tier: 1,
     defaultClauseIds: [
-      "poa-care", "poa-care-appt", "poa-care-wishes", "poa-care-organ",
+      "poa-care", "poa-care-appt",
     ],
   },
   {

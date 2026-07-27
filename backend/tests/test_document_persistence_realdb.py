@@ -27,7 +27,10 @@ def realdb():
         try:
             dbmod.init_pool()
             opened_pool = True
-        except Exception as exc:  # noqa: BLE001 - no DB in this environment
+        except (
+            dbmod.psycopg2.OperationalError,
+            dbmod.psycopg2.InterfaceError,
+        ) as exc:
             pytest.skip(f"real DB pool unavailable: {exc}")
 
     schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
@@ -42,7 +45,10 @@ def realdb():
                 """,
                 (schema,),
             )
-    except Exception as exc:  # noqa: BLE001 - connection refused, auth, etc.
+    except (
+        dbmod.psycopg2.OperationalError,
+        dbmod.psycopg2.InterfaceError,
+    ) as exc:
         if opened_pool:
             dbmod.close_pool()
             dbmod._pool = None

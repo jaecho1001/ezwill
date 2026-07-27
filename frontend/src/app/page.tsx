@@ -2,10 +2,9 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { motion, AnimatePresence, MotionConfig, useReducedMotion, useInView, animate } from 'framer-motion'
+import { motion, AnimatePresence, MotionConfig, useReducedMotion, useInView } from 'framer-motion'
 import {
   AlertCircle,
-  Award,
   Check,
   CheckCircle,
   ChevronRight,
@@ -13,11 +12,9 @@ import {
   FileText,
   Loader2,
   Lock,
-  Quote,
   ScrollText,
   Shield,
   ShieldCheck,
-  Star,
   UserCheck,
   Users,
   X,
@@ -48,26 +45,6 @@ const wordUp = {
 
 const navyBtn =
   'bg-[#1B2A4A] text-white hover:bg-[#16233d] transition-transform duration-150 hover:scale-[1.02] active:scale-[0.97]'
-
-// Count-up numeral that animates once on scroll-into-view. Non-numeric affixes
-// (prefix/suffix like "$", "+", "%", "~", " min") render statically outside the
-// animated value. Snaps to the final value instantly under reduced-motion.
-function CountUp({ target, prefix = '', suffix = '', separator = false, duration = 1.2 }: {
-  target: number; prefix?: string; suffix?: string; separator?: boolean; duration?: number
-}) {
-  const reduce = useReducedMotion()
-  const ref = useRef<HTMLSpanElement>(null)
-  const inView = useInView(ref, { once: true, margin: '-80px' })
-  const [n, setN] = useState(0)
-  useEffect(() => {
-    if (!inView) return
-    if (reduce) { setN(target); return }
-    const controls = animate(0, target, { duration, ease: 'easeOut', onUpdate: v => setN(Math.round(v)) })
-    return () => controls.stop()
-  }, [inView, reduce, target, duration])
-  const shown = separator ? n.toLocaleString('en-US') : String(n)
-  return <span ref={ref}>{prefix}{shown}{suffix}</span>
-}
 
 function HomePageInner() {
   const router = useRouter()
@@ -226,7 +203,7 @@ function HomePageInner() {
               </motion.h1>
 
               <p className="mb-6 max-w-md text-lg leading-relaxed text-[#2D2D2D]/70">
-                A will is how you speak for your family when you no longer can — who raises your children, who cares for your home, what you&apos;d want, in your own words. Built with Ontario estate lawyers and reviewed before you sign. Start free; pay only when it&apos;s ready to download.
+                A will records the decisions your family may need later — who should care for your children, manage your estate, and receive your property. EzWill helps you organize those instructions for review by your Ontario legal team.
               </p>
               <div className="flex flex-col gap-4 sm:flex-row">
                 <Link href={startHref}>
@@ -256,9 +233,9 @@ function HomePageInner() {
               </motion.div>
 
               <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#2D2D2D]/50">
-                <div className="flex items-center gap-1.5"><Clock className="h-4 w-4" /><span>~20 minutes</span></div>
-                <div className="flex items-center gap-1.5"><Lock className="h-4 w-4" /><span>256-bit encrypted</span></div>
-                <div className="flex items-center gap-1.5"><FileText className="h-4 w-4" /><span>Legally binding</span></div>
+                <div className="flex items-center gap-1.5"><Clock className="h-4 w-4" /><span>Complete at your pace</span></div>
+                <div className="flex items-center gap-1.5"><Lock className="h-4 w-4" /><span>Private questionnaire link</span></div>
+                <div className="flex items-center gap-1.5"><FileText className="h-4 w-4" /><span>Draft for lawyer review</span></div>
               </div>
             </motion.div>
 
@@ -301,8 +278,8 @@ function HomePageInner() {
                       <Check className="h-5 w-5 text-[#7BA68C]" />
                     </motion.div>
                     <div>
-                      <p className="text-sm font-semibold text-[#1B2A4A]">Will Generated Successfully</p>
-                      <p className="text-xs text-[#2D2D2D]/50">Signed, witnessed, and safe with your family.</p>
+                      <p className="text-sm font-semibold text-[#1B2A4A]">Questionnaire saved</p>
+                      <p className="text-xs text-[#2D2D2D]/50">Ready for your legal team to review.</p>
                     </div>
                   </div>
                 </div>
@@ -312,11 +289,11 @@ function HomePageInner() {
         </div>
       </section>
 
-      {/* Animated Authority Stat Bar — replaces the static Trust Bar */}
+      {/* Product scope — factual capabilities only; no pre-launch performance claims. */}
       <section className="border-y border-[#E8E4DF] bg-white py-12 md:py-16">
         <div className="ezw-container">
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-80px' }} variants={stagger} className="mb-8 text-center">
-            <motion.p variants={fadeUp} className="text-sm font-semibold uppercase tracking-wider text-[#7BA68C]">The record behind EzWill</motion.p>
+            <motion.p variants={fadeUp} className="text-sm font-semibold uppercase tracking-wider text-[#7BA68C]">How EzWill is designed</motion.p>
             <motion.div
               initial={{ scaleX: 0 }}
               whileInView={{ scaleX: 1 }}
@@ -327,22 +304,18 @@ function HomePageInner() {
           </motion.div>
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-60px' }} variants={{ visible: { transition: { staggerChildren: 0.12 } } }} className="grid grid-cols-2 gap-8 md:grid-cols-4">
             {[
-              { icon: ScrollText, value: <CountUp target={1900} suffix="+" separator />, label: 'Ontario wills prepared & lawyer-reviewed' },
-              { icon: ShieldCheck, value: <CountUp target={100} suffix="%" />, label: 'reviewed by an LSO-licensed lawyer before you sign' },
-              { icon: Clock, value: <><span className="text-2xl">~</span><CountUp target={20} /><span className="ml-1 text-2xl">min</span></>, label: 'average time to a lawyer-ready will' },
-              { icon: Award, value: <CountUp target={1500} prefix="$" suffix="+" separator />, label: 'average saved vs. a traditional lawyer’s office' },
-            ].map((stat, i) => (
+              { icon: ScrollText, title: 'Guided intake', label: 'Organize family, asset, and decision-maker information in one place.' },
+              { icon: ShieldCheck, title: 'Lawyer workspace', label: 'The legal team can review answers, flags, and draft clauses.' },
+              { icon: FileText, title: 'Draft-only output', label: 'Generated documents remain drafts until a lawyer approves them.' },
+              { icon: Users, title: 'Ontario scope', label: 'The questionnaire is designed for Ontario wills and powers of attorney.' },
+            ].map((item, i) => (
               <motion.div key={i} variants={fadeUp} className="text-center">
-                <stat.icon className="mx-auto mb-2 h-6 w-6 text-[#7BA68C]" />
-                <p className="text-display text-4xl font-bold text-[#1B2A4A] md:text-5xl">{stat.value}</p>
-                <p className="mx-auto mt-2 max-w-[16rem] text-xs leading-relaxed text-[#2D2D2D]/55">{stat.label}</p>
+                <item.icon className="mx-auto mb-3 h-7 w-7 text-[#7BA68C]" />
+                <p className="text-display text-xl font-bold text-[#1B2A4A]">{item.title}</p>
+                <p className="mx-auto mt-2 max-w-[16rem] text-xs leading-relaxed text-[#2D2D2D]/55">{item.label}</p>
               </motion.div>
             ))}
           </motion.div>
-          {/* ⚠ PRE-LAUNCH: verify real counts/savings before shipping (legal brand — inflated claims are a liability). */}
-          <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-[#2D2D2D]/40">
-            Figures reflect EzWill files completed to date; savings based on typical Ontario solicitor fees of $1,500–$3,000.
-          </p>
         </div>
       </section>
 
@@ -382,11 +355,11 @@ function HomePageInner() {
                 You&apos;re not filling out a template. A real lawyer finishes your will.
               </h2>
               <p className="mb-8 text-lg leading-relaxed text-[#2D2D2D]/65">
-                Most online will kits hand you a blank form and wish you luck. EzWill is different. Your plain-language answers are assembled into a proper draft, then a licensed Ontario estate lawyer at Vaturi &amp; Cho LLP personally reviews it — your executor and backup, guardianship for minor children, how your estate is divided, and Ontario-specific issues — before anything is finalized for signing. You get the ease of online, with the accountability of a law firm.
+                EzWill turns your plain-language answers into a structured file and draft clause selections for the legal team. It is designed to support — not replace — the lawyer&apos;s review of your executor choices, guardianship instructions, estate distribution, and Ontario-specific issues.
               </p>
               <motion.ul variants={stagger} className="space-y-4">
                 {[
-                  { icon: UserCheck, text: 'A named, LSO-licensed Ontario lawyer reviews every file — not an algorithm.' },
+                  { icon: UserCheck, text: 'The file is prepared for review by the Ontario legal team, not approved by an algorithm.' },
                   { icon: ShieldCheck, text: 'Compliance with the Ontario Succession Law Reform Act is verified before you sign.' },
                   { icon: ScrollText, text: 'You receive step-by-step signing and witnessing instructions so your will is actually valid.' },
                 ].map((item, i) => (
@@ -452,7 +425,7 @@ function HomePageInner() {
                 transition={{ delay: 1, type: 'spring', stiffness: 240, damping: 18 }}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#C9A84C]/15 px-3 py-1 text-[#6E5410]"
               >
-                <Lock className="h-3.5 w-3.5" />Pay only when you download
+                <Lock className="h-3.5 w-3.5" />No credit card needed for the questionnaire
               </motion.span>
             </div>
           </div>
@@ -522,89 +495,66 @@ function HomePageInner() {
         </div>
       </section>
 
-      {/* Value Comparison */}
+      {/* Process summary */}
       <section className="bg-[#1B2A4A] py-20 md:py-28">
         <div className="ezw-container">
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="mb-16 text-center">
-            <motion.h2 variants={fadeUp} className="text-display mb-4 text-3xl font-bold text-white md:text-4xl">A fraction of the cost. Same legal validity.</motion.h2>
+            <motion.h2 variants={fadeUp} className="text-display mb-4 text-3xl font-bold text-white md:text-4xl">Know what happens after you answer.</motion.h2>
             <motion.p variants={fadeUp} className="mx-auto max-w-2xl text-lg text-white/60">
-              EzWill documents are developed by the same Ontario estate lawyers who charge thousands for in-person consultations.
+              The questionnaire prepares a structured file for the legal team. It does not replace legal advice, lawyer approval, or the required signing process.
             </motion.p>
           </motion.div>
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="mx-auto grid max-w-4xl gap-8 md:grid-cols-2">
             <motion.div variants={fadeUp} className="rounded-xl border border-white/10 bg-white/5 p-8">
-              <p className="mb-4 text-sm font-medium uppercase tracking-wider text-white/40">Traditional Lawyer</p>
-              <span className="relative inline-block">
-                <span className="text-display block text-4xl font-bold text-white/60">$1,500 – $3,000+</span>
-                <motion.span
-                  initial={{ scaleX: 0 }}
-                  whileInView={{ scaleX: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, ease: 'easeOut', delay: 0.3 }}
-                  /* top-[calc(50%-1px)] centers the 2px line on the numeral without a transform
-                     (a transform here would fight framer-motion's scaleX) */
-                  className="absolute left-0 top-[calc(50%-1px)] h-0.5 w-full origin-left rounded-full bg-[#C9A84C]"
-                />
-              </span>
+              <p className="mb-4 text-sm font-medium uppercase tracking-wider text-white/40">Your questionnaire</p>
+              <p className="text-display text-3xl font-bold text-white">Organize your instructions</p>
               <div className="gold-line my-6 opacity-20" />
               <ul className="space-y-3">
-                {['2–4 weeks timeline', 'Multiple office appointments', 'Complex legal jargon', 'Hourly billing surprises'].map((item, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-white/50"><span className="h-1.5 w-1.5 rounded-full bg-white/30" />{item}</li>
+                {['Move through one topic at a time', 'Save and return with your private link', 'Review the answers before submitting', 'Send questions or uncertainties to the legal team'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-2 text-sm text-white/60"><span className="h-1.5 w-1.5 rounded-full bg-[#C9A84C]" />{item}</li>
                 ))}
               </ul>
             </motion.div>
             <motion.div variants={fadeUp} className="relative rounded-xl border-2 border-[#C9A84C] bg-white p-8">
-              <div className="absolute -top-3 left-6 rounded-full bg-[#C9A84C] px-3 py-1 text-xs font-semibold text-white">Recommended</div>
-              <p className="mb-4 text-sm font-medium uppercase tracking-wider text-[#7BA68C]">EzWill</p>
-              <p className="text-display mb-2 text-4xl font-bold text-[#1B2A4A]">$499 – $899</p>
-              <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-[#7BA68C]/15 px-3 py-1 text-sm font-semibold text-[#3E6B54]">
-                You keep roughly <CountUp target={1600} prefix="$" separator />
-              </div>
+              <p className="mb-4 text-sm font-medium uppercase tracking-wider text-[#7BA68C]">Legal-team review</p>
+              <p className="text-display text-3xl font-bold text-[#1B2A4A]">Review before delivery</p>
               <div className="gold-line my-6" />
               <ul className="space-y-3">
-                {['Done in about 20 minutes', 'From your couch, anytime', 'Plain language throughout', 'One clear price, no surprises'].map((item, i) => (
+                {['Check the facts supplied in the intake', 'Review flags and questions that need follow-up', 'Edit the selected clauses when needed', 'Treat generated documents as drafts pending approval'].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 text-sm text-[#2D2D2D]"><Check className="h-4 w-4 text-[#7BA68C]" />{item}</li>
                 ))}
               </ul>
               <Link href={startHref}>
                 <Button className={`${navyBtn} mt-6 w-full rounded-lg py-5 text-sm font-semibold`}>{startLabel} — Free</Button>
               </Link>
-              <p className="mt-2 text-center text-xs text-[#2D2D2D]/45">Start free · You&apos;re not charged until you download.</p>
+              <p className="mt-2 text-center text-xs text-[#2D2D2D]/45">Start the questionnaire without a credit card.</p>
             </motion.div>
           </motion.div>
         </div>
       </section>
 
-      {/* Client Voices — testimonials */}
+      {/* Intake topics — factual substitute for pre-launch testimonials. */}
       <section className="py-20 md:py-28">
         <div className="ezw-container">
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="mb-14 text-center">
-            <motion.p variants={fadeUp} className="mb-3 text-sm font-semibold uppercase tracking-wider text-[#7BA68C]">Client Voices</motion.p>
-            <motion.h2 variants={fadeUp} className="text-display text-3xl font-bold text-[#1B2A4A] md:text-4xl">Ontario families, finally at ease.</motion.h2>
+            <motion.p variants={fadeUp} className="mb-3 text-sm font-semibold uppercase tracking-wider text-[#7BA68C]">What you will organize</motion.p>
+            <motion.h2 variants={fadeUp} className="text-display text-3xl font-bold text-[#1B2A4A] md:text-4xl">The facts your legal team needs.</motion.h2>
           </motion.div>
-          {/* ⚠ PRE-LAUNCH: swap for genuine client quotes with written consent before launch. */}
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-60px' }} variants={stagger} className="mx-auto grid max-w-5xl gap-6 md:grid-cols-3">
             {[
-              { quote: 'I’d put off my will for years because I dreaded the lawyer’s office. I answered the questions over a cup of tea, and a real lawyer checked everything. My kids are finally protected.', name: 'Margaret T.', city: 'Mississauga' },
-              { quote: 'As a small-business owner I had real questions, and I got real answers from a licensed Ontario lawyer — not a chatbot.', name: 'David R.', city: 'Ottawa' },
-              { quote: 'My parents needed the questionnaire in Korean. They answered in their own language and the lawyer handled the rest.', name: 'Grace L.', city: 'Toronto' },
-            ].map((t, i) => (
+              { icon: Users, title: 'Family and decision-makers', text: 'Record your spouse, children, executors, guardians, and attorneys, including backup choices.' },
+              { icon: ScrollText, title: 'Assets and obligations', text: 'Give the legal team a structured picture of property, accounts, businesses, debts, and special circumstances.' },
+              { icon: FileText, title: 'Gifts and final wishes', text: 'Describe specific gifts, residue beneficiaries, funeral wishes, and questions that need legal advice.' },
+            ].map((topic, i) => (
               <motion.div
                 key={i}
                 variants={fadeUp}
                 whileHover={{ y: -3 }}
                 className="flex flex-col rounded-xl border border-[#E8E4DF] bg-white p-7 shadow-sm"
               >
-                <Quote className="mb-4 h-7 w-7 text-[#C9A84C]/40" />
-                <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={{ visible: { transition: { staggerChildren: 0.08 } } }} className="mb-4 flex gap-0.5">
-                  {Array.from({ length: 5 }).map((_, s) => (
-                    <motion.span key={s} variants={{ hidden: { scale: 0, rotate: 6 }, visible: { scale: 1, rotate: 0, transition: { type: 'spring', stiffness: 300, damping: 16 } } }}>
-                      <Star className="h-4 w-4 fill-[#C9A84C] text-[#C9A84C]" />
-                    </motion.span>
-                  ))}
-                </motion.div>
-                <p className="flex-1 text-[15px] leading-relaxed text-[#2D2D2D]/75">&ldquo;{t.quote}&rdquo;</p>
-                <p className="mt-5 text-sm font-semibold text-[#1B2A4A]">{t.name}<span className="font-normal text-[#2D2D2D]/45"> · {t.city}</span></p>
+                <topic.icon className="mb-5 h-8 w-8 text-[#C9A84C]" />
+                <h3 className="mb-3 text-lg font-semibold text-[#1B2A4A]">{topic.title}</h3>
+                <p className="flex-1 text-[15px] leading-relaxed text-[#2D2D2D]/70">{topic.text}</p>
               </motion.div>
             ))}
           </motion.div>
@@ -619,14 +569,12 @@ function HomePageInner() {
             <motion.div variants={fadeUp} className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-white/15">
               <ShieldCheck className="h-7 w-7 text-white" />
             </motion.div>
-            <motion.h2 variants={fadeUp} className="text-display mb-4 text-3xl font-bold md:text-4xl">Start with zero risk.</motion.h2>
+            <motion.h2 variants={fadeUp} className="text-display mb-4 text-3xl font-bold md:text-4xl">Start with the facts.</motion.h2>
             <motion.p variants={fadeUp} className="mx-auto mb-7 max-w-2xl text-lg leading-relaxed text-white">
-              Build your entire will for free and take all the time you need. You pay nothing until a licensed Ontario estate lawyer has reviewed your documents and they&apos;re ready to download. No credit card to begin. And if your lawyer determines your situation needs in-person work, we&apos;ll tell you honestly — and you owe nothing.
+              Complete the questionnaire at your own pace and return with your private link. Your answers help the legal team understand your circumstances; they do not create a final will or replace advice about what your plan should contain.
             </motion.p>
             <motion.div variants={fadeUp} className="mb-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-medium text-white">
-              {/* NOTE: no "money-back guarantee" claim — that is a real refund commitment
-                  that needs a written, published policy before it can be advertised. */}
-              {['No card required', '$0 due today', 'Lawyer-reviewed or you don’t pay', 'Cancel anytime before you pay'].map((c, i) => (
+              {['No card required for intake', 'Save and return later', 'Draft-only legal output', 'Lawyer review required'].map((c, i) => (
                 <span key={i} className="inline-flex items-center gap-1.5"><Check className="h-4 w-4" />{c}</span>
               ))}
             </motion.div>
@@ -658,14 +606,14 @@ function HomePageInner() {
             <motion.p variants={fadeUp} className="mb-3 text-sm font-semibold uppercase tracking-wider text-[#7BA68C]">Plans</motion.p>
             <motion.h2 variants={fadeUp} className="text-display mb-4 text-3xl font-bold text-[#1B2A4A] md:text-4xl">Choose the protection that fits your family</motion.h2>
             <motion.p variants={fadeUp} className="mx-auto max-w-2xl text-[15px] leading-relaxed text-[#2D2D2D]/60">
-              Start free with any plan — you choose and pay only when your documents are ready to download. Not sure which fits? Begin now and decide later; your answers carry over.
+              These packages describe the intended service scope. Confirm the package, fee, and engagement terms with the firm before relying on them.
             </motion.p>
           </motion.div>
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="mx-auto mt-10 grid max-w-5xl gap-8 md:grid-cols-3">
             {[
-              { name: 'Essential', price: '$499', desc: 'For individuals with straightforward wishes', features: ['Last Will & Testament', 'Executor & backup executor', 'Residue distribution', 'Free updates for 1 year', 'Signing guide included'], highlighted: false },
-              { name: 'Complete', price: '$699', desc: 'For individuals who want full protection', features: ['Everything in Essential', 'Power of Attorney (Property)', 'Power of Attorney (Personal Care)', 'Free updates for 3 years', 'Priority lawyer review'], highlighted: true },
-              { name: 'Couples', price: '$899', desc: 'For couples planning together', features: ['Two complete will packages', 'Mirror wills option', 'Shared asset planning', 'Free updates for 5 years', 'Dedicated lawyer support'], highlighted: false },
+              { name: 'Essential', price: '$499', desc: 'For individuals with straightforward wishes', features: ['Last Will & Testament intake', 'Executor & backup executor', 'Residue instructions', 'Questions prepared for lawyer review', 'Signing requirements discussed by the firm'], highlighted: false },
+              { name: 'Complete', price: '$699', desc: 'For individual will and POA planning', features: ['Everything in Essential', 'Power of Attorney (Property) intake', 'Power of Attorney (Personal Care) intake', 'Personal-care wishes and restrictions', 'One structured file for legal review'], highlighted: true },
+              { name: 'Couples', price: '$899', desc: 'For couples planning together', features: ['Two individual intake files', 'Coordinated family information', 'Shared asset questions', 'Separate executor and attorney choices', 'Legal review required for each person'], highlighted: false },
             ].map((plan, i) => (
               <motion.div
                 key={i}
@@ -680,7 +628,7 @@ function HomePageInner() {
                     transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                     className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#C9A84C] px-3 py-1 text-xs font-semibold text-white"
                   >
-                    Most Popular
+                    Complete package
                   </motion.div>
                 )}
                 <h3 className="mb-1 text-lg font-semibold text-[#1B2A4A]">{plan.name}</h3>
@@ -694,7 +642,7 @@ function HomePageInner() {
                 <Link href={startHref}>
                   <Button className={`w-full rounded-lg py-5 text-sm font-semibold ${plan.highlighted ? navyBtn : 'border border-[#1B2A4A]/20 bg-white text-[#1B2A4A] hover:bg-[#1B2A4A]/5'}`}>Get Started</Button>
                 </Link>
-                <p className="mt-2 text-center text-xs text-[#2D2D2D]/45">Free to start · pay at download</p>
+                <p className="mt-2 text-center text-xs text-[#2D2D2D]/45">No card required for the questionnaire</p>
               </motion.div>
             ))}
           </motion.div>
@@ -747,12 +695,12 @@ function HomePageInner() {
           </motion.div>
           <Accordion type="single" collapsible className="space-y-3">
             {[
-              { q: 'Is this legally valid in Ontario?', a: 'Yes. EzWill documents are developed by licensed Ontario estate lawyers and comply with the Ontario Succession Law Reform Act. When properly signed and witnessed, your will is fully legally binding.' },
+              { q: 'Is this legally valid in Ontario?', a: 'EzWill prepares draft Ontario estate-planning documents for lawyer review. Your lawyer must confirm that the documents fit your circumstances and explain the signing and witnessing requirements before you rely on them.' },
               { q: 'Do I need any legal knowledge?', a: "Not at all. We ask you simple questions in plain language about your life, family, and wishes. Our system translates your answers into proper legal structure for your lawyer to finalize." },
               { q: 'Can clients use Korean?', a: 'Yes. The full intake questionnaire is available in English and 한국어 — toggle the language at any time. Your generated legal documents are prepared in English.' },
-              { q: 'How long does it take?', a: 'Most people complete the questionnaire in about 20 minutes. You can save your progress with your private link and come back anytime — there is no pressure to finish in one sitting.' },
+              { q: 'How long does it take?', a: 'Take the time you need. You can save your progress with your private link and return later, so there is no pressure to finish in one sitting.' },
               { q: 'What if my situation is complicated?', a: 'EzWill is designed for straightforward estate planning, and surfaces Ontario-specific flags for your lawyer. For complex business structures, international assets, or blended-family situations, your lawyer will advise on next steps.' },
-              { q: 'Can the lawyer edit clauses?', a: 'Yes. Your answers assemble a draft in the lawyer clause editor, where your lawyer reviews and edits every clause, then generates the final Word document for signing.' },
+              { q: 'Can the lawyer edit clauses?', a: 'Yes. Your answers assemble a draft in the lawyer clause editor, where the legal team can review and edit the selected clauses before approving a document for client review.' },
             ].map((item, i) => (
               <AccordionItem key={i} value={`item-${i}`} className="rounded-xl border border-[#E8E4DF] bg-white px-6">
                 <AccordionTrigger className="py-5 text-left font-medium text-[#1B2A4A] hover:no-underline">{item.q}</AccordionTrigger>
@@ -773,7 +721,7 @@ function HomePageInner() {
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}>
             <motion.h2 variants={fadeUp} className="text-display mx-auto mb-4 max-w-3xl text-3xl font-bold text-white md:text-4xl">The best time was years ago. The next best time is tonight.</motion.h2>
             <motion.p variants={fadeUp} className="mx-auto mb-8 max-w-xl text-lg text-white/60">
-              In about 20 minutes you can give the people you love something the law can never provide: your own words. Start free — your Ontario lawyer reviews it before you ever pay.
+              Organize the decisions your family may need later, save your work as you go, and give your legal team a clearer file to review.
             </motion.p>
             <motion.div variants={fadeUp}>
               <Link href={startHref}>
@@ -793,7 +741,7 @@ function HomePageInner() {
                 </Button>
               </Link>
             </motion.div>
-            <motion.p variants={fadeUp} className="mt-5 text-sm text-white/45">No credit card · Pay only when your documents are ready</motion.p>
+            <motion.p variants={fadeUp} className="mt-5 text-sm text-white/45">No credit card required for the questionnaire</motion.p>
           </motion.div>
         </div>
       </section>
@@ -853,7 +801,7 @@ function HomePageInner() {
           >
             <div className="ezw-container flex items-center justify-between gap-4 py-3">
               <p className="hidden text-sm font-medium text-[#1B2A4A] sm:block">
-                Ready when you are — start free, ~20 min, no card.
+                Ready when you are — start free and save as you go.
               </p>
               <div className="flex flex-1 items-center justify-end gap-2">
                 <Link href={startHref} className="flex-1 sm:flex-none">

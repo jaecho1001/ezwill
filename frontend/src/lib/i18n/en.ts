@@ -424,7 +424,7 @@ export const en = {
   review_itemsAbove: "items above",
   review_nextStep2B: ").",
   review_nextStep3: "You will sign your Will in person with 2 witnesses. Ontario does NOT permit fully electronic Wills — physical signing is required (SLRA s.4).",
-  review_nextStep4: "Your POAs are signed separately with 1 witness and no beneficiaries as witnesses.",
+  review_nextStep4: "Your POAs are signed separately in the presence of 2 witnesses. Ask your lawyer who may act as a witness.",
   review_submitting: "Submitting...",
   review_submitToLawyer: "Submit to My Lawyer",
   review_downloadSummaryPdf: "Download Summary PDF",

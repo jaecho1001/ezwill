@@ -114,6 +114,26 @@ CLAUSE_COMPLETE = [{
     "title": "Revocation",
 }]
 
+RESIDUE_CLAUSE_MATCHING = [{
+    "clause_id": "res-named-shares",
+    "included": True,
+    "customText": (
+        "I give 60% of the residue of my estate to Alex Kim and "
+        "40% to Sam Lee."
+    ),
+    "section": "Residue",
+    "sortOrder": 1,
+    "title": "Named residue gifts",
+}]
+
+POA_CARE_WISHES = [{
+    "clause_id": "poa-care-wishes",
+    "included": True,
+    "templateText": "My attorney shall withhold life-sustaining treatment.",
+    "sortOrder": 1,
+    "title": "End-of-life wishes",
+}]
+
 FULL_VARIABLES = {
     "testatorFullName": "HYUN JUNG KIM",
     "documentDate": "July 19, 2026",
@@ -314,6 +334,116 @@ def test_generate_complete_document_passes(client):
         "/api/documents/draft-1/generate",
         json={"document_type": "single_will", "format": "docx"},
     )
+    assert res.status_code == 200
+    assert len(FakeDb.generated_records) == 1
+
+
+def test_generate_rejects_residue_clause_that_omits_client_shares(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = CLAUSE_COMPLETE
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={
+                "beneficiaries": [
+                    {"fullName": "Alex Kim", "sharePercent": 60},
+                    {"fullName": "Sam Lee", "sharePercent": 40},
+                ],
+                "residueDistribution": "percentages",
+            },
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+
+    assert res.status_code == 422
+    detail = res.json()["detail"]
+    assert (
+        documents_route.RESIDUE_INSTRUCTION_GAP
+        in detail["instruction_gaps"]
+    )
+    assert FakeDb.generated_records == []
+
+
+def test_generate_accepts_custom_residue_clause_matching_client_shares(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = RESIDUE_CLAUSE_MATCHING
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={
+                "beneficiaries": [
+                    {"fullName": "Alex Kim", "sharePercent": 60},
+                    {"fullName": "Sam Lee", "sharePercent": 40},
+                ],
+                "residueDistribution": "percentages",
+            },
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "single_will", "format": "docx"},
+    )
+
+    assert res.status_code == 200
+    assert len(FakeDb.generated_records) == 1
+
+
+def test_generate_rejects_end_of_life_clause_without_client_instruction(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = POA_CARE_WISHES
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={"poa": {"personalCare": {"lifeSupport": "unsure"}}},
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "poa_personal_care", "format": "docx"},
+    )
+
+    assert res.status_code == 422
+    detail = res.json()["detail"]
+    assert (
+        documents_route.END_OF_LIFE_INSTRUCTION_GAP
+        in detail["instruction_gaps"]
+    )
+    assert FakeDb.generated_records == []
+
+
+def test_generate_accepts_end_of_life_clause_after_affirmative_instruction(
+    client, monkeypatch
+):
+    FakeDb.clause_selections = POA_CARE_WISHES
+    monkeypatch.setattr(
+        documents_route,
+        "get_full_draft",
+        lambda draft_id, schema: dict(
+            DRAFT,
+            vault={"poa": {"personalCare": {"lifeSupport": "withhold"}}},
+        ),
+    )
+
+    res = client.post(
+        "/api/documents/draft-1/generate",
+        json={"document_type": "poa_personal_care", "format": "docx"},
+    )
+
     assert res.status_code == 200
     assert len(FakeDb.generated_records) == 1
 

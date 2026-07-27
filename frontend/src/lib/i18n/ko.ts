@@ -412,7 +412,7 @@ export const ko = {
   review_itemsAbove: "위 항목을",
   review_nextStep2B: " 포함한 모든 사항을 논의하기 위해 연락드립니다.",
   review_nextStep3: "귀하는 2명의 증인이 참석한 가운데 직접 유언장에 서명하게 됩니다. 온타리오주는 완전한 전자 유언장을 허용하지 않으며, 실물 서명이 필요합니다 (SLRA 제4조).",
-  review_nextStep4: "위임장은 별도로 1명의 증인과 함께 서명하며, 수혜자는 증인이 될 수 없습니다.",
+  review_nextStep4: "위임장은 별도로 2명의 증인이 참석한 가운데 서명합니다. 증인이 될 수 있는 사람은 변호사에게 확인하십시오.",
   review_submitting: "제출 중...",
   review_submitToLawyer: "변호사에게 제출",
   review_downloadSummaryPdf: "요약 PDF 다운로드",

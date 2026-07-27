@@ -61,6 +61,12 @@ describe('buildDefaultSelections', () => {
     }
   })
 
+  it('does not presume personal-care or organ-donation instructions', () => {
+    const ids = buildDefaultSelections('poa_personal_care').map((clause) => clause.clauseId)
+    expect(ids).not.toContain('poa-care-wishes')
+    expect(ids).not.toContain('poa-care-organ')
+  })
+
   it('short-form will has a compact default clause set', () => {
     const shortSelections = buildDefaultSelections('simple_will_short')
     const standardSelections = buildDefaultSelections('single_will')

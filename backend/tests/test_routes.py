@@ -15,12 +15,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 # ── Mock external dependencies not installed in test environment ─────
 
-# Mock psycopg2 (database driver)
-for mod_name in [
-    'psycopg2', 'psycopg2.pool', 'psycopg2.extras', 'psycopg2.sql',
-]:
-    sys.modules[mod_name] = MagicMock()
-
 # Mock dotenv
 sys.modules['dotenv'] = MagicMock()
 
