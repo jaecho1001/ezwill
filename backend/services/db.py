@@ -580,17 +580,27 @@ class EWDbWriter:
     def update_document_generated(self, draft_id: str, document_type: str, file_path: str) -> bool:
         """Mark a document as generated with its file path.
 
-        Re-generation clears any prior lawyer approval (#86): the approved
-        text no longer exists, so the approval must be given again on the
-        new bytes rather than silently carrying over.
+        UPSERT, not UPDATE: most drafts never get an explicit config row (the
+        document picker only writes one on manual toggle), and the plain
+        UPDATE matched zero rows for them — generated_at was never recorded,
+        which made lawyer approval (#86) structurally impossible on the
+        default path. Caught by the end-to-end journey test.
+
+        Re-generation clears any prior lawyer approval: the approved text no
+        longer exists, so approval must be given again on the new bytes.
         """
         self.execute("""
-            UPDATE ew_document_configs
-            SET generated_at = now(), generated_file_path = %s,
-                lawyer_approved_at = NULL, lawyer_approved_by = NULL,
+            INSERT INTO ew_document_configs
+                (draft_id, document_type, enabled, generated_at,
+                 generated_file_path)
+            VALUES (%s, %s, true, now(), %s)
+            ON CONFLICT (draft_id, document_type) DO UPDATE SET
+                generated_at = now(),
+                generated_file_path = EXCLUDED.generated_file_path,
+                lawyer_approved_at = NULL,
+                lawyer_approved_by = NULL,
                 updated_at = now()
-            WHERE draft_id = %s AND document_type = %s
-        """, (file_path, draft_id, document_type))
+        """, (draft_id, document_type, file_path))
         return True
 
     # ── Document generations (audit trail) ────────────────────────────────────

@@ -85,7 +85,7 @@ describe('mergeSelectionsWithDefaults with data support', () => {
   it("a stored row — the lawyer's explicit choice — always wins", () => {
     const merged = mergeSelectionsWithDefaults(
       'single_will',
-      [{ clauseId: 'gifts-item', included: true, sortOrder: 5 }],
+      [{ clauseId: 'gifts-item', included: true, sortOrder: 5, section: 'Gifts', aiGenerated: false }],
       new Set(),
       supportedConditionalClauseIds(EMPTY_DRAFT),
     )
