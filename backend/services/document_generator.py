@@ -1503,6 +1503,8 @@ class DocumentGenerator:
         clause_selections: dict[str, list[dict]],
         variables: dict,
         missing_by_doc: Optional[dict] = None,
+        per_doc_variables: Optional[dict] = None,
+        signing_data_by_doc: Optional[dict] = None,
     ) -> dict[str, bytes]:
         """
         Generate all required documents for a client.
@@ -1524,11 +1526,18 @@ class DocumentGenerator:
                 continue
             try:
                 missing: set = set()
+                # Per-document enrichment (#84): dual-will companion titles
+                # and recorded-signing facts differ per document type.
+                doc_variables = variables
+                extra = (per_doc_variables or {}).get(doc_type)
+                if extra:
+                    doc_variables = {**variables, **extra}
                 docx_bytes = self.generate_document(
                     document_type=doc_type,
                     clauses=clauses,
-                    variables=variables,
+                    variables=doc_variables,
                     missing=missing,
+                    signing_data=(signing_data_by_doc or {}).get(doc_type),
                 )
                 results[doc_type] = docx_bytes
                 if missing_by_doc is not None and missing:

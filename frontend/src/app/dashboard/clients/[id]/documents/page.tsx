@@ -45,6 +45,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
   const [generatingAll, setGeneratingAll] = useState(false)
   const [previewDoc, setPreviewDoc] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [blockedDocType, setBlockedDocType] = useState<string | null>(null)
 
   useEffect(() => {
     getDraft(id)
@@ -147,16 +148,17 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
     }
   }
 
-  async function handleGenerate(docType: string) {
+  async function handleGenerate(docType: string, allowIncomplete = false) {
     setGenerating(docType)
     setActionError(null)
+    setBlockedDocType(null)
 
     // Call the generation API
     try {
       const res = await fetch(`/api/documents/${id}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ document_type: docType }),
+        body: JSON.stringify({ document_type: docType, allow_incomplete: allowIncomplete }),
       })
 
       if (res.ok) {
@@ -171,6 +173,9 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
         // Surface WHY (missing placeholder fields, payment required, ...)
         // instead of silently downgrading the row to draft.
         setActionError(await extractApiErrorDetail(res))
+        // A 422 is overridable by a deliberate lawyer decision (#84);
+        // remember which document so the banner can offer the override.
+        if (res.status === 422) setBlockedDocType(docType)
         setDocuments((prev) =>
           prev.map((doc) =>
             doc.docType === docType
@@ -263,7 +268,25 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
 
       {actionError && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-          {actionError}
+          <p>{actionError}</p>
+          {blockedDocType && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => {
+                if (window.confirm(
+                  'Generate this document anyway, with unresolved blanks or '
+                  + 'mismatched instructions left in place? This is recorded '
+                  + 'as a deliberate override on the audit trail.'
+                )) {
+                  void handleGenerate(blockedDocType, true)
+                }
+              }}
+            >
+              Generate anyway (lawyer override)
+            </Button>
+          )}
         </div>
       )}
 

@@ -231,20 +231,85 @@ export function affirmedPersonalCareClauseIds(
 }
 
 /**
+ * Clauses that are only fillable when the client actually supplied the
+ * matching data (#84). Included-by-default with no data, each one guaranteed
+ * an unresolved-placeholder 422 on every generation: a specific-gift clause
+ * with no gift, a Henson trust with no ODSP facts, an RESP power with no
+ * RESP. Default-on was the reason "a complete intake could not deliver
+ * 7 of 9 document types".
+ */
+export const DATA_CONDITIONAL_CLAUSES: ReadonlySet<string> = new Set([
+  'gifts-item', 'gifts-cash', 'gifts-charity',
+  'trust-henson', 'trust-spousal', 'powers-resp',
+])
+
+/** Which data-conditional clauses this draft's answers can actually fill. */
+export function supportedConditionalClauseIds(
+  draft: Record<string, unknown>
+): ReadonlySet<string> {
+  const vault = asRecord(draft.vault)
+  const gifts = Array.isArray(vault.gifts) ? (vault.gifts as unknown[]).map(asRecord) : []
+  const estate = asRecord(draft.your_estate ?? draft.yourEstate)
+  const legacyGifts = Array.isArray(estate.gifts) ? (estate.gifts as unknown[]).map(asRecord) : []
+  const legacyDonations = Array.isArray(estate.donations) ? (estate.donations as unknown[]).map(asRecord) : []
+  const goals = asRecord(vault.goals)
+  const children = Array.isArray(vault.children) ? (vault.children as unknown[]).map(asRecord) : []
+  const assets = asRecord(vault.assets)
+  const assetItems = Array.isArray(assets.items) ? (assets.items as unknown[]).map(asRecord) : []
+  const legacyAssets = Array.isArray(draft.assets) ? (draft.assets as unknown[]).map(asRecord) : []
+
+  const supported = new Set<string>()
+  const nonMoneyGift = (g: Record<string, unknown>) =>
+    g.type !== 'charity' && g.type !== 'cash' && Boolean(g.description)
+  if (
+    gifts.some((g) => nonMoneyGift(g) && Boolean(g.recipientName))
+    || legacyGifts.some(nonMoneyGift)
+  ) supported.add('gifts-item')
+  if (
+    gifts.some((g) => g.type === 'cash' && g.amount != null && Boolean(g.recipientName))
+    || legacyGifts.some((g) => g.type === 'cash' && g.amount != null)
+  ) supported.add('gifts-cash')
+  if (
+    gifts.some((g) => Boolean(g.charityName))
+    || legacyDonations.some((g) => Boolean(g.charityName))
+    || legacyGifts.some((g) => Boolean(g.charityName))
+  ) supported.add('gifts-charity')
+  if (goals.henson === true || children.some((c) => c.receivesODSP === true)) {
+    supported.add('trust-henson')
+  }
+  if (goals.spousalTrust === true) supported.add('trust-spousal')
+  if (
+    assetItems.some((i) => i.type === 'registered_plan')
+    || legacyAssets.some((a) =>
+      (a.asset_type ?? a.assetType) === 'resp' || a.isRESP === true)
+  ) supported.add('powers-resp')
+  return supported
+}
+
+/**
  * Merge persisted selections with the current default set.
  *
  * Persisted rows always win, including an explicit `included: false`. Defaults
  * that were introduced after a draft was last saved are appended so the Will
  * Editor never opens with an incomplete legacy default set. Personal-care
  * clauses that used to be defaults are forced off unless the client supplied
- * the matching affirmative instruction.
+ * the matching affirmative instruction. Data-conditional clauses default OFF
+ * unless the draft's answers can fill them — a stored row (the lawyer's
+ * explicit choice) always overrides that.
  */
 export function mergeSelectionsWithDefaults(
   docType: WillDocumentType,
   stored: SelectedWillClause[],
   affirmedSensitiveClauseIds: ReadonlySet<string> = new Set(),
+  supportedConditionalIds: ReadonlySet<string> | null = null,
 ): SelectedWillClause[] {
-  const defaults = buildDefaultSelections(docType)
+  const defaults = buildDefaultSelections(docType).map((defaultClause) => (
+    supportedConditionalIds !== null
+    && DATA_CONDITIONAL_CLAUSES.has(defaultClause.clauseId)
+    && !supportedConditionalIds.has(defaultClause.clauseId)
+      ? { ...defaultClause, included: false }
+      : defaultClause
+  ))
   const safeStored = stored.map((clause) => (
     docType === 'poa_personal_care'
     && SENSITIVE_PERSONAL_CARE_CLAUSES.has(clause.clauseId)

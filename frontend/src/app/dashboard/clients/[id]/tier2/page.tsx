@@ -11,6 +11,7 @@ import {
   buildDefaultSelections,
   mergeSelectionsWithDefaults,
   affirmedPersonalCareClauseIds,
+  supportedConditionalClauseIds,
 } from '@/lib/will-documents/index'
 import {
   serializeSelectionsForSave,
@@ -45,6 +46,9 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
         const affirmedSensitiveClauses = affirmedPersonalCareClauseIds(
           res as unknown as Record<string, unknown>
         )
+        const supportedConditional = supportedConditionalClauseIds(
+          res as unknown as Record<string, unknown>
+        )
 
         // Load clauses from dedicated clause API
         const initial: Record<string, SelectedWillClause[]> = {}
@@ -63,6 +67,7 @@ export default function Tier2Page({ params }: { params: Promise<{ id: string }> 
                   docType.id,
                   deserializeStoredClauses(rows),
                   affirmedSensitiveClauses,
+                  supportedConditional,
                 )
               } else {
                 initial[docType.id] = buildDefaultSelections(docType.id)

@@ -269,6 +269,9 @@ class FakeDb:
     def get_firm_settings(self):
         return {}
 
+    def get_signing_events(self, draft_id):
+        return []
+
     def record_document_generation(self, draft_id, document_type, file_format,
                                    content, generated_by="dashboard", params=None):
         return {

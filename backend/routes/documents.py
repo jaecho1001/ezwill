@@ -142,6 +142,79 @@ def _clause_to_html(clause: dict, variables: dict, missing: set = None) -> str:
     return resolve_variables(text, variables, missing)
 
 
+# Which recorded signing event backs each generated document (#84). The
+# ew_signing_events check constraint uses its own keys; affidavits of
+# execution attest the WILL's signing, so they read the will's event.
+_SIGNING_EVENT_KEY = {
+    "simple_will_short": "will",
+    "single_will": "will",
+    "probate_will": "primary_will",
+    "non_probate_will": "private_will",
+    "poa_property": "poa_property",
+    "poa_personal_care": "poa_personal_care",
+    "affidavit_execution": "will",
+    "affidavit_execution_probate": "primary_will",
+    "affidavit_execution_non_probate": "private_will",
+}
+
+
+def _signing_overlay(db, draft_id: str, document_type: str) -> tuple[dict, dict]:
+    """(signing_data, variable overrides) from the recorded signing event.
+
+    Before this, the generate routes never passed signing_data at all, so the
+    affidavit's deponent (the attesting witness) could only ever come from
+    firm-settings defaults — recorded facts about the actual signing were
+    ignored (#84). Recorded witnesses override defaults: they are what
+    actually happened. The commissioner stays fill-at-commissioning, and the
+    page count is unknowable before rendering; both remain manual blanks.
+    """
+    key = _SIGNING_EVENT_KEY.get(document_type)
+    if not key:
+        return {}, {}
+    events = {e["document_type"]: dict(e) for e in db.get_signing_events(draft_id) or []}
+    event = events.get(key)
+    if not event:
+        return {}, {}
+
+    overrides = {}
+    if event.get("witness1_name"):
+        overrides["witness1Name"] = event["witness1_name"]
+        overrides["otherWitnessName"] = event["witness1_name"]
+        overrides["deponentName"] = event["witness1_name"]
+    if event.get("witness1_address"):
+        overrides["witness1Address"] = event["witness1_address"]
+    if event.get("witness2_name"):
+        overrides["witness2Name"] = event["witness2_name"]
+    if event.get("witness2_address"):
+        overrides["witness2Address"] = event["witness2_address"]
+    if event.get("location"):
+        overrides["deponentCity"] = event["location"]
+        overrides["deponentCityName"] = event["location"]
+    if event.get("signed_at"):
+        overrides["dateOfWill"] = event["signed_at"].strftime("%B %d, %Y") \
+            if hasattr(event["signed_at"], "strftime") else str(event["signed_at"])
+    signing_data = {
+        "deponentName": overrides.get("deponentName"),
+        "signingMethod": event.get("signing_method"),
+        "remotePlatform": event.get("platform"),
+    }
+    return {k: v for k, v in signing_data.items() if v}, overrides
+
+
+def _derived_title_variables(document_type: str) -> dict:
+    """Dual-will companion titles (#84): derived, not client-entered.
+
+    'Trustee' matches the TypeScript projection (vault-to-variables.ts sets
+    trusteeTitle='Trustee'); the two are documented mirrors.
+    """
+    derived = {"trusteeTitle": "Trustee", "otherTrusteeTitle": "Trustee"}
+    if document_type in {"probate_will", "affidavit_execution_probate"}:
+        derived["otherWillType"] = "Non-Probate Will"
+    elif document_type in {"non_probate_will", "affidavit_execution_non_probate"}:
+        derived["otherWillType"] = "Probate Will"
+    return derived
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 def _enforce_payment_gate(draft: dict, draft_id: str, override_payment: bool) -> None:
@@ -203,6 +276,12 @@ async def generate_document(
         )
 
     variables = _build_variables(draft)
+    # #84: dual-will companion titles are derived, and recorded signing facts
+    # (attesting witness, location, date) override firm-settings defaults.
+    variables.update(_derived_title_variables(document_type))
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        signing_data, signing_overrides = _signing_overlay(db, draft_id, document_type)
+    variables.update(signing_overrides)
 
     missing: set = set()
     try:
@@ -211,6 +290,7 @@ async def generate_document(
             clauses=clauses,
             variables=variables,
             missing=missing,
+            signing_data=signing_data or None,
         )
     except Exception:
         logger.exception("Document generation failed for %s", document_type)
@@ -331,11 +411,23 @@ async def generate_all_documents(
 
     # Generate all documents
     missing_by_doc: dict = {}
+    per_doc_variables: dict = {}
+    signing_data_by_doc: dict = {}
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        for doc_type in filtered_selections:
+            signing_data, overrides = _signing_overlay(db, draft_id, doc_type)
+            per_doc_variables[doc_type] = {
+                **_derived_title_variables(doc_type), **overrides,
+            }
+            if signing_data:
+                signing_data_by_doc[doc_type] = signing_data
     results = _generator.generate_all_documents(
         draft_data=draft,
         clause_selections=filtered_selections,
         variables=variables,
         missing_by_doc=missing_by_doc,
+        per_doc_variables=per_doc_variables,
+        signing_data_by_doc=signing_data_by_doc,
     )
 
     instruction_gaps_by_doc: dict[str, set[str]] = {}
@@ -441,6 +533,10 @@ async def preview_document(
         clauses = [dict(c) for c in clauses] if clauses else []
 
     variables = _build_variables(draft)
+    variables.update(_derived_title_variables(document_type))
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        _preview_signing, preview_overrides = _signing_overlay(db, draft_id, document_type)
+    variables.update(preview_overrides)
 
     # Build HTML preview
     title = DOCUMENT_TITLES.get(document_type, document_type)
@@ -488,6 +584,7 @@ async def preview_document(
     try:
         _generator.generate_document(
             document_type=document_type,
+            signing_data=_preview_signing or None,
             clauses=clauses,
             variables=variables,
             missing=missing,

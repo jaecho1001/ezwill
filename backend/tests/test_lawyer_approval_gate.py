@@ -72,6 +72,9 @@ class FakeDb:
     def get_firm_settings(self):
         return {}
 
+    def get_signing_events(self, draft_id):
+        return []
+
     def get_review_approvals(self, draft_id):
         return list(type(self).approvals)
 
