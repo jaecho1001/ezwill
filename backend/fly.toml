@@ -1,0 +1,54 @@
+# Fly.io configuration for the EzWill FastAPI backend (issue #65).
+#
+# Pairs with: Vercel (frontend) + Supabase (PostgreSQL). Region yyz = Toronto,
+# keeping client data processing in Canada.
+#
+# First deploy (run from backend/):
+#   fly launch --no-deploy --copy-config --name ezwill-backend
+#   fly secrets set DATABASE_URL=... DEFAULT_SCHEMA=firm_demo \
+#     AUTH_SESSION_SECRET=... DASHBOARD_PASSWORD=... \
+#     ANTHROPIC_API_KEY=... STRIPE_SECRET_KEY=... STRIPE_WEBHOOK_SECRET=... \
+#     BASE_URL=https://<vercel-domain> FRONTEND_URL=https://<vercel-domain> \
+#     NOTIFICATION_MODE=smtp SMTP_HOST=... SMTP_PORT=587 \
+#     SMTP_USERNAME=... SMTP_PASSWORD=...
+#   fly deploy
+#
+# Migrations run in the release machine BEFORE new code takes traffic; a
+# failed migration aborts the deploy and the old version keeps serving.
+
+app = "ezwill-backend"
+primary_region = "yyz"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "python scripts/run_migrations.py"
+
+[env]
+  # Non-secret, environment-shaped settings. Secrets go in `fly secrets`.
+  SESSION_COOKIE_SECURE = "true"
+  TRUST_PROXY = "true"           # Fly's proxy sets X-Forwarded-For (#91)
+  NOTIFICATION_STRICT = "true"   # refuse to boot with log-and-discard email (#88)
+  ENABLE_HSTS = "true"
+  EZWILL_PORT = "8003"
+
+[http_service]
+  internal_port = 8003
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # A will-drafting session must not lose its backend mid-generation; keep
+  # one machine warm during the pilot.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/ready"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

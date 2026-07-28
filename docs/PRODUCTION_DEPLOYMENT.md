@@ -48,9 +48,14 @@ Vercel serverless functions are the wrong shape for this backend, for two concre
 
 ---
 
-## 3. Backend host (Fly.io shown; Render/Railway analogous)
+## 3. Backend host (Fly.io — config is committed)
 
-1. `fly launch` from `backend/` (it has a Dockerfile). No Postgres addon — point at Supabase.
+`backend/fly.toml` is in the repo (issue #65): Toronto region, health check on
+`/ready`, `TRUST_PROXY`/`SESSION_COOKIE_SECURE`/`NOTIFICATION_STRICT` preset,
+and **migrations run as the release command** — a failed migration aborts the
+deploy while the old version keeps serving.
+
+1. From `backend/`: `fly launch --no-deploy --copy-config` (accepts the committed fly.toml). No Postgres addon — point at Supabase.
 2. Set secrets (see §4):
    ```bash
    fly secrets set DATABASE_URL="postgresql://postgres.<project-ref>:…@<region>.pooler.supabase.com:5432/postgres" \
@@ -78,7 +83,9 @@ Vercel serverless functions are the wrong shape for this backend, for two concre
    - `TRUST_PROXY=true` — behind Fly/Vercel the client IP arrives in
      X-Forwarded-For; without this every rate-limit bucket collapses into
      one shared bucket for all clients (#91).
-3. Health check: the app serves `GET /` (returns `{"status": ...}`); point the platform health check there.
+3. Health check: committed fly.toml already points at `GET /ready` (which exercises the DB pool).
+4. Deploy: `fly deploy` from `backend/`. Watch the release logs for the migration output.
+5. **Bootstrap the first lawyer account (#52):** sign in once with the shared `DASHBOARD_PASSWORD`, open Settings → Lawyer accounts, create each lawyer (the first as `admin`), then have everyone use their own email login. Shared-password use is logged as deprecated and attributes actions to "dashboard" instead of a person.
 4. Note the public URL (e.g. `https://ezwill-backend.fly.dev`).
 
 ---
