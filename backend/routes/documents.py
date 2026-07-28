@@ -34,7 +34,7 @@ from services.instruction_guard import (
 )
 from services.pdf_converter import convert_to_pdf
 from services.payment_gate import payment_required
-from routes.auth import verify_dashboard_token
+from routes.auth import verify_dashboard_token, verify_dashboard_actor
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +244,7 @@ async def generate_document(
     draft_id: str,
     body: GenerateDocumentRequest,
     override_payment: bool = False,
-    _token: str = Depends(verify_dashboard_token),
+    actor: dict = Depends(verify_dashboard_actor),
 ):
     """
     Generate a single document for a draft.
@@ -347,7 +347,7 @@ async def generate_document(
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         record = db.record_document_generation(
             draft_id, document_type, file_format, content,
-            generated_by="dashboard",
+            generated_by=actor.get("name") or "dashboard",
             params={
                 "unresolved": sorted(missing),
                 "instruction_gaps": sorted(instruction_gaps),
@@ -368,7 +368,7 @@ async def generate_all_documents(
     draft_id: str,
     allow_incomplete: bool = False,
     override_payment: bool = False,
-    _token: str = Depends(verify_dashboard_token),
+    actor: dict = Depends(verify_dashboard_actor),
 ):
     """
     Generate all enabled documents for a draft.
@@ -473,7 +473,7 @@ async def generate_all_documents(
         for doc_type, docx_bytes in results.items():
             record = db.record_document_generation(
                 draft_id, doc_type, "docx", docx_bytes,
-                generated_by="dashboard",
+                generated_by=actor.get("name") or "dashboard",
                 params={
                     "unresolved": sorted(missing_by_doc.get(doc_type, set())),
                     "instruction_gaps": sorted(
@@ -642,7 +642,7 @@ async def list_documents(draft_id: str, _token: str = Depends(verify_dashboard_t
 async def approve_document(
     draft_id: str,
     document_type: str,
-    _token: str = Depends(verify_dashboard_token),
+    actor: dict = Depends(verify_dashboard_actor),
 ):
     """Record the lawyer's explicit approval of a generated document (#86).
 
@@ -690,9 +690,11 @@ async def approve_document(
                     for q in open_questions
                 ],
             })
-        # NOTE: lawyer_approved_by is the shared dashboard identity until
-        # per-lawyer accounts (#52) land; the column is ready for real names.
-        row = db.set_lawyer_approval(draft_id, document_type, "dashboard")
+        # The signing lawyer's real identity (#52); legacy shared-password
+        # sessions still record 'dashboard' until everyone has an account.
+        row = db.set_lawyer_approval(
+            draft_id, document_type, actor.get("name") or "dashboard"
+        )
         if row is None:
             raise HTTPException(409, "Generate the document before approving it")
 

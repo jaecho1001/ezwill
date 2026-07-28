@@ -20,14 +20,34 @@ export function getAuthHeaders(): Record<string, string> {
   return {}
 }
 
-export async function login(password: string): Promise<boolean> {
+export async function login(password: string, email?: string): Promise<boolean> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify(email?.trim() ? { password, email: email.trim() } : { password }),
   })
   // On success the backend sets the HttpOnly session cookie + readable flag.
+  if (res.ok) {
+    // Remember WHO signed in (#52) for display only — authorization always
+    // comes from the signed HttpOnly session, never from this value.
+    try {
+      const body = await res.json()
+      if (body?.actor?.name && typeof localStorage !== 'undefined') {
+        localStorage.setItem('ezwill.actor', JSON.stringify(body.actor))
+      }
+    } catch { /* display-only */ }
+  }
   return res.ok
+}
+
+export function currentActor(): { name: string; email?: string; role?: string } | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const raw = localStorage.getItem('ezwill.actor')
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
 }
 
 export async function logout() {
@@ -36,6 +56,7 @@ export async function logout() {
   } catch {
     // Network failure shouldn't strand the user — clear local state regardless.
   }
+  if (typeof localStorage !== 'undefined') localStorage.removeItem('ezwill.actor')
   if (typeof document !== 'undefined') {
     document.cookie = `${AUTHED_FLAG}=; path=/; max-age=0`
   }

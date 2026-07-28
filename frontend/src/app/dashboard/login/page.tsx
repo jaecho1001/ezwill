@@ -8,6 +8,7 @@ import { EzWillLogo } from '@/components/ui/brand'
 export default function LoginPage() {
   const router = useRouter()
   const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -17,11 +18,11 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const success = await login(password)
+      const success = await login(password, email)
       if (success) {
         router.push('/dashboard')
       } else {
-        setError('Invalid password. Please try again.')
+        setError(email.trim() ? 'Invalid email or password. Please try again.' : 'Invalid password. Please try again.')
       }
     } catch {
       setError('Unable to connect. Please try again later.')
@@ -44,6 +45,18 @@ export default function LoginPage() {
         <div className="rounded-xl border border-[#E8E4DF] bg-white p-8 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                Your email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@yourfirm.ca (leave blank for the shared firm login)"
+                className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B2A4A] focus:outline-none"
+                autoComplete="username"
+              />
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
                 Firm Password
               </label>

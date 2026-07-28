@@ -144,6 +144,141 @@ function InputField({
   )
 }
 
+
+// ----- Lawyer accounts (#52) -----
+
+interface LawyerRow {
+  id: string
+  email: string
+  full_name: string
+  role: string
+  active: boolean
+  last_login_at?: string | null
+}
+
+function LawyerAccountsSection() {
+  const [lawyers, setLawyers] = useState<LawyerRow[]>([])
+  const [me, setMe] = useState<{ name?: string; role?: string } | null>(null)
+  const [form, setForm] = useState({ email: '', fullName: '', password: '', role: 'lawyer' })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    fetch('/api/auth/lawyers', { headers: getAuthHeaders() })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (body) {
+          setLawyers(body.lawyers ?? [])
+          setMe(body.me ?? null)
+        }
+      })
+      .catch(() => {})
+  }
+  useEffect(load, [])
+
+  const addLawyer = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      const res = await fetch('/api/auth/lawyers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          email: form.email, full_name: form.fullName,
+          password: form.password, role: form.role,
+        }),
+      })
+      if (res.ok) {
+        setForm({ email: '', fullName: '', password: '', role: 'lawyer' })
+        load()
+      } else {
+        const body = await res.json().catch(() => null)
+        setError(typeof body?.detail === 'string' ? body.detail : 'Could not create the account.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setActive = async (id: string, active: boolean) => {
+    setError('')
+    const res = await fetch(`/api/auth/lawyers/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ active }),
+    })
+    if (res.ok) load()
+    else {
+      const body = await res.json().catch(() => null)
+      setError(typeof body?.detail === 'string' ? body.detail : 'Could not update the account.')
+    }
+  }
+
+  const isAdmin = me?.role === 'admin'
+  return (
+    <section className="rounded-xl border border-[#E8E4DF] bg-white p-6">
+      <h2 className="text-base font-semibold text-gray-900">Lawyer accounts</h2>
+      <p className="mt-1 text-sm text-gray-500">
+        Each lawyer signs in with their own email so approvals, generated
+        documents and client questions record who did what. The shared firm
+        password still works during the transition, but its actions are
+        recorded as &quot;dashboard&quot; rather than a person.
+      </p>
+
+      {lawyers.length > 0 && (
+        <ul className="mt-4 divide-y divide-[#E8E4DF] rounded-lg border border-[#E8E4DF]">
+          {lawyers.map((lawyer) => (
+            <li key={lawyer.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+              <span className="font-medium text-gray-900">{lawyer.full_name}</span>
+              <span className="text-gray-500">{lawyer.email}</span>
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{lawyer.role}</span>
+              {!lawyer.active && (
+                <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-600">deactivated</span>
+              )}
+              {isAdmin && (
+                <button
+                  className="ml-auto text-xs text-gray-500 underline hover:text-gray-800"
+                  onClick={() => setActive(lawyer.id, !lawyer.active)}
+                >
+                  {lawyer.active ? 'Deactivate' : 'Reactivate'}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {isAdmin ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Full name"
+            value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
+          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Email" type="email"
+            value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Initial password (12+ characters)" type="password"
+            value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <div className="flex items-center gap-2">
+            <select className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              <option value="lawyer">Lawyer</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button
+              className="rounded-lg bg-[#1B2A4A] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={busy || !form.email || !form.fullName || form.password.length < 12}
+              onClick={addLawyer}
+            >
+              Add lawyer
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-gray-400">Only an admin can add or deactivate accounts.</p>
+      )}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+    </section>
+  )
+}
+
 // ----- Main Page -----
 
 export default function SettingsPage() {
@@ -246,6 +381,8 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">Manage your firm configuration and preferences.</p>
       </div>
+
+      <LawyerAccountsSection />
 
       {/* Section A: Firm Information */}
       <section className="rounded-xl border border-[#E8E4DF] bg-white p-6">

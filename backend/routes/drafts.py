@@ -4,7 +4,7 @@ from collections import deque
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel
 from models import CreateDraftRequest, UpdateDraftRequest
-from routes.auth import verify_dashboard_token, verify_client_or_dashboard_draft_access
+from routes.auth import verify_dashboard_token, verify_dashboard_actor, verify_client_or_dashboard_draft_access
 from services.db import EWDbWriter
 from services.client_ip import client_ip
 import os
@@ -294,7 +294,7 @@ class ResolveQuestionRequest(BaseModel):
 async def ask_client_question(
     draft_id: str,
     body: AskQuestionRequest,
-    _token: str = Depends(verify_dashboard_token),
+    actor: dict = Depends(verify_dashboard_actor),
 ):
     """Lawyer sends the client a follow-up question. Required questions
     block lawyer approval of the targeted document (or every document
@@ -308,7 +308,7 @@ async def ask_client_question(
         question = db.create_client_question(
             draft_id, text, required=body.required,
             document_type=body.document_type, clause_id=body.clause_id,
-            section=body.section, asked_by="dashboard",
+            section=body.section, asked_by=actor.get("name") or "dashboard",
         )
 
     # Best-effort notification: the client answers via their existing

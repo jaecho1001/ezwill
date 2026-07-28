@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AuthGuard } from '@/components/dashboard/auth-guard'
 import { EzWillLogo } from '@/components/ui/brand'
-import { logout } from '@/lib/auth'
+import { currentActor, logout } from '@/lib/auth'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: 'home' },
@@ -94,6 +94,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Sign Out + Footer */}
           <div className="border-t border-[#E8E4DF] px-3 py-3">
+            {(() => {
+              const actor = currentActor()
+              return actor?.name && actor.name !== 'dashboard' ? (
+                <p className="mb-1 truncate px-3 text-xs text-gray-500">
+                  Signed in as <span className="font-medium text-gray-700">{actor.name}</span>
+                </p>
+              ) : null
+            })()}
             <button
               onClick={() => logout()}
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"

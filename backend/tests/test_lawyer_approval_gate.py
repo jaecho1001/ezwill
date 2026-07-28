@@ -135,7 +135,9 @@ def test_approve_records_actor_and_time(docs_client):
     res = docs_client.post("/api/documents/draft-1/single_will/approve")
     assert res.status_code == 200
     assert res.json()["approved"] is True
-    assert FakeDb.approval_calls == [("draft-1", "single_will", "dashboard")]
+    # The actor dependency composes over the overridden verify_dashboard_token,
+    # so the test override's token string surfaces as the recorded actor (#52).
+    assert FakeDb.approval_calls == [("draft-1", "single_will", "test-token")]
 
 
 def test_approval_blocked_by_instruction_gaps(docs_client, monkeypatch):

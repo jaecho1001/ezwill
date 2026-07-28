@@ -1,5 +1,7 @@
 """Simple password-based auth for the EZWill lawyer dashboard."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from pydantic import BaseModel
 from dataclasses import dataclass
@@ -12,6 +14,8 @@ import hashlib
 import hmac
 import json
 from services.client_ip import client_ip
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -63,6 +67,9 @@ class AuthContext:
 
 class LoginRequest(BaseModel):
     password: str
+    # Per-lawyer login (#52). Empty/absent = legacy shared-password mode,
+    # kept working through the transition (it acts as the bootstrap admin).
+    email: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -179,9 +186,19 @@ def _session_secret() -> bytes:
     return secret.encode()
 
 
-def _issue_session() -> str:
+def _issue_session(actor: dict | None = None) -> str:
     payload = {"purpose": "dashboard", "exp": int(time.time()) + SESSION_SECONDS,
                "nonce": secrets.token_urlsafe(12)}
+    if actor:
+        # WHO this session belongs to (#52): flows into approved_by,
+        # asked_by, generated_by. Signed with the session, so it cannot be
+        # altered client-side.
+        payload["actor"] = {
+            "id": str(actor.get("id")) if actor.get("id") else None,
+            "name": actor.get("full_name") or actor.get("name"),
+            "email": actor.get("email"),
+            "role": actor.get("role") or "lawyer",
+        }
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode()
     ).decode().rstrip("=")
@@ -213,6 +230,38 @@ def verify_dashboard_token(request: Request = None, authorization: str = Header(
     if not _is_active_dashboard_token(token):
         raise HTTPException(status_code=401, detail="Token expired or invalid")
     return token
+
+
+def _actor_from_token(token: str) -> dict:
+    """Decode the session's actor claim (#52).
+
+    Legacy shared-password sessions carry no actor and act as the bootstrap
+    admin named 'dashboard'. Test overrides that return a plain short string
+    surface that string as the actor name, which keeps audit assertions
+    readable in tests.
+    """
+    fallback_name = "dashboard"
+    try:
+        encoded, _sig = token.split(".", 1)
+        padding = "=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+        actor = payload.get("actor")
+        if isinstance(actor, dict) and actor.get("name"):
+            return {
+                "id": actor.get("id"),
+                "name": actor["name"],
+                "email": actor.get("email"),
+                "role": actor.get("role") or "lawyer",
+            }
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError, AttributeError):
+        if token and "." not in token and len(token) <= 64:
+            fallback_name = token
+    return {"id": None, "name": fallback_name, "email": None, "role": "admin"}
+
+
+def verify_dashboard_actor(token: str = Depends(verify_dashboard_token)) -> dict:
+    """Dashboard session + WHO it is. Use on every accountable action."""
+    return _actor_from_token(token)
 
 
 def verify_client_or_dashboard_access(
@@ -300,15 +349,38 @@ def verify_agent_or_dashboard_token(
 async def login(req: LoginRequest, request: Request, response: Response):
     client = client_ip(request)
     _check_rate_limit(client)
-    configured = _configured_password()
-    if not configured:
-        raise HTTPException(503, "Dashboard authentication is not configured")
-    if not _verify_password(req.password, configured):
-        _record_failed_login(client)
-        raise HTTPException(status_code=401, detail="Invalid password")
+
+    actor = None
+    if req.email and req.email.strip():
+        # Per-lawyer login (#52).
+        from services.db import EWDbWriter
+        with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+            lawyer = db.get_lawyer_by_email(req.email)
+        if (
+            not lawyer or not lawyer.get("active")
+            or not _verify_password(req.password, lawyer.get("password_hash"))
+        ):
+            _record_failed_login(client)
+            # One message for every failure mode: which part was wrong is
+            # exactly what an attacker wants to learn.
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        actor = dict(lawyer)
+        with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+            db.touch_lawyer_login(str(lawyer["id"]))
+    else:
+        configured = _configured_password()
+        if not configured:
+            raise HTTPException(503, "Dashboard authentication is not configured")
+        if not _verify_password(req.password, configured):
+            _record_failed_login(client)
+            raise HTTPException(status_code=401, detail="Invalid password")
+        logger.warning(
+            "Shared-password dashboard login used (deprecated, #52): actions "
+            "in this session are attributed to 'dashboard', not a person."
+        )
     _login_attempts.pop(client, None)
     try:
-        token = _issue_session()
+        token = _issue_session(actor)
     except ValueError as exc:
         raise HTTPException(503, str(exc)) from exc
     # The token is deliberately not returned in the JSON body: a browser response
@@ -316,7 +388,10 @@ async def login(req: LoginRequest, request: Request, response: Response):
     # API clients should retain the Set-Cookie value in a cookie jar. Existing
     # Bearer-token verification remains available for trusted server callers.
     _set_session_cookies(response, token)
-    return {"expires_in": SESSION_SECONDS}
+    return {
+        "expires_in": SESSION_SECONDS,
+        "actor": _actor_from_token(token),
+    }
 
 
 @router.post("/logout")
@@ -353,3 +428,105 @@ async def change_password(
         settings["_auth"] = {"password_hash": _hash_password(req.new_password)}
         db.upsert_firm_settings(settings)
     return {"message": "Password changed successfully"}
+
+
+# ── Lawyer account management (#52) ──────────────────────────────────────────
+
+class CreateLawyerRequest(BaseModel):
+    email: str
+    full_name: str
+    password: str
+    role: str = "lawyer"
+
+
+class SetLawyerActiveRequest(BaseModel):
+    active: bool
+
+
+class OwnPasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+def _require_admin(actor: dict) -> None:
+    if actor.get("role") != "admin":
+        raise HTTPException(403, "Managing lawyer accounts requires an admin session")
+
+
+@router.get("/lawyers")
+async def list_lawyers(actor: dict = Depends(verify_dashboard_actor)):
+    from services.db import EWDbWriter
+    with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+        lawyers = db.list_lawyers()
+    return {"lawyers": [dict(l) for l in lawyers], "me": actor}
+
+
+@router.post("/lawyers")
+async def create_lawyer(
+    req: CreateLawyerRequest,
+    actor: dict = Depends(verify_dashboard_actor),
+):
+    """Create a lawyer account. Admin only — the legacy shared-password
+    session acts as the bootstrap admin, so the FIRST real account can
+    always be created; after that, prefer admin lawyer sessions."""
+    _require_admin(actor)
+    email = req.email.strip().lower()
+    if "@" not in email:
+        raise HTTPException(400, "A valid email address is required")
+    if not req.full_name.strip():
+        raise HTTPException(400, "Full name is required")
+    if len(req.password) < 12:
+        raise HTTPException(400, "Password must be at least 12 characters")
+    if req.role not in ("lawyer", "admin"):
+        raise HTTPException(400, "Role must be lawyer or admin")
+    from services.db import EWDbWriter
+    with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+        if db.get_lawyer_by_email(email):
+            raise HTTPException(409, "An account with this email already exists")
+        row = db.create_lawyer(email, req.full_name, _hash_password(req.password), req.role)
+    logger.info("Lawyer account created: %s (%s) by %s", email, req.role, actor.get("name"))
+    return dict(row)
+
+
+@router.patch("/lawyers/{lawyer_id}")
+async def set_lawyer_active(
+    lawyer_id: str,
+    req: SetLawyerActiveRequest,
+    actor: dict = Depends(verify_dashboard_actor),
+):
+    _require_admin(actor)
+    import uuid as _uuid
+    try:
+        _uuid.UUID(lawyer_id)
+    except ValueError:
+        raise HTTPException(404, "Lawyer not found")
+    if not req.active and actor.get("id") == lawyer_id:
+        raise HTTPException(409, "You cannot deactivate your own account")
+    from services.db import EWDbWriter
+    with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+        row = db.set_lawyer_active(lawyer_id, req.active)
+    if row is None:
+        raise HTTPException(404, "Lawyer not found")
+    logger.info("Lawyer account %s set active=%s by %s",
+                row["email"], req.active, actor.get("name"))
+    return dict(row)
+
+
+@router.post("/lawyers/me/password")
+async def change_own_password(
+    req: OwnPasswordChangeRequest,
+    actor: dict = Depends(verify_dashboard_actor),
+):
+    """A lawyer changes their OWN password (legacy shared-password sessions
+    have no account and use the existing /change-password instead)."""
+    if not actor.get("id"):
+        raise HTTPException(400, "This session has no lawyer account")
+    if len(req.new_password) < 12:
+        raise HTTPException(400, "Password must be at least 12 characters")
+    from services.db import EWDbWriter
+    with EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+        lawyer = db.get_lawyer_by_email(actor.get("email") or "")
+        if not lawyer or not _verify_password(req.current_password, lawyer["password_hash"]):
+            raise HTTPException(401, "Current password is incorrect")
+        db.set_lawyer_password(str(lawyer["id"]), _hash_password(req.new_password))
+    return {"changed": True}

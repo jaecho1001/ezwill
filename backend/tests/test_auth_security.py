@@ -56,9 +56,15 @@ def test_login_sets_hardened_cookies_without_exposing_token(monkeypatch):
     response = _client().post("/api/auth/login", json={"password": "correct-password"})
 
     assert response.status_code == 200
-    assert response.json() == {"expires_in": auth.SESSION_SECONDS}
+    body = response.json()
+    # The body may describe WHO signed in (#52) but must never leak the
+    # session token itself — that is the HttpOnly boundary this test pins.
+    assert body["expires_in"] == auth.SESSION_SECONDS
+    assert set(body.keys()) <= {"expires_in", "actor"}
     cookies = response.headers.get_list("set-cookie")
     session_cookie = next(cookie for cookie in cookies if cookie.startswith("ew_session="))
+    issued_token = session_cookie.split("ew_session=", 1)[1].split(";", 1)[0]
+    assert issued_token not in response.text  # HttpOnly boundary holds
     flag_cookie = next(cookie for cookie in cookies if cookie.startswith("ew_authed="))
     assert "HttpOnly" in session_cookie
     assert "Secure" in session_cookie

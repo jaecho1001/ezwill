@@ -922,3 +922,51 @@ class EWDbWriter:
             ORDER BY created_at DESC
             LIMIT 50
         """, (draft_id,))
+
+    # ── Lawyer accounts (#52) ─────────────────────────────────────────────────
+
+    def create_lawyer(self, email: str, full_name: str, password_hash: str,
+                      role: str = "lawyer") -> dict:
+        return self.fetchone("""
+            INSERT INTO ew_lawyers (email, full_name, password_hash, role)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, email, full_name, role, active, created_at
+        """, (email.strip().lower(), full_name.strip(), password_hash, role))
+
+    def get_lawyer_by_email(self, email: str) -> dict:
+        return self.fetchone(
+            "SELECT * FROM ew_lawyers WHERE email = %s",
+            (email.strip().lower(),),
+        )
+
+    def list_lawyers(self) -> list:
+        """Everything EXCEPT the password hash — it never leaves the db layer."""
+        return self.fetchall("""
+            SELECT id, email, full_name, role, active, created_at, last_login_at
+            FROM ew_lawyers ORDER BY created_at
+        """)
+
+    def count_active_admins(self) -> int:
+        row = self.fetchone(
+            "SELECT COUNT(*) AS n FROM ew_lawyers WHERE role = 'admin' AND active = true"
+        )
+        return int(row["n"]) if row else 0
+
+    def set_lawyer_active(self, lawyer_id: str, active: bool) -> dict:
+        return self.fetchone("""
+            UPDATE ew_lawyers SET active = %s WHERE id = %s
+            RETURNING id, email, full_name, role, active
+        """, (active, lawyer_id))
+
+    def set_lawyer_password(self, lawyer_id: str, password_hash: str) -> bool:
+        self.execute(
+            "UPDATE ew_lawyers SET password_hash = %s WHERE id = %s",
+            (password_hash, lawyer_id),
+        )
+        return True
+
+    def touch_lawyer_login(self, lawyer_id: str) -> None:
+        self.execute(
+            "UPDATE ew_lawyers SET last_login_at = now() WHERE id = %s",
+            (lawyer_id,),
+        )
