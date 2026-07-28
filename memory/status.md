@@ -130,3 +130,19 @@
 - Next engineering after decisions: #52 per-lawyer identity, then deploy
   config for whichever host is chosen. Everything else on the Phase-1
   checklist is lawyer drafting, owner decisions, or browser walkthroughs.
+
+## 2026-07-28 (evening) — #52 + #65 shipped; engineering side of MVP complete
+
+- #52: ew_lawyers (migration 44), email login, actor claim in signed session,
+  approved_by/generated_by/asked_by carry real names (real-DB proven),
+  Settings account management, shared password = bootstrap admin w/ warning.
+- #65: backend/fly.toml (yyz, /ready check, migrations as release_command),
+  frontend/vercel.json, runbook §3 rewritten w/ bootstrap step.
+- Backend 346/0-skips; frontend 122; CI green at de43c95.
+- Dashboard inventory for MVP: built = client list, client file (answers/
+  assets/flags/comments/questions/delivery), Will Editor (server-hydrated),
+  documents (generate/approve/override), review links, settings (firm/
+  witnesses/lawyers), usage. Gap = a home/pipeline overview (drafts by
+  status + open questions across clients). Everything else blocking launch
+  is decisions: provider+domain, hosting accounts, lawyer drafting
+  (#83/#85/#90 policy), self-serve on/off (#81/#96).
