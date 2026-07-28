@@ -160,3 +160,17 @@
   occurrence: any same-transaction ordering needs it); ISO timestamps;
   visible fetch errors.
 - Backend 347/0-skips, frontend 122, CI green.
+
+## 2026-07-28 (late) — Codex overview review: both findings fixed (77f4b93)
+
+- Finding 1 (real): 'fully handled' judged only GENERATED docs — a file with
+  an approved will but a requested-never-generated POA vanished from every
+  queue. Fix: required_document_groups() in services/db.py mirrors the
+  frontend determineRequiredDocuments rule; queue exit requires every
+  required doc generated AND approved. Real-DB test pins the vanishing case
+  (file must REMAIN) and the truly-finished case (must leave).
+- Finding 2 (real): headline cards counted the 50-row list. Now read the
+  uncapped status_counts (lib/dashboard-stats.ts, unit-pinned at 170).
+- Accepted framing correction: say 'pushed to draft PR, CI green' — never
+  'shipped' as if merged/deployed. Deploy execution = #100; lifecycle = #99.
+- Backend 348/0-skips, frontend 124, CI green.
