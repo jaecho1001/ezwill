@@ -186,3 +186,18 @@
   Review' showing the queue's requirement-aware total (override pinned).
 - Backend 348/0-skips, frontend 129, CI green. #99 remains the proper
   lifecycle fix; #100 the deploy checklist.
+
+## 2026-07-28 — Codex round 4: last two required-docs inconsistencies (e039b94)
+
+- Round 4 confirmed round 3 but caught "one rule everywhere" as premature:
+  (A) estate-overview.tsx still called determineRequiredDocuments with
+  legacy-only signals — now uses requiredDocTypesForDraft; zero non-lib
+  callsites of determineRequiredDocuments remain. (B) Will-style
+  equivalence: backend group {single_will, simple_will_short} vs frontend
+  always emitting the short will — frontend rule is now group-shaped
+  (requiredDocGroupsForDraft) and the Documents screen resolves each group
+  via resolveDocTypeForGroup (approved > generated > default), so an
+  approved STANDARD will no longer strands a phantom-pending short will.
+- Frontend 133 tests / typecheck / build; CI green (backend, containers,
+  frontend). Backend untouched. Codex's convergence condition ("one small
+  engineering consistency pass") addressed.
