@@ -146,3 +146,17 @@
   status + open questions across clients). Everything else blocking launch
   is decisions: provider+domain, hosting accounts, lawyer drafting
   (#83/#85/#90 policy), self-serve on/off (#81/#96).
+
+## 2026-07-28 (night) — pipeline overview shipped + review-hardened (df0b80d)
+
+- Dashboard home now opens on four action queues (awaiting review / open
+  questions / generated-unreleased / delivery problems), each linking into
+  the file, with TRUE totals and 'showing 5 of N'.
+- Its own review round confirmed 3 majors, all fixed + real-DB tested:
+  fully-handled files leave the review queue (status lifecycle gap:
+  nothing moves drafts past 'submitted' before signing — pre-existing,
+  noted); remediated deliveries leave the problems board (record_delivery
+  needed clock_timestamp — same lesson as the generations trail, THIRD
+  occurrence: any same-transaction ordering needs it); ISO timestamps;
+  visible fetch errors.
+- Backend 347/0-skips, frontend 122, CI green.
