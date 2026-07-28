@@ -8,18 +8,25 @@ import { StatusBadge } from '@/components/dashboard/status-badge'
 import { listDrafts, type DraftListItem } from '@/lib/api/drafts'
 import { getAuthHeaders } from '@/lib/auth'
 
-interface PipelineOverview {
-  status_counts: Record<string, number>
-  awaiting_review: Array<{ id: string; client_first_name: string; client_last_name: string; submitted_at?: string | null }>
-  open_questions: Array<{ id: string; draft_id: string; question_text: string; required: boolean; status: string; client_first_name: string; client_last_name: string }>
-  awaiting_approval: Array<{ draft_id: string; document_type: string; generated_at?: string | null; client_first_name: string; client_last_name: string }>
-  failed_deliveries: Array<{ id: string; draft_id: string; kind: string; channel: string; status: string; client_first_name: string; client_last_name: string; created_at?: string }>
+interface Queue<Row> {
+  /** TRUE total in the database — rows is capped at 25 by the server. */
+  total: number
+  rows: Row[]
 }
 
-function QueueCard({ title, tone, count, children, empty }: {
+interface PipelineOverview {
+  status_counts: Record<string, number>
+  awaiting_review: Queue<{ id: string; client_first_name: string; client_last_name: string; submitted_at?: string | null }>
+  open_questions: Queue<{ id: string; draft_id: string; question_text: string; required: boolean; status: string; client_first_name: string; client_last_name: string }>
+  awaiting_approval: Queue<{ draft_id: string; document_type: string; generated_at?: string | null; client_first_name: string; client_last_name: string }>
+  failed_deliveries: Queue<{ id: string; draft_id: string; kind: string; channel: string; status: string; client_first_name: string; client_last_name: string; created_at?: string }>
+}
+
+function QueueCard({ title, tone, count, shown, children, empty }: {
   title: string
   tone: 'amber' | 'red' | 'blue'
   count: number
+  shown?: number
   children: React.ReactNode
   empty: string
 }) {
@@ -36,6 +43,9 @@ function QueueCard({ title, tone, count, children, empty }: {
       </div>
       <div className="mt-2 space-y-1.5">
         {count === 0 ? <p className="text-xs text-gray-400">{empty}</p> : children}
+        {shown !== undefined && count > shown && (
+          <p className="text-[11px] text-gray-400">showing {shown} of {count}</p>
+        )}
       </div>
     </div>
   )
@@ -71,14 +81,21 @@ function StatCard({ label, value, accent }: { label: string; value: number; acce
 export default function DashboardPage() {
   const [drafts, setDrafts] = useState<DraftListItem[]>([])
   const [overview, setOverview] = useState<PipelineOverview | null>(null)
+  const [overviewError, setOverviewError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/drafts/overview', { headers: getAuthHeaders() })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(setOverview)
-      .catch(() => {})
+      .then((res) => {
+        if (res.ok) return res.json()
+        setOverviewError(res.status === 401
+          ? 'Your session has expired — sign in again to see the pipeline overview.'
+          : 'Could not load the pipeline overview. Reload to try again.')
+        return null
+      })
+      .then((body) => { if (body) setOverview(body) })
+      .catch(() => setOverviewError('Could not load the pipeline overview. Reload to try again.'))
     listDrafts({ limit: 50 })
       .then((res) => {
         setDrafts(res.drafts)
@@ -113,12 +130,17 @@ export default function DashboardPage() {
       </div>
 
       {/* Action queues — what needs a human today. */}
+      {overviewError && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          {overviewError}
+        </div>
+      )}
       {overview && (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
           <QueueCard title="Submitted — awaiting your review" tone="amber"
-            count={overview.awaiting_review.length}
+            count={overview.awaiting_review.total} shown={Math.min(5, overview.awaiting_review.rows.length)}
             empty="No files waiting.">
-            {overview.awaiting_review.slice(0, 5).map((d) => (
+            {overview.awaiting_review.rows.slice(0, 5).map((d) => (
               <Link key={d.id} href={`/dashboard/clients/${d.id}`}
                 className="block truncate text-sm text-[#1B2A4A] underline-offset-2 hover:underline">
                 {d.client_first_name} {d.client_last_name}
@@ -128,9 +150,9 @@ export default function DashboardPage() {
           </QueueCard>
 
           <QueueCard title="Client questions open" tone="blue"
-            count={overview.open_questions.length}
+            count={overview.open_questions.total} shown={Math.min(5, overview.open_questions.rows.length)}
             empty="No open questions.">
-            {overview.open_questions.slice(0, 5).map((q) => (
+            {overview.open_questions.rows.slice(0, 5).map((q) => (
               <Link key={q.id} href={`/dashboard/clients/${q.draft_id}`}
                 className="block text-sm text-[#1B2A4A] underline-offset-2 hover:underline">
                 <span className="truncate">{q.client_first_name} {q.client_last_name}: {q.question_text.slice(0, 48)}{q.question_text.length > 48 ? '…' : ''}</span>
@@ -141,9 +163,9 @@ export default function DashboardPage() {
           </QueueCard>
 
           <QueueCard title="Generated — not yet released" tone="blue"
-            count={overview.awaiting_approval.length}
+            count={overview.awaiting_approval.total} shown={Math.min(5, overview.awaiting_approval.rows.length)}
             empty="Nothing awaiting approval.">
-            {overview.awaiting_approval.slice(0, 5).map((r, i) => (
+            {overview.awaiting_approval.rows.slice(0, 5).map((r, i) => (
               <Link key={`${r.draft_id}-${r.document_type}-${i}`} href={`/dashboard/clients/${r.draft_id}/documents`}
                 className="block truncate text-sm text-[#1B2A4A] underline-offset-2 hover:underline">
                 {r.client_first_name} {r.client_last_name} — {r.document_type}
@@ -152,9 +174,9 @@ export default function DashboardPage() {
           </QueueCard>
 
           <QueueCard title="Delivery problems (14 days)" tone="red"
-            count={overview.failed_deliveries.length}
+            count={overview.failed_deliveries.total} shown={Math.min(5, overview.failed_deliveries.rows.length)}
             empty="All deliveries OK.">
-            {overview.failed_deliveries.slice(0, 5).map((r) => (
+            {overview.failed_deliveries.rows.slice(0, 5).map((r) => (
               <Link key={r.id} href={`/dashboard/clients/${r.draft_id}`}
                 className="block truncate text-sm text-red-800 underline-offset-2 hover:underline">
                 {r.client_first_name} {r.client_last_name} — {r.kind} {r.channel}: {r.status === 'logged_only' ? 'not configured' : 'failed'}

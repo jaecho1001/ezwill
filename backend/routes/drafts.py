@@ -103,12 +103,18 @@ async def pipeline_overview(_token: str = Depends(verify_dashboard_token)):
     """
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         overview = db.get_pipeline_overview()
-    # JSON-safe timestamps.
-    def _clean(rows):
-        return [
-            {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in row.items()}
-            for row in rows
-        ]
+
+    # ISO-8601 timestamps (str() on a datetime is not ISO and WebKit's
+    # Date parser rejects it).
+    def _clean(queue):
+        return {
+            "total": queue["total"],
+            "rows": [
+                {k: (v.isoformat() if hasattr(v, "isoformat") else v)
+                 for k, v in row.items()}
+                for row in queue["rows"]
+            ],
+        }
     return {
         "status_counts": overview["status_counts"],
         "awaiting_review": _clean(overview["awaiting_review"]),

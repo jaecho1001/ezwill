@@ -908,10 +908,14 @@ class EWDbWriter:
                         status: str, provider_mode: str = None) -> dict:
         """Persist one delivery attempt. 'not_requested' is not an attempt
         and is deliberately not recordable."""
+        # clock_timestamp(), not the default now(): a failed send and its
+        # successful retry can land in one transaction, and now() would give
+        # them identical timestamps — making "was this failure remediated
+        # LATER?" undecidable (same lesson as the generations audit trail).
         return self.fetchone("""
             INSERT INTO ew_delivery_log
-                (draft_id, kind, channel, status, provider_mode)
-            VALUES (%s, %s, %s, %s, %s)
+                (draft_id, kind, channel, status, provider_mode, created_at)
+            VALUES (%s, %s, %s, %s, %s, clock_timestamp())
             RETURNING *
         """, (draft_id, kind, channel, status, provider_mode))
 
@@ -975,24 +979,53 @@ class EWDbWriter:
 
     def get_pipeline_overview(self) -> dict:
         """One read for the lawyer's morning: where every file stands and
-        what needs a human. Four queues, each answering one question:
-        who submitted and waits on me, which questions are open, which
-        documents sit generated-but-unreleased, and which deliveries the
-        client never actually received."""
+        what needs a human.
+
+        Truthfulness rules (from the feature's adversarial review):
+        - 'Awaiting review' excludes files the lawyer has FINISHED — drafts
+          whose enabled, generated documents are all approved. 'submitted'
+          alone is not the same as 'waiting on me'.
+        - Delivery problems exclude failures remediated by a LATER
+          successful send on the same draft/kind/channel.
+        - Every queue returns rows (capped) AND the true total, so the
+          badge can never silently understate the queue.
+        """
+        # Files still waiting on the lawyer: submitted, and NOT fully
+        # handled (fully handled = has generated docs and none unapproved).
+        _awaiting_review_where = """
+            status = 'submitted'
+            AND NOT (
+                EXISTS (
+                    SELECT 1 FROM ew_document_configs c
+                    WHERE c.draft_id = ew_will_drafts.id
+                      AND c.enabled AND c.generated_at IS NOT NULL
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM ew_document_configs c
+                    WHERE c.draft_id = ew_will_drafts.id
+                      AND c.enabled AND c.generated_at IS NOT NULL
+                      AND c.lawyer_approved_at IS NULL
+                )
+            )
+        """
         status_counts = {
             row["status"]: int(row["n"])
             for row in self.fetchall(
                 "SELECT status, COUNT(*) AS n FROM ew_will_drafts GROUP BY status"
             )
         }
-        awaiting_review = self.fetchall("""
+        awaiting_review = self.fetchall(f"""
             SELECT id, client_first_name, client_last_name, language,
                    submitted_at
             FROM ew_will_drafts
-            WHERE status = 'submitted'
+            WHERE {_awaiting_review_where}
             ORDER BY submitted_at ASC NULLS LAST
             LIMIT 25
         """)
+        awaiting_review_total = int(self.fetchone(
+            f"SELECT COUNT(*) AS n FROM ew_will_drafts WHERE {_awaiting_review_where}"
+        )["n"])
+
         open_questions = self.fetchall("""
             SELECT q.id, q.draft_id, q.question_text, q.required, q.status,
                    q.created_at, q.answered_at,
@@ -1003,6 +1036,10 @@ class EWDbWriter:
             ORDER BY q.required DESC, q.created_at ASC
             LIMIT 25
         """)
+        open_questions_total = int(self.fetchone(
+            "SELECT COUNT(*) AS n FROM ew_client_questions WHERE status != 'resolved'"
+        )["n"])
+
         awaiting_approval = self.fetchall("""
             SELECT c.draft_id, c.document_type, c.generated_at,
                    d.client_first_name, d.client_last_name
@@ -1014,20 +1051,53 @@ class EWDbWriter:
             ORDER BY c.generated_at ASC
             LIMIT 25
         """)
-        failed_deliveries = self.fetchall("""
+        awaiting_approval_total = int(self.fetchone("""
+            SELECT COUNT(*) AS n FROM ew_document_configs
+            WHERE generated_at IS NOT NULL
+              AND lawyer_approved_at IS NULL AND enabled = true
+        """)["n"])
+
+        # A failure later remediated by a successful send on the same
+        # draft/kind/channel is NOT a live problem.
+        _failed_where = """
+            l.status IN ('failed', 'logged_only')
+            AND l.created_at > now() - interval '14 days'
+            AND NOT EXISTS (
+                SELECT 1 FROM ew_delivery_log s
+                WHERE s.draft_id = l.draft_id AND s.kind = l.kind
+                  AND s.channel = l.channel AND s.status = 'sent'
+                  AND s.created_at > l.created_at
+            )
+        """
+        failed_deliveries = self.fetchall(f"""
             SELECT l.id, l.draft_id, l.kind, l.channel, l.status,
                    l.created_at, d.client_first_name, d.client_last_name
             FROM ew_delivery_log l
             JOIN ew_will_drafts d ON d.id = l.draft_id
-            WHERE l.status IN ('failed', 'logged_only')
-              AND l.created_at > now() - interval '14 days'
+            WHERE {_failed_where}
             ORDER BY l.created_at DESC
             LIMIT 25
         """)
+        failed_total = int(self.fetchone(
+            f"SELECT COUNT(*) AS n FROM ew_delivery_log l WHERE {_failed_where}"
+        )["n"])
+
         return {
             "status_counts": status_counts,
-            "awaiting_review": [dict(r) for r in awaiting_review],
-            "open_questions": [dict(r) for r in open_questions],
-            "awaiting_approval": [dict(r) for r in awaiting_approval],
-            "failed_deliveries": [dict(r) for r in failed_deliveries],
+            "awaiting_review": {
+                "total": awaiting_review_total,
+                "rows": [dict(r) for r in awaiting_review],
+            },
+            "open_questions": {
+                "total": open_questions_total,
+                "rows": [dict(r) for r in open_questions],
+            },
+            "awaiting_approval": {
+                "total": awaiting_approval_total,
+                "rows": [dict(r) for r in awaiting_approval],
+            },
+            "failed_deliveries": {
+                "total": failed_total,
+                "rows": [dict(r) for r in failed_deliveries],
+            },
         }
