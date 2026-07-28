@@ -364,6 +364,44 @@ export function getTier2DocumentTypes(): WillDocumentTypeConfig[] {
   return willDocumentTypes.filter((t) => t.tier === 2)
 }
 
+
+/**
+ * Required documents derived from the DRAFT RECORD (legacy columns + vault).
+ * MIRROR of backend required_document_groups (services/db.py) — the overview
+ * queue and the Documents screen must agree on what "required" means, or a
+ * file can leave the lawyer's queue while this screen still shows pending
+ * documents (overview review round 3, finding 1). POAs are required only
+ * when the client actually REQUESTED one, never by default.
+ */
+export function requiredDocTypesForDraft(
+  draft: Record<string, unknown>
+): WillDocumentType[] {
+  const vault = asRecord(draft.vault)
+  const goals = asRecord(vault.goals)
+  const vaultPoa = asRecord(vault.poa)
+  const estate = asRecord(draft.your_estate ?? draft.yourEstate)
+  const legacyProp = asRecord(draft.poa_property ?? draft.poaProperty)
+  const legacyCare = asRecord(draft.poa_personal_care ?? draft.poaPersonalCare)
+
+  const hasDualWill = Boolean(estate.includeDualWill || goals.hasDualWill)
+  const hasPoaProperty = Boolean(
+    legacyProp.hasAttorney
+    || asRecord(vaultPoa.property).requested
+    || goals.hasPoaProperty
+  )
+  const hasPoaPersonalCare = Boolean(
+    legacyCare.hasAttorney
+    || asRecord(vaultPoa.personalCare).requested
+    || goals.hasPoaPersonalCare
+  )
+  return determineRequiredDocuments({
+    tier: hasDualWill ? 2 : 1,
+    hasDualWill,
+    hasPoaProperty,
+    hasPoaPersonalCare,
+  })
+}
+
 /** Determine which documents a client needs based on their will data */
 export function determineRequiredDocuments(willData: {
   tier: 1 | 2

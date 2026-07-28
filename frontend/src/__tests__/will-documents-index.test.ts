@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  requiredDocTypesForDraft,
   willDocumentTypes,
   getClausesForDocumentType,
   buildDefaultSelections,
@@ -315,5 +316,42 @@ describe('willDocumentTypes tiers', () => {
     expect(tier2Ids).toContain('affidavit_execution_probate')
     expect(tier2Ids).toContain('affidavit_execution_non_probate')
     expect(tier2Ids.length).toBe(4)
+  })
+})
+
+describe('requiredDocTypesForDraft (mirror of backend required_document_groups)', () => {
+  it('no POAs requested: will + affidavit only — never POAs by default', () => {
+    const docs = requiredDocTypesForDraft({ vault: {} })
+    expect(docs).toContain('affidavit_execution')
+    expect(docs).not.toContain('poa_property')
+    expect(docs).not.toContain('poa_personal_care')
+  })
+
+  it('vault-requested property POA adds exactly that POA', () => {
+    const docs = requiredDocTypesForDraft({
+      vault: { poa: { property: { requested: true }, personalCare: {} } },
+    })
+    expect(docs).toContain('poa_property')
+    expect(docs).not.toContain('poa_personal_care')
+  })
+
+  it('legacy hasAttorney flags count too', () => {
+    const docs = requiredDocTypesForDraft({
+      poa_personal_care: { hasAttorney: true },
+    })
+    expect(docs).toContain('poa_personal_care')
+  })
+
+  it('dual will (legacy or vault) yields the four dual documents', () => {
+    for (const draft of [
+      { your_estate: { includeDualWill: true } },
+      { vault: { goals: { hasDualWill: true } } },
+    ]) {
+      const docs = requiredDocTypesForDraft(draft)
+      expect(docs).toEqual(expect.arrayContaining([
+        'probate_will', 'non_probate_will',
+        'affidavit_execution_probate', 'affidavit_execution_non_probate',
+      ]))
+    }
   })
 })

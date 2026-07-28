@@ -11,7 +11,7 @@ import { extractApiErrorDetail } from '@/lib/api/documents'
 import { getAuthHeaders } from '@/lib/auth'
 import {
   willDocumentTypes,
-  determineRequiredDocuments,
+  requiredDocTypesForDraft,
   getDocumentTypeConfig,
 } from '@/lib/will-documents/index'
 import type { WillDocumentType } from '@/types/will-document'
@@ -63,17 +63,13 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
           tier2_clauses?: Record<string, unknown> | null
         }
 
-        const estate = d.your_estate ?? {}
-        const hasDualWill = !!estate.includeDualWill
-        const hasPoaProp = !!(d.poa_property as Record<string, unknown>)?.hasAttorney
-        const hasPoaCare = !!(d.poa_personal_care as Record<string, unknown>)?.hasAttorney
-
-        const requiredDocTypes = determineRequiredDocuments({
-          tier: hasDualWill ? 2 : 1,
-          hasDualWill,
-          hasPoaProperty: hasPoaProp || true, // Include POAs by default
-          hasPoaPersonalCare: hasPoaCare || true,
-        })
+        // Same rule as the backend overview queue: POAs only when the
+        // client requested one (legacy flags OR vault). The old
+        // '|| true' forced both POAs onto every client, so this screen
+        // showed "pending" documents the queue correctly ignored.
+        const requiredDocTypes = requiredDocTypesForDraft(
+          res as unknown as Record<string, unknown>
+        )
 
         const docs: DocumentEntry[] = requiredDocTypes.map((docType) => {
           const config = getDocumentTypeConfig(docType)

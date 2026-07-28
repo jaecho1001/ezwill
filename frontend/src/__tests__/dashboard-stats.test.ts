@@ -15,6 +15,12 @@ describe('statsFromCounts', () => {
     expect(stats.completed).toBe(15)
   })
 
+  it('awaiting-review override replaces the raw submitted count (fully-handled files excluded)', () => {
+    const stats = statsFromCounts({ submitted: 60 }, { awaitingReview: 42 })
+    expect(stats.submitted).toBe(42) // queue total, not raw status count
+    expect(stats.total).toBe(60)
+  })
+
   it('missing statuses count as zero', () => {
     expect(statsFromCounts({})).toEqual({
       total: 0, submitted: 0, inProgress: 0, completed: 0,

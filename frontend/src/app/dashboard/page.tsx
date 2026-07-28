@@ -107,7 +107,9 @@ export default function DashboardPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const stats = overview ? statsFromCounts(overview.status_counts) : computeStats(drafts)
+  const stats = overview
+    ? statsFromCounts(overview.status_counts, { awaitingReview: overview.awaiting_review.total })
+    : computeStats(drafts)
   const recent = [...drafts]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 5)
@@ -203,7 +205,7 @@ export default function DashboardPage() {
           {/* Stat Cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Total Clients" value={stats.total} accent="text-gray-900" />
-            <StatCard label="Submitted (Pending Review)" value={stats.submitted} accent="text-green-600" />
+            <StatCard label="Awaiting Your Review" value={stats.submitted} accent="text-green-600" />
             <StatCard label="In Progress" value={stats.inProgress} accent="text-[#8a6a1e]" />
             <StatCard label="Completed" value={stats.completed} accent="text-emerald-600" />
           </div>
