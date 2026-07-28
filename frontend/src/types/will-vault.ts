@@ -158,7 +158,14 @@ export interface WillVault {
   poa: VaultPoa
   finalWishes: VaultFinalWishes
   residueDistribution?: 'equal' | 'percentages' | 'per_stirpes' | 'lawyer_help'
+  /** Express consent to AI processing (#90): recorded before any estate
+   *  detail reaches an external AI provider. The form path never needs it. */
+  aiConsent?: { accepted: boolean; at: string; version: string }
 }
+
+/** Bump when the consent wording changes materially: recorded consent
+ *  carries the version the client actually saw (#90). */
+export const AI_CONSENT_VERSION = '2026-07-28'
 
 /** Dot-path into the vault, e.g. "testator.fullName" or "children.0.fullName". */
 export type VaultPath = string

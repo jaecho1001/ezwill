@@ -901,3 +901,24 @@ class EWDbWriter:
                 UPDATE ew_will_drafts SET status = 'opened', updated_at = now()
                 WHERE id = %s AND status = 'link_sent'
             """, (link['draft_id'],))
+
+    # ── Delivery log (#88) ────────────────────────────────────────────────────
+
+    def record_delivery(self, draft_id: str, kind: str, channel: str,
+                        status: str, provider_mode: str = None) -> dict:
+        """Persist one delivery attempt. 'not_requested' is not an attempt
+        and is deliberately not recordable."""
+        return self.fetchone("""
+            INSERT INTO ew_delivery_log
+                (draft_id, kind, channel, status, provider_mode)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING *
+        """, (draft_id, kind, channel, status, provider_mode))
+
+    def get_delivery_log(self, draft_id: str) -> list:
+        return self.fetchall("""
+            SELECT * FROM ew_delivery_log
+            WHERE draft_id = %s
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, (draft_id,))

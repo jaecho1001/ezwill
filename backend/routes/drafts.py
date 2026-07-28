@@ -117,6 +117,10 @@ async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)
         )
         review_comments = db.get_review_comments(draft_id) or []
         review_approvals = db.get_review_approvals(draft_id) or []
+        try:
+            delivery_log = db.get_delivery_log(draft_id) or []
+        except Exception:
+            delivery_log = []  # pre-migration-43 schema
         return {
             **dict(draft),
             "people": [dict(p) for p in people],
@@ -125,6 +129,7 @@ async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)
             "ai_flags": [dict(f) for f in ai_flags],
             "review_comments": [dict(c) for c in review_comments],
             "review_approvals": [dict(a) for a in review_approvals],
+            "delivery_log": [dict(d) for d in delivery_log],
         }
 
 @router.put("/{draft_id}")

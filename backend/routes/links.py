@@ -98,17 +98,22 @@ async def create_link(
             return "logged_only"
         return "sent" if sent else "failed"
 
+    email_status = _channel_status(
+        bool(body.send_email and body.client_email), delivery["email_sent"]
+    )
+    sms_status = _channel_status(
+        bool(body.send_sms and body.client_phone), delivery["sms_sent"]
+    )
+    _record_deliveries(str(draft["id"]), "questionnaire",
+                       email_status, sms_status)
+
     return CreateLinkResponse(
         token=token,
         draft_id=str(draft["id"]),
         link_url=link_url,
         expires_at=str(link["expires_at"]),
-        email_delivery=_channel_status(
-            bool(body.send_email and body.client_email), delivery["email_sent"]
-        ),
-        sms_delivery=_channel_status(
-            bool(body.send_sms and body.client_phone), delivery["sms_sent"]
-        ),
+        email_delivery=email_status,
+        sms_delivery=sms_status,
         client_name=f"{body.client_first_name} {body.client_last_name}",
     )
 
@@ -167,3 +172,85 @@ async def revoke_link(
             (token,),
         )
         return {"revoked": True}
+
+
+def _record_deliveries(draft_id: str, kind: str,
+                       email_status: str, sms_status: str) -> None:
+    """Persist delivery attempts (#88). 'not_requested' is not an attempt."""
+    try:
+        with EWDbWriter(DEFAULT_SCHEMA) as db:
+            for channel, status in (("email", email_status), ("sms", sms_status)):
+                if status != "not_requested":
+                    db.record_delivery(draft_id, kind, channel, status,
+                                       provider_mode=notification_mode())
+    except Exception:
+        logger.exception("delivery log write failed (non-fatal)")
+
+
+@router.post("/{draft_id}/resend")
+async def resend_questionnaire_link(
+    draft_id: str,
+    send_email: bool = True,
+    send_sms: bool = False,
+    _token: str = Depends(verify_dashboard_token),
+):
+    """Re-deliver the client's ACTIVE questionnaire link (#88).
+
+    Reuses the newest unexpired, unrevoked token — no new credential is
+    minted, so previously shared links stay valid and the audit trail shows
+    every attempt.
+    """
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        draft = db.get_draft(draft_id)
+        if not draft:
+            raise HTTPException(404, "Draft not found")
+        link = db.fetchone("""
+            SELECT token, expires_at FROM ew_client_links
+            WHERE draft_id = %s AND revoked = false AND expires_at > now()
+            ORDER BY created_at DESC LIMIT 1
+        """, (draft_id,))
+    if not link:
+        raise HTTPException(409, {
+            "error": "no_active_link",
+            "message": "No active link to resend — create a new one.",
+        })
+
+    link_url = build_questionnaire_url(draft_id, str(link["token"]),
+                                       draft.get("language") or "en")
+    delivery = {"email_sent": False, "sms_sent": False}
+    delivery_failed = False
+    try:
+        delivery = await send_magic_link_to_client(
+            client_email=draft.get("client_email"),
+            client_phone=draft.get("client_phone"),
+            client_first_name=draft.get("client_first_name") or "",
+            client_last_name=draft.get("client_last_name") or "",
+            magic_link_url=link_url,
+            language=draft.get("language") or "en",
+            send_email=send_email,
+            send_sms=send_sms,
+        )
+    except Exception as exc:
+        delivery_failed = True
+        logger.error(f"Resend delivery failed: {exc}")
+
+    def _status(requested: bool, sent: bool) -> str:
+        if not requested:
+            return "not_requested"
+        if delivery_failed:
+            return "failed"
+        if notification_mode() == "stdout":
+            return "logged_only"
+        return "sent" if sent else "failed"
+
+    email_status = _status(bool(send_email and draft.get("client_email")),
+                           delivery["email_sent"])
+    sms_status = _status(bool(send_sms and draft.get("client_phone")),
+                         delivery["sms_sent"])
+    _record_deliveries(draft_id, "questionnaire", email_status, sms_status)
+    return {
+        "resent": True,
+        "email_delivery": email_status,
+        "sms_delivery": sms_status,
+        "link_url": link_url,
+    }

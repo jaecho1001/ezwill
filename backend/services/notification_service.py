@@ -202,6 +202,37 @@ def _smtp_ready() -> bool:
     return _smtp_config() is not None
 
 
+def _redact_for_log(text: str) -> str:
+    """Mask live credentials and contact PII before anything hits a log (#90).
+
+    A magic/review link token IS a credential — anyone reading the log could
+    open the client's estate file. stdout mode still shows which message
+    went where (last 4 token chars for correlation), but never a usable
+    link or a full address.
+    """
+    if not text:
+        return text
+    # ?t=<token> or /intake/<id>?t=<token> — keep the last 4 characters.
+    text = re.sub(
+        r"([?&]t=)([A-Za-z0-9._~-]{5,})",
+        lambda m: m.group(1) + "\u2026" + m.group(2)[-4:],
+        text,
+    )
+    # Email addresses: keep first char + domain.
+    text = re.sub(
+        r"\b([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+)",
+        r"\1***\2",
+        text,
+    )
+    # Phone-looking sequences: keep last 4 digits.
+    text = re.sub(
+        r"\+?\d[\d\s().-]{6,}\d",
+        lambda m: "***" + re.sub(r"\D", "", m.group(0))[-4:],
+        text,
+    )
+    return text
+
+
 def _notification_mode() -> str:
     return (NOTIFICATION_MODE or "").strip().lower()
 
@@ -886,9 +917,9 @@ If you have any questions, please don't hesitate to contact us.
 
     if mode == "stdout" or not _ghl_ready():
         if send_email and client_email:
-            logger.info(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}")
+            logger.info(_redact_for_log(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}"))
         if send_sms and client_phone:
-            logger.info(f"[CLIENT SMS] To: {client_phone}\n{sms_text}")
+            logger.info(_redact_for_log(f"[CLIENT SMS] To: {client_phone}\n{sms_text}"))
         return result
 
     # Send via GHL
@@ -983,9 +1014,9 @@ Please review at your convenience — there is no rush. If you have any question
 
     if mode == "stdout" or not _ghl_ready():
         if send_email and client_email:
-            logger.info(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}")
+            logger.info(_redact_for_log(f"[CLIENT EMAIL] To: {client_email}\nSubject: {email_subject}\n{body_text}"))
         if send_sms and client_phone:
-            logger.info(f"[CLIENT SMS] To: {client_phone}\n{sms_text}")
+            logger.info(_redact_for_log(f"[CLIENT SMS] To: {client_phone}\n{sms_text}"))
         return result
 
     contact_id = await _find_or_create_contact(
@@ -1071,9 +1102,9 @@ Please bring government-issued photo ID.
 
     if mode == "stdout" or not _ghl_ready():
         if client_email:
-            logger.info(f"[CLIENT EMAIL] {email_subject}\n{body_text}")
+            logger.info(_redact_for_log(f"[CLIENT EMAIL] {email_subject}\n{body_text}"))
         if client_phone:
-            logger.info(f"[CLIENT SMS] {sms_text}")
+            logger.info(_redact_for_log(f"[CLIENT SMS] {sms_text}"))
         return result
 
     contact_id = await _find_or_create_contact(
@@ -1103,7 +1134,7 @@ async def _send_client_email(to_email: str, subject: str, body: str) -> bool:
     if mode == "smtp":
         return _send_smtp_email(to_email, subject, body)
     if mode == "stdout" or not _ghl_ready():
-        logger.info(f"[CLIENT EMAIL] To: {to_email}\nSubject: {subject}\n{body}")
+        logger.info(_redact_for_log(f"[CLIENT EMAIL] To: {to_email}\nSubject: {subject}\n{body}"))
         return False
     contact_id = await _find_or_create_contact(email=to_email)
     if not contact_id:

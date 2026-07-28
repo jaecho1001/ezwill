@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWillVault } from '@/stores/will-vault-store'
+import { AI_CONSENT_VERSION } from '@/types/will-vault'
+import { L } from '@/lib/intake/localize'
 import { useDraft } from '@/providers/draft-provider'
 import {
   streamIntakeChat,
@@ -29,6 +31,7 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
   const store = useWillVault(willId)
   const vault = store((s) => s.vault)
   const setField = store((s) => s.setField)
+  const language = store((s) => s.language)
   const { token } = useDraft()
 
   const [turns, setTurns] = useState<ChatTurn[]>(() => [
@@ -213,6 +216,48 @@ export function ChatPane({ willId, onAdvanceChapter }: Props) {
   const cancel = useCallback(() => {
     abortRef.current?.abort()
   }, [])
+
+  // AI-processing consent gate (#90): NOTHING the client types here may
+  // reach the AI provider before express consent. The guided form is the
+  // consent-free path and is always available.
+  if (!vault.aiConsent?.accepted) {
+    return (
+      <div className="flex h-[calc(100vh-180px)] min-h-[520px] flex-col items-center justify-center rounded-xl border border-[#E8E4DF] bg-white p-8 text-center shadow-sm">
+        <span className="text-3xl">🔒</span>
+        <h3 className="mt-3 text-base font-semibold text-gray-900">
+          {L(language, 'Before using the chat assistant', '대화형 도우미를 사용하기 전에')}
+        </h3>
+        <p className="mt-2 max-w-md text-sm text-gray-600">
+          {L(language,
+            'The chat assistant sends what you type — which may include family and financial details — to an external AI provider to help fill in your questionnaire. A lawyer still reviews everything. If you prefer, you can answer every question using the guided form instead, and nothing is sent to an AI provider.',
+            '대화형 도우미는 입력하신 내용(가족 및 재산 정보가 포함될 수 있습니다)을 외부 AI 서비스에 전송하여 설문 작성을 돕습니다. 모든 내용은 변호사가 검토합니다. 원하시면 안내형 양식으로만 작성하실 수 있으며, 이 경우 AI 서비스로 전송되는 정보는 없습니다.')}
+        </p>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <button
+            className="rounded-lg bg-[#1B2A4A] px-4 py-2 text-sm font-medium text-white hover:bg-[#26375c]"
+            onClick={() => setField('aiConsent', {
+              accepted: true,
+              at: new Date().toISOString(),
+              version: AI_CONSENT_VERSION,
+            })}
+          >
+            {L(language, 'I agree — use the chat assistant', '동의합니다 — 대화형 도우미 사용')}
+          </button>
+          <a
+            href={`/intake/${willId}`}
+            className="rounded-lg border border-[#E8E4DF] px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            {L(language, 'Use the form instead', '양식으로 진행하기')}
+          </a>
+        </div>
+        <p className="mt-4 text-[11px] text-gray-400">
+          {L(language,
+            'Your choice and its date are recorded with your file.',
+            '선택하신 내용과 날짜는 파일에 기록됩니다.')}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-[calc(100vh-180px)] min-h-[520px] flex-col rounded-xl border border-[#E8E4DF] bg-white shadow-sm">

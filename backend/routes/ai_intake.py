@@ -612,6 +612,21 @@ async def intake_chat(
 
     vault = dict(body.vault or {})  # shallow copy we mutate while streaming
 
+    # AI-processing consent (#90), enforced SERVER-side: the client-side
+    # gate is UX, this is the rule. No estate detail reaches an external AI
+    # provider without recorded express consent. The guided form remains
+    # the consent-free path.
+    consent = (vault.get("aiConsent") or {})
+    if not (isinstance(consent, dict) and consent.get("accepted") is True):
+        raise HTTPException(403, {
+            "error": "ai_consent_required",
+            "message": (
+                "Chat intake requires express consent to AI processing. "
+                "Accept the consent notice, or continue with the guided "
+                "form — it sends nothing to an AI provider."
+            ),
+        })
+
     async def generator() -> AsyncIterator[bytes]:
         use_claude = bool(ANTHROPIC_API_KEY)
         try:

@@ -384,6 +384,15 @@ async def create_review_link(
             return "logged_only"
         return "sent" if sent else "failed"
 
+    email_status = _channel_status(
+        bool(send_email and client_email), delivery["email_sent"]
+    )
+    sms_status = _channel_status(
+        bool(send_sms and client_phone), delivery["sms_sent"]
+    )
+    from routes.links import _record_deliveries
+    _record_deliveries(draft_id, "review", email_status, sms_status)
+
     return {
         "token": token,
         "link_url": link_url,
@@ -392,12 +401,8 @@ async def create_review_link(
         # Legacy booleans kept one release for older dashboard bundles.
         "email_sent": delivery["email_sent"],
         "sms_sent": delivery["sms_sent"],
-        "email_delivery": _channel_status(
-            bool(send_email and client_email), delivery["email_sent"]
-        ),
-        "sms_delivery": _channel_status(
-            bool(send_sms and client_phone), delivery["sms_sent"]
-        ),
+        "email_delivery": email_status,
+        "sms_delivery": sms_status,
     }
 
 
