@@ -174,3 +174,15 @@
 - Accepted framing correction: say 'pushed to draft PR, CI green' — never
   'shipped' as if merged/deployed. Deploy execution = #100; lifecycle = #99.
 - Backend 348/0-skips, frontend 124, CI green.
+
+## 2026-07-28 (latest) — Codex round 3: consistency fixes (9ff80f9)
+
+- Round-3 review confirmed rounds 1-2 closed; raised 2 real consistency
+  defects, both fixed: (1) Documents screen '|| true' forced both POAs on
+  every client while the queue required only requested ones — now ONE rule,
+  requiredDocTypesForDraft (frontend) mirroring required_document_groups
+  (backend), 4 unit cases pinning parity; (2) 'Submitted (Pending Review)'
+  card counted raw status incl. fully-handled files — now 'Awaiting Your
+  Review' showing the queue's requirement-aware total (override pinned).
+- Backend 348/0-skips, frontend 129, CI green. #99 remains the proper
+  lifecycle fix; #100 the deploy checklist.
