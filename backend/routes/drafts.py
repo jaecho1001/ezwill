@@ -9,6 +9,9 @@ from services.db import EWDbWriter
 from services.client_ip import client_ip
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -262,3 +265,108 @@ async def submit_draft(draft_id: str, _auth=Depends(verify_client_or_dashboard_d
         logging.getLogger(__name__).error(f"Failed to send notification: {e}")
 
     return {"submitted": True, "submitted_at": str(submitted['submitted_at'])}
+
+
+# ── Lawyer ↔ client follow-up questions (#98) ────────────────────────────────
+
+class AskQuestionRequest(BaseModel):
+    question_text: str
+    required: bool = False
+    document_type: str | None = None
+    clause_id: str | None = None
+    section: str | None = None
+
+
+class AnswerQuestionRequest(BaseModel):
+    answer_text: str
+
+
+class ResolveQuestionRequest(BaseModel):
+    resolution_note: str | None = None
+
+
+@router.post("/{draft_id}/questions")
+async def ask_client_question(
+    draft_id: str,
+    body: AskQuestionRequest,
+    _token: str = Depends(verify_dashboard_token),
+):
+    """Lawyer sends the client a follow-up question. Required questions
+    block lawyer approval of the targeted document (or every document
+    when unscoped) until resolved."""
+    text = body.question_text.strip()
+    if not text:
+        raise HTTPException(400, "Question text is required")
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        if not db.get_draft(draft_id):
+            raise HTTPException(404, "Draft not found")
+        question = db.create_client_question(
+            draft_id, text, required=body.required,
+            document_type=body.document_type, clause_id=body.clause_id,
+            section=body.section, asked_by="dashboard",
+        )
+
+    # Best-effort notification: the client answers via their existing
+    # questionnaire link, so the message simply points them back at it.
+    try:
+        from services.notification_service import notify_client_question
+        await notify_client_question(draft_id, text)
+    except Exception:
+        logger.exception("client-question notification failed (non-fatal)")
+
+    return dict(question)
+
+
+@router.get("/{draft_id}/questions")
+async def list_client_questions(
+    draft_id: str,
+    _auth=Depends(verify_client_or_dashboard_draft_access),
+):
+    """Both sides read the same list: the client via their draft-bound
+    magic token, the lawyer via the dashboard session."""
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        questions = db.get_client_questions(draft_id)
+    return {"questions": [dict(question) for question in questions]}
+
+
+@router.post("/{draft_id}/questions/{question_id}/answer")
+async def answer_client_question(
+    draft_id: str,
+    question_id: str,
+    body: AnswerQuestionRequest,
+    _auth=Depends(verify_client_or_dashboard_draft_access),
+):
+    text = body.answer_text.strip()
+    if not text:
+        raise HTTPException(400, "Answer text is required")
+    import uuid as _uuid
+    try:
+        _uuid.UUID(question_id)
+    except ValueError:
+        raise HTTPException(404, "Question not found")
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        row = db.answer_client_question(draft_id, question_id, text)
+    if row is None:
+        raise HTTPException(404, "Question not found or already resolved")
+    return dict(row)
+
+
+@router.post("/{draft_id}/questions/{question_id}/resolve")
+async def resolve_client_question(
+    draft_id: str,
+    question_id: str,
+    body: ResolveQuestionRequest,
+    _token: str = Depends(verify_dashboard_token),
+):
+    import uuid as _uuid
+    try:
+        _uuid.UUID(question_id)
+    except ValueError:
+        raise HTTPException(404, "Question not found")
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        row = db.resolve_client_question(
+            draft_id, question_id, body.resolution_note
+        )
+    if row is None:
+        raise HTTPException(404, "Question not found")
+    return dict(row)

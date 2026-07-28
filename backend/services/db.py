@@ -572,15 +572,90 @@ class EWDbWriter:
 
     def set_lawyer_approval(self, draft_id: str, document_type: str,
                             approved_by: str) -> dict:
-        """Record a lawyer's explicit approval of one generated document (#86)."""
+        """Record a lawyer's explicit approval of one generated document (#86).
+
+        The approval is BOUND to the newest stored generation (id + SHA-256):
+        the file can always show exactly which bytes the lawyer approved,
+        and any later mismatch is detectable. Clause edits and regeneration
+        both revoke the approval regardless.
+        """
+        latest = self.fetchone("""
+            SELECT id, content_sha256 FROM ew_document_generations
+            WHERE draft_id = %s AND document_type = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+        """, (draft_id, document_type))
         return self.fetchone("""
             UPDATE ew_document_configs
             SET lawyer_approved_at = now(), lawyer_approved_by = %s,
+                lawyer_approved_generation_id = %s,
+                lawyer_approved_sha256 = %s,
                 updated_at = now()
             WHERE draft_id = %s AND document_type = %s
               AND generated_at IS NOT NULL
-            RETURNING document_type, lawyer_approved_at, lawyer_approved_by
-        """, (approved_by, draft_id, document_type))
+            RETURNING document_type, lawyer_approved_at, lawyer_approved_by,
+                      lawyer_approved_generation_id, lawyer_approved_sha256
+        """, (
+            approved_by,
+            (latest or {}).get("id"),
+            (latest or {}).get("content_sha256"),
+            draft_id, document_type,
+        ))
+
+    # ── Client follow-up questions (#98) ──────────────────────────────────────
+
+    def create_client_question(self, draft_id: str, question_text: str,
+                               required: bool = False,
+                               document_type: str = None,
+                               clause_id: str = None,
+                               section: str = None,
+                               asked_by: str = "dashboard") -> dict:
+        return self.fetchone("""
+            INSERT INTO ew_client_questions
+                (draft_id, question_text, required, document_type,
+                 clause_id, section, asked_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (draft_id, question_text, required, document_type,
+              clause_id, section, asked_by))
+
+    def get_client_questions(self, draft_id: str) -> list:
+        return self.fetchall("""
+            SELECT * FROM ew_client_questions
+            WHERE draft_id = %s
+            ORDER BY created_at DESC
+        """, (draft_id,))
+
+    def answer_client_question(self, draft_id: str, question_id: str,
+                               answer_text: str) -> dict:
+        """Client answers (draft-scoped so one client cannot answer
+        another's question through a guessed id)."""
+        return self.fetchone("""
+            UPDATE ew_client_questions
+            SET answer_text = %s, status = 'answered', answered_at = now()
+            WHERE id = %s AND draft_id = %s AND status != 'resolved'
+            RETURNING *
+        """, (answer_text, question_id, draft_id))
+
+    def resolve_client_question(self, draft_id: str, question_id: str,
+                                resolution_note: str = None) -> dict:
+        return self.fetchone("""
+            UPDATE ew_client_questions
+            SET status = 'resolved', resolved_at = now(),
+                resolution_note = COALESCE(%s, resolution_note)
+            WHERE id = %s AND draft_id = %s
+            RETURNING *
+        """, (resolution_note, question_id, draft_id))
+
+    def unresolved_required_questions(self, draft_id: str,
+                                      document_type: str = None) -> list:
+        """Required questions that must be resolved before approval:
+        unscoped questions block every document; scoped ones block theirs."""
+        return self.fetchall("""
+            SELECT * FROM ew_client_questions
+            WHERE draft_id = %s AND required = true AND status != 'resolved'
+              AND (document_type IS NULL OR document_type = %s)
+        """, (draft_id, document_type))
 
     def revoke_lawyer_approval(self, draft_id: str, document_type: str) -> bool:
         """Withdraw approval — e.g. after re-generating with changed clauses."""

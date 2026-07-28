@@ -671,6 +671,25 @@ async def approve_document(
                 "message": instruction_gap_message(gaps),
                 "instruction_gaps": sorted(gaps),
             })
+        # Unresolved REQUIRED client questions block approval (#98): the
+        # lawyer marked something as needing the client's answer before
+        # this document is safe to release.
+        open_questions = db.unresolved_required_questions(
+            draft_id, document_type
+        )
+        if open_questions:
+            raise HTTPException(422, {
+                "error": "approval_blocked_open_questions",
+                "message": (
+                    "This document has required client questions that are "
+                    "not yet resolved. Resolve them (or mark them "
+                    "informational) before approving."
+                ),
+                "open_questions": [
+                    {"id": str(q["id"]), "question_text": q["question_text"]}
+                    for q in open_questions
+                ],
+            })
         # NOTE: lawyer_approved_by is the shared dashboard identity until
         # per-lawyer accounts (#52) land; the column is ready for real names.
         row = db.set_lawyer_approval(draft_id, document_type, "dashboard")

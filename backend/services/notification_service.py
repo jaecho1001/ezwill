@@ -1092,3 +1092,55 @@ Please bring government-issued photo ID.
         )
 
     return result
+
+
+async def _send_client_email(to_email: str, subject: str, body: str) -> bool:
+    """Mode-dispatched single email to a client. Returns True only when a
+    real provider accepted the message (stdout logging is NOT delivery)."""
+    mode = _notification_mode()
+    if mode == "disabled":
+        return False
+    if mode == "smtp":
+        return _send_smtp_email(to_email, subject, body)
+    if mode == "stdout" or not _ghl_ready():
+        logger.info(f"[CLIENT EMAIL] To: {to_email}\nSubject: {subject}\n{body}")
+        return False
+    contact_id = await _find_or_create_contact(email=to_email)
+    if not contact_id:
+        return False
+    return await _send_ghl_message(contact_id, "Email", subject, body)
+
+
+async def notify_client_question(draft_id: str, question_text: str) -> bool:
+    """Tell the client their lawyer has a follow-up question (#98).
+
+    The client answers in the portal via their EXISTING questionnaire link;
+    the message deliberately contains neither the question text (an email
+    is not the secure channel for estate details) nor a fresh token.
+    """
+    from services.db import EWDbWriter
+    schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
+    with EWDbWriter(schema) as db:
+        draft = db.get_draft(draft_id)
+    if not draft or not draft.get("client_email"):
+        return False
+    first = draft.get("client_first_name") or ""
+    language = draft.get("language") or "en"
+    if language == "ko":
+        subject = "변호사가 유언장 관련 확인 질문을 보냈습니다"
+        body = (
+            f"{first}님, 안녕하세요.\n\n"
+            "유언장 준비와 관련하여 변호사가 확인 질문을 보냈습니다. "
+            "받으셨던 설문 링크로 접속하시면 안전하게 답변하실 수 있습니다.\n\n"
+            f"— {_resolve_firm_name()}"
+        )
+    else:
+        subject = "Your lawyer has a follow-up question about your will"
+        body = (
+            f"Hi {first},\n\n"
+            "Your lawyer has sent a follow-up question about your estate "
+            "planning file. Please open your questionnaire link to answer "
+            "it securely in the portal.\n\n"
+            f"— {_resolve_firm_name()}"
+        )
+    return await _send_client_email(draft["client_email"], subject, body)
