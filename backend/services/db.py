@@ -970,3 +970,64 @@ class EWDbWriter:
             "UPDATE ew_lawyers SET last_login_at = now() WHERE id = %s",
             (lawyer_id,),
         )
+
+    # ── Pipeline overview (dashboard home) ────────────────────────────────────
+
+    def get_pipeline_overview(self) -> dict:
+        """One read for the lawyer's morning: where every file stands and
+        what needs a human. Four queues, each answering one question:
+        who submitted and waits on me, which questions are open, which
+        documents sit generated-but-unreleased, and which deliveries the
+        client never actually received."""
+        status_counts = {
+            row["status"]: int(row["n"])
+            for row in self.fetchall(
+                "SELECT status, COUNT(*) AS n FROM ew_will_drafts GROUP BY status"
+            )
+        }
+        awaiting_review = self.fetchall("""
+            SELECT id, client_first_name, client_last_name, language,
+                   submitted_at
+            FROM ew_will_drafts
+            WHERE status = 'submitted'
+            ORDER BY submitted_at ASC NULLS LAST
+            LIMIT 25
+        """)
+        open_questions = self.fetchall("""
+            SELECT q.id, q.draft_id, q.question_text, q.required, q.status,
+                   q.created_at, q.answered_at,
+                   d.client_first_name, d.client_last_name
+            FROM ew_client_questions q
+            JOIN ew_will_drafts d ON d.id = q.draft_id
+            WHERE q.status != 'resolved'
+            ORDER BY q.required DESC, q.created_at ASC
+            LIMIT 25
+        """)
+        awaiting_approval = self.fetchall("""
+            SELECT c.draft_id, c.document_type, c.generated_at,
+                   d.client_first_name, d.client_last_name
+            FROM ew_document_configs c
+            JOIN ew_will_drafts d ON d.id = c.draft_id
+            WHERE c.generated_at IS NOT NULL
+              AND c.lawyer_approved_at IS NULL
+              AND c.enabled = true
+            ORDER BY c.generated_at ASC
+            LIMIT 25
+        """)
+        failed_deliveries = self.fetchall("""
+            SELECT l.id, l.draft_id, l.kind, l.channel, l.status,
+                   l.created_at, d.client_first_name, d.client_last_name
+            FROM ew_delivery_log l
+            JOIN ew_will_drafts d ON d.id = l.draft_id
+            WHERE l.status IN ('failed', 'logged_only')
+              AND l.created_at > now() - interval '14 days'
+            ORDER BY l.created_at DESC
+            LIMIT 25
+        """)
+        return {
+            "status_counts": status_counts,
+            "awaiting_review": [dict(r) for r in awaiting_review],
+            "open_questions": [dict(r) for r in open_questions],
+            "awaiting_approval": [dict(r) for r in awaiting_approval],
+            "failed_deliveries": [dict(r) for r in failed_deliveries],
+        }

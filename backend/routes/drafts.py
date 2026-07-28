@@ -94,6 +94,30 @@ async def list_drafts(
         drafts = db.list_drafts(limit=limit, offset=offset, status=status)
         return {"drafts": [dict(d) for d in drafts], "total": db.count_drafts(status)}
 
+@router.get("/overview")
+async def pipeline_overview(_token: str = Depends(verify_dashboard_token)):
+    """The lawyer's home screen: pipeline counts + the four action queues.
+
+    Declared BEFORE /{draft_id} on purpose — FastAPI matches routes in
+    declaration order, and 'overview' must not be captured as a draft id.
+    """
+    with EWDbWriter(DEFAULT_SCHEMA) as db:
+        overview = db.get_pipeline_overview()
+    # JSON-safe timestamps.
+    def _clean(rows):
+        return [
+            {k: (str(v) if hasattr(v, "isoformat") else v) for k, v in row.items()}
+            for row in rows
+        ]
+    return {
+        "status_counts": overview["status_counts"],
+        "awaiting_review": _clean(overview["awaiting_review"]),
+        "open_questions": _clean(overview["open_questions"]),
+        "awaiting_approval": _clean(overview["awaiting_approval"]),
+        "failed_deliveries": _clean(overview["failed_deliveries"]),
+    }
+
+
 @router.get("/{draft_id}")
 async def get_draft(draft_id: str, _token: str = Depends(verify_dashboard_token)):
     """The lawyer's working payload (#87): everything the client supplied.
