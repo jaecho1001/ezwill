@@ -114,3 +114,19 @@
 - Remaining open scope on PR: generation-hash approval binding, clause
   whitelist, per-lawyer identity (#52), delivery persistence/resend,
   commissioner capture flow — plus the standing owner/lawyer decisions.
+
+## 2026-07-28 (later) — pilot-readiness round shipped (PR #97 @ 392cc91)
+
+- #98 follow-up Q&A complete both sides (backend d153401, UI 392cc91 via
+  worktree agent — its Korean particle grammar verified correct this time).
+  Required questions block approval; answering alone does not unblock.
+- #86 follow-up: approval binds generation id + SHA-256 (migration 42).
+- #90 engineering: bilingual AI-consent gate, recorded with notice version,
+  server-side 403; token/email/phone redaction in all dev notification logs.
+  Policy TEXT remains the lawyer's.
+- #88 engineering complete: delivery attempts persisted (migration 43),
+  resend reuses the active token. Provider/domain still the owner's call.
+- Backend 344/0-skips vs real PG16; frontend 122; CI green.
+- Next engineering after decisions: #52 per-lawyer identity, then deploy
+  config for whichever host is chosen. Everything else on the Phase-1
+  checklist is lawyer drafting, owner decisions, or browser walkthroughs.
