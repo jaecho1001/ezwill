@@ -10,9 +10,18 @@ import { Separator } from '@/components/ui/separator'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { AiFlagsSummary } from '@/components/dashboard/ai-flags-summary'
 import { EstateOverview } from '@/components/dashboard/estate-overview'
-import { getDraft, createReviewLink, invokeQuickDraft, type QuickDraftResult } from '@/lib/api/drafts'
+import {
+  getDraft,
+  createReviewLink,
+  invokeQuickDraft,
+  askClientQuestion,
+  listClientQuestions,
+  resolveClientQuestion,
+  type QuickDraftResult,
+  type ClientQuestion,
+} from '@/lib/api/drafts'
 import { getAuthHeaders } from '@/lib/auth'
-import { affirmedPersonalCareClauseIds, mergeSelectionsWithDefaults, supportedConditionalClauseIds } from '@/lib/will-documents/index'
+import { affirmedPersonalCareClauseIds, mergeSelectionsWithDefaults, supportedConditionalClauseIds, willDocumentTypes } from '@/lib/will-documents/index'
 import { serializeSelectionsForSave } from '@/lib/will-documents/clause-serialization'
 import type { WillDocumentType } from '@/types/will-document'
 import { cn } from '@/lib/utils'
@@ -118,6 +127,22 @@ interface DraftDetail {
   vault?: Record<string, unknown> | null
 }
 
+// Follow-up questions (#98): status chip styling per lifecycle state.
+const QUESTION_STATUS_BADGE: Record<ClientQuestion['status'], { label: string; variant: 'warning' | 'info' | 'success' }> = {
+  open: { label: 'Open', variant: 'warning' },
+  answered: { label: 'Answered', variant: 'info' },
+  resolved: { label: 'Resolved', variant: 'success' },
+}
+
+// Scoping options for a question: the will/POA documents (not affidavits —
+// those never carry client-facing decisions of their own).
+const QUESTION_DOC_OPTIONS = willDocumentTypes.filter((t) => !t.id.startsWith('affidavit'))
+
+function questionDocLabel(docType: string | null): string | null {
+  if (!docType) return null
+  return willDocumentTypes.find((t) => t.id === docType)?.shortName ?? docType
+}
+
 type TabId = 'overview' | 'answers' | 'documents' | 'tier2'
 
 const TABS: { id: TabId; label: string }[] = [
@@ -143,6 +168,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [aiDrafting, setAiDrafting] = useState(false)
   const [aiDraftResult, setAiDraftResult] = useState<QuickDraftResult | null>(null)
   const [aiDraftError, setAiDraftError] = useState<string | null>(null)
+  // Follow-up questions (#98)
+  const [questions, setQuestions] = useState<ClientQuestion[]>([])
+  const [questionText, setQuestionText] = useState('')
+  const [questionRequired, setQuestionRequired] = useState(false)
+  const [questionDocType, setQuestionDocType] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [askError, setAskError] = useState<string | null>(null)
+  const [resolveNotes, setResolveNotes] = useState<Record<string, string>>({})
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [resolveErrors, setResolveErrors] = useState<Record<string, string>>({})
 
   const handleSendReviewLink = useCallback(async () => {
     setReviewLinkLoading(true)
@@ -247,7 +282,58 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
+    // Follow-up questions load alongside the draft (#98). A failed load
+    // leaves the list empty rather than blocking the page.
+    void listClientQuestions(id).then((loaded) => {
+      if (loaded) setQuestions(loaded)
+    })
   }, [id])
+
+  const handleAskQuestion = useCallback(async () => {
+    const text = questionText.trim()
+    if (!text) return
+    setAsking(true)
+    setAskError(null)
+    const created = await askClientQuestion(id, {
+      question_text: text,
+      required: questionRequired,
+      document_type: questionDocType || undefined,
+    })
+    if (created) {
+      setQuestions((prev) => [created, ...prev])
+      setQuestionText('')
+      setQuestionRequired(false)
+      setQuestionDocType('')
+    } else {
+      setAskError('Could not send the question. Please try again.')
+    }
+    setAsking(false)
+  }, [id, questionText, questionRequired, questionDocType])
+
+  const handleResolveQuestion = useCallback(async (questionId: string) => {
+    setResolvingId(questionId)
+    setResolveErrors((prev) => {
+      const next = { ...prev }
+      delete next[questionId]
+      return next
+    })
+    const note = (resolveNotes[questionId] ?? '').trim()
+    const resolved = await resolveClientQuestion(id, questionId, note || undefined)
+    if (resolved) {
+      setQuestions((prev) => prev.map((q) => (q.id === questionId ? resolved : q)))
+      setResolveNotes((prev) => {
+        const next = { ...prev }
+        delete next[questionId]
+        return next
+      })
+    } else {
+      setResolveErrors((prev) => ({
+        ...prev,
+        [questionId]: 'Could not mark this question resolved. Please try again.',
+      }))
+    }
+    setResolvingId(null)
+  }, [id, resolveNotes])
 
   const handleNavigate = useCallback((section: string) => {
     if (section === 'documents') {
@@ -572,6 +658,122 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </CardContent>
         </Card>
       )}
+
+      {/* Follow-up questions (#98): the lawyer asks, the client answers via
+          their questionnaire link, the lawyer resolves. Required questions
+          block approval of the targeted document until resolved. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Follow-up questions</CardTitle>
+          <CardDescription>
+            Ask the client anything the file is missing — they answer through their
+            questionnaire link. A question marked required blocks approval of the selected
+            document (or of every document when unscoped) until you mark it resolved.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2 rounded-md border border-[#E8E4DF] bg-[#FAF8F5] p-3">
+            <textarea
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
+              rows={2}
+              placeholder="e.g. Your RRSP still names a former spouse as beneficiary — is that intended?"
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-[#1B2A4A] focus:outline-none"
+            />
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={questionRequired}
+                  onChange={(e) => setQuestionRequired(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-gray-300"
+                />
+                <span className="text-gray-700">Required before approval</span>
+              </label>
+              <select
+                value={questionDocType}
+                onChange={(e) => setQuestionDocType(e.target.value)}
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700"
+                aria-label="Document this question is about"
+              >
+                <option value="">Entire file</option>
+                {QUESTION_DOC_OPTIONS.map((docOption) => (
+                  <option key={docOption.id} value={docOption.id}>{docOption.shortName}</option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                onClick={handleAskQuestion}
+                disabled={asking || !questionText.trim()}
+                className="ml-auto"
+              >
+                {asking ? 'Sending…' : 'Ask client'}
+              </Button>
+            </div>
+            {askError && <p className="text-xs text-red-600">{askError}</p>}
+          </div>
+
+          {questions.length === 0 ? (
+            <p className="text-sm italic text-gray-400">No follow-up questions yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {questions.map((question) => (
+                <div key={question.id} className="rounded-md border border-[#E8E4DF] p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={QUESTION_STATUS_BADGE[question.status].variant}>
+                      {QUESTION_STATUS_BADGE[question.status].label}
+                    </Badge>
+                    {question.required && <Badge variant="destructive">Required before approval</Badge>}
+                    {question.document_type && (
+                      <span className="text-xs text-gray-500">{questionDocLabel(question.document_type)}</span>
+                    )}
+                    <span className="ml-auto text-xs text-gray-400">
+                      Asked {new Date(question.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-gray-800">{question.question_text}</p>
+                  {question.answer_text && (
+                    <div className="mt-2 rounded-md border border-blue-100 bg-blue-50 p-2">
+                      <p className="text-xs font-medium text-blue-700">
+                        Client&apos;s answer
+                        {question.answered_at ? ` · ${new Date(question.answered_at).toLocaleString()}` : ''}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-gray-800">{question.answer_text}</p>
+                    </div>
+                  )}
+                  {question.status === 'resolved' ? (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Resolved{question.resolved_at ? ` ${new Date(question.resolved_at).toLocaleString()}` : ''}
+                      {question.resolution_note ? ` — ${question.resolution_note}` : ''}
+                    </p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        value={resolveNotes[question.id] ?? ''}
+                        onChange={(e) => setResolveNotes((prev) => ({ ...prev, [question.id]: e.target.value }))}
+                        placeholder="Resolution note (optional)"
+                        className="min-w-[200px] flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleResolveQuestion(question.id)}
+                        disabled={resolvingId === question.id}
+                      >
+                        {resolvingId === question.id ? 'Resolving…' : 'Mark resolved'}
+                      </Button>
+                    </div>
+                  )}
+                  {resolveErrors[question.id] && (
+                    <p className="mt-1 text-xs text-red-600">{resolveErrors[question.id]}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Timestamps */}
       <div className="flex gap-6 text-xs text-gray-400">

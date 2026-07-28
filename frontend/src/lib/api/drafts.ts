@@ -354,6 +354,135 @@ export async function createMagicLink(params: {
   }
 }
 
+// ── Lawyer ↔ client follow-up questions (#98) ────────────────────────────────
+// The lawyer asks from the dashboard; the client answers through their
+// magic-link questionnaire; the lawyer resolves. Required questions block
+// lawyer approval of the targeted document until resolved.
+
+export interface ClientQuestion {
+  id: string
+  question_text: string
+  required: boolean
+  status: 'open' | 'answered' | 'resolved'
+  answer_text: string | null
+  resolution_note: string | null
+  document_type: string | null
+  clause_id: string | null
+  section: string | null
+  created_at: string
+  answered_at: string | null
+  resolved_at: string | null
+  asked_by: string
+}
+
+// Pure display helper: split a question list into the three lifecycle
+// buckets so the dashboard and the client portal render each group
+// consistently (and the client portal can hide resolved ones entirely).
+export function partitionClientQuestions(questions: ClientQuestion[]): {
+  open: ClientQuestion[]
+  answered: ClientQuestion[]
+  resolved: ClientQuestion[]
+} {
+  return {
+    open: questions.filter((q) => q.status === 'open'),
+    answered: questions.filter((q) => q.status === 'answered'),
+    resolved: questions.filter((q) => q.status === 'resolved'),
+  }
+}
+
+// Lawyer sends the client a follow-up question (dashboard auth).
+export async function askClientQuestion(
+  draftId: string,
+  params: {
+    question_text: string
+    required?: boolean
+    document_type?: string
+    clause_id?: string
+    section?: string
+  },
+): Promise<ClientQuestion | null> {
+  try {
+    const res = await fetch(`/api/drafts/${draftId}/questions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({
+        question_text: params.question_text,
+        required: params.required ?? false,
+        document_type: params.document_type ?? null,
+        clause_id: params.clause_id ?? null,
+        section: params.section ?? null,
+      }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
+// Both sides read the same list: the lawyer via the dashboard session,
+// the client via their draft-bound magic token.
+export async function listClientQuestions(
+  draftId: string,
+  magicToken?: string,
+): Promise<ClientQuestion[] | null> {
+  try {
+    const headers: Record<string, string> = { ...getAuthHeaders() }
+    if (magicToken) {
+      headers['X-Magic-Token'] = magicToken
+    }
+    const res = await fetch(`/api/drafts/${draftId}/questions`, { headers })
+    if (!res.ok) return null
+    const json = await res.json()
+    return (json.questions ?? []) as ClientQuestion[]
+  } catch {
+    return null
+  }
+}
+
+// Client answers a question through their magic-link session.
+export async function answerClientQuestion(
+  draftId: string,
+  questionId: string,
+  answerText: string,
+  magicToken?: string,
+): Promise<ClientQuestion | null> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...getAuthHeaders() }
+    if (magicToken) {
+      headers['X-Magic-Token'] = magicToken
+    }
+    const res = await fetch(`/api/drafts/${draftId}/questions/${questionId}/answer`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ answer_text: answerText }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
+// Lawyer marks a question resolved (dashboard auth), optionally with a note.
+export async function resolveClientQuestion(
+  draftId: string,
+  questionId: string,
+  resolutionNote?: string,
+): Promise<ClientQuestion | null> {
+  try {
+    const res = await fetch(`/api/drafts/${draftId}/questions/${questionId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ resolution_note: resolutionNote ?? null }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
 // Create a review portal magic link for a client
 // Delivers via GHL email + SMS (use options to disable channels)
 export async function createReviewLink(

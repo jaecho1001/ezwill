@@ -18,7 +18,8 @@ import { ChatPane } from '@/components/intake/chat-pane'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { L } from '@/lib/intake/localize'
-import { resolveLink } from '@/lib/api/drafts'
+import { resolveLink, listClientQuestions, answerClientQuestion, type ClientQuestion } from '@/lib/api/drafts'
+import { ClientQuestionsCard } from '@/components/intake/client-questions-card'
 import { useDraft } from '@/providers/draft-provider'
 import { normalizeVault } from '@/types/will-vault'
 import { useVaultSync } from '@/hooks/use-vault-sync'
@@ -36,6 +37,7 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   const { setDraftId, setToken } = useDraft()
   const [linkError, setLinkError] = useState(false)
   const [hydrated, setHydrated] = useState(false)
+  const [clientQuestions, setClientQuestions] = useState<ClientQuestion[]>([])
   const hasMagicToken = Boolean(searchParams.get('t'))
 
   // On a 409 the server has a newer copy (another device, or the lawyer).
@@ -79,6 +81,26 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
       setHydrated(true)
     })
   }, [acceptRevision, hydrated, replaceVault, searchParams, setDraftId, setLanguage, setToken, vault, willId])
+
+  // Follow-up questions from the lawyer (#98): loaded once the magic-link
+  // session is hydrated (the token has been validated against this draft).
+  // Self-serve sessions without a token have no lawyer yet, so nothing loads.
+  useEffect(() => {
+    const magicToken = searchParams.get('t')
+    if (!magicToken || !hydrated) return
+    void listClientQuestions(willId, magicToken).then((loaded) => {
+      if (loaded) setClientQuestions(loaded)
+    })
+  }, [hydrated, searchParams, willId])
+
+  const handleAnswerQuestion = useCallback(async (questionId: string, answerText: string) => {
+    const magicToken = searchParams.get('t')
+    if (!magicToken) return false
+    const updated = await answerClientQuestion(willId, questionId, answerText, magicToken)
+    if (!updated) return false
+    setClientQuestions((prev) => prev.map((q) => (q.id === questionId ? updated : q)))
+    return true
+  }, [searchParams, willId])
 
   // Seed the active chapter from ?chapter=N so deep-links from the summary
   // page / facts panel / external bookmarks land on the right step.
@@ -259,6 +281,14 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
 
         {/* Center — form questions OR chat pane */}
         <main className="col-span-12 space-y-3 md:col-span-9">
+          {/* Lawyer follow-up questions (#98) — above the chapter content so
+              the client sees them first. Renders nothing when every question
+              is resolved (or none exist). */}
+          <ClientQuestionsCard
+            questions={clientQuestions}
+            language={language}
+            onAnswer={handleAnswerQuestion}
+          />
           {mode === 'chat' ? (
             <>
               <ChatPane
