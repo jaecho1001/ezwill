@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   requiredDocTypesForDraft,
+  requiredDocGroupsForDraft,
+  resolveDocTypeForGroup,
   willDocumentTypes,
   getClausesForDocumentType,
   buildDefaultSelections,
@@ -353,5 +355,34 @@ describe('requiredDocTypesForDraft (mirror of backend required_document_groups)'
         'affidavit_execution_probate', 'affidavit_execution_non_probate',
       ]))
     }
+  })
+})
+
+describe('will-style equivalence (backend accepts single_will OR simple_will_short)', () => {
+  type ServerState = Map<string, { generated_at?: string | null; lawyer_approved_at?: string | null }>
+
+  it('the will requirement group accepts either will style, short first as default', () => {
+    const groups = requiredDocGroupsForDraft({ vault: {} })
+    expect(groups[0]).toEqual(['simple_will_short', 'single_will'])
+    expect(groups[1]).toEqual(['affidavit_execution'])
+  })
+
+  it('shows the standard will when that is what was generated and approved', () => {
+    const state: ServerState = new Map([
+      ['single_will', { generated_at: '2026-07-28T00:00:00Z', lawyer_approved_at: '2026-07-28T01:00:00Z' }],
+    ])
+    expect(resolveDocTypeForGroup(['simple_will_short', 'single_will'], state)).toBe('single_will')
+  })
+
+  it('an approved member outranks a merely generated one', () => {
+    const state: ServerState = new Map([
+      ['simple_will_short', { generated_at: '2026-07-28T02:00:00Z', lawyer_approved_at: null }],
+      ['single_will', { generated_at: '2026-07-28T00:00:00Z', lawyer_approved_at: '2026-07-28T01:00:00Z' }],
+    ])
+    expect(resolveDocTypeForGroup(['simple_will_short', 'single_will'], state)).toBe('single_will')
+  })
+
+  it('falls back to the default display type when nothing is generated', () => {
+    expect(resolveDocTypeForGroup(['simple_will_short', 'single_will'], new Map())).toBe('simple_will_short')
   })
 })

@@ -11,7 +11,8 @@ import { extractApiErrorDetail } from '@/lib/api/documents'
 import { getAuthHeaders } from '@/lib/auth'
 import {
   willDocumentTypes,
-  requiredDocTypesForDraft,
+  requiredDocGroupsForDraft,
+  resolveDocTypeForGroup,
   getDocumentTypeConfig,
 } from '@/lib/will-documents/index'
 import type { WillDocumentType } from '@/types/will-document'
@@ -64,23 +65,28 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
         }
 
         // Same rule as the backend overview queue: POAs only when the
-        // client requested one (legacy flags OR vault). The old
-        // '|| true' forced both POAs onto every client, so this screen
-        // showed "pending" documents the queue correctly ignored.
-        const requiredDocTypes = requiredDocTypesForDraft(
+        // client requested one (legacy flags OR vault), and the will
+        // requirement is a GROUP satisfied by either will style — the
+        // backend accepts a standard will in place of the short one, so
+        // this screen must show whichever style was actually produced.
+        const requiredGroups = requiredDocGroupsForDraft(
           res as unknown as Record<string, unknown>
         )
 
-        const docs: DocumentEntry[] = requiredDocTypes.map((docType) => {
+        const buildDocs = (
+          byType: Map<string, { generated_at?: string | null; lawyer_approved_at?: string | null }>
+        ): DocumentEntry[] => requiredGroups.map((group) => {
+          const docType = resolveDocTypeForGroup(group, byType)
           const config = getDocumentTypeConfig(docType)
+          const server = byType.get(docType)
           return {
             docType,
             name: config?.name ?? docType,
             shortName: config?.shortName ?? docType,
             icon: config?.icon ?? '',
-            status: 'pending' as DocStatus,
-            lastGenerated: null,
-            approvedAt: null,
+            status: server?.generated_at ? ('generated' as DocStatus) : ('pending' as DocStatus),
+            lastGenerated: server?.generated_at ?? null,
+            approvedAt: server?.generated_at ? (server.lawyer_approved_at ?? null) : null,
           }
         })
 
@@ -90,23 +96,14 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
           .then((res) => (res.ok ? res.json() : null))
           .then((listing) => {
             if (!listing?.documents) {
-              setDocuments(docs)
+              setDocuments(buildDocs(new Map()))
               return
             }
             const byType = new Map<string, { generated_at?: string | null; lawyer_approved_at?: string | null }>(
               (listing.documents as Array<{ document_type: string; generated_at?: string | null; lawyer_approved_at?: string | null }>)
                 .map((d) => [d.document_type, d])
             )
-            setDocuments(docs.map((doc) => {
-              const server = byType.get(doc.docType)
-              if (!server?.generated_at) return doc
-              return {
-                ...doc,
-                status: 'generated' as DocStatus,
-                lastGenerated: server.generated_at,
-                approvedAt: server.lawyer_approved_at ?? null,
-              }
-            }))
+            setDocuments(buildDocs(byType))
           })
       })
       .catch((err) => setError(err.message))

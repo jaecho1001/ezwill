@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { PeopleRolesGrid } from '@/components/dashboard/people-roles-grid'
 import { AssetSummary } from '@/components/dashboard/asset-summary'
 import { DistributionChart } from '@/components/dashboard/distribution-chart'
-import { determineRequiredDocuments, getDocumentTypeConfig } from '@/lib/will-documents/index'
+import { requiredDocTypesForDraft, getDocumentTypeConfig } from '@/lib/will-documents/index'
 import { getAuthHeaders } from '@/lib/auth'
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -89,8 +89,6 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
   const estate = (draft.your_estate ?? {}) as Record<string, unknown>
   const family = (draft.your_family ?? {}) as Record<string, unknown>
   const arrangements = (draft.your_arrangements ?? {}) as Record<string, unknown>
-  const poaProp = (draft.poa_property ?? {}) as Record<string, unknown>
-  const poaCare = (draft.poa_personal_care ?? {}) as Record<string, unknown>
   const assets = (draft.assets ?? []) as Array<Record<string, unknown>>
   const people = (draft.people ?? []) as Array<Record<string, unknown>>
 
@@ -170,14 +168,12 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
   }, [estate.hasTrusts, estate.trusts])
 
   // ── Required documents ──
-  const requiredDocs = useMemo(() => {
-    return determineRequiredDocuments({
-      tier: isDualWill ? 2 : 1,
-      hasDualWill: isDualWill,
-      hasPoaProperty: Boolean(poaProp.hasAttorney),
-      hasPoaPersonalCare: Boolean(poaCare.hasAttorney),
-    })
-  }, [isDualWill, poaProp.hasAttorney, poaCare.hasAttorney])
+  // Same rule as the overview queue and the Documents screen: vault POA
+  // requests and vault dual-will intent count, not just legacy flags.
+  const requiredDocs = useMemo(
+    () => requiredDocTypesForDraft(draft as unknown as Record<string, unknown>),
+    [draft]
+  )
 
   const TRUST_TYPE_LABELS: Record<string, { label: string; description: string }> = {
     childrens: { label: "Minor Children's Trust", description: 'Holds assets until children reach the specified age' },

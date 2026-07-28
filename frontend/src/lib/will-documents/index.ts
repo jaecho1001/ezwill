@@ -366,16 +366,19 @@ export function getTier2DocumentTypes(): WillDocumentTypeConfig[] {
 
 
 /**
- * Required documents derived from the DRAFT RECORD (legacy columns + vault).
+ * Requirement GROUPS derived from the DRAFT RECORD (legacy columns + vault).
  * MIRROR of backend required_document_groups (services/db.py) — the overview
- * queue and the Documents screen must agree on what "required" means, or a
- * file can leave the lawyer's queue while this screen still shows pending
- * documents (overview review round 3, finding 1). POAs are required only
- * when the client actually REQUESTED one, never by default.
+ * queue and the lawyer-facing screens must agree on what "required" means,
+ * or a file can leave the lawyer's queue while a screen still shows pending
+ * documents. Each group is satisfied by ANY member: the non-dual will group
+ * lists BOTH will styles because the backend deliberately accepts either
+ * (short or standard) as the will. The first member of each group is the
+ * default display type. POAs are required only when the client actually
+ * REQUESTED one, never by default.
  */
-export function requiredDocTypesForDraft(
+export function requiredDocGroupsForDraft(
   draft: Record<string, unknown>
-): WillDocumentType[] {
+): WillDocumentType[][] {
   const vault = asRecord(draft.vault)
   const goals = asRecord(vault.goals)
   const vaultPoa = asRecord(vault.poa)
@@ -394,12 +397,46 @@ export function requiredDocTypesForDraft(
     || asRecord(vaultPoa.personalCare).requested
     || goals.hasPoaPersonalCare
   )
-  return determineRequiredDocuments({
-    tier: hasDualWill ? 2 : 1,
-    hasDualWill,
-    hasPoaProperty,
-    hasPoaPersonalCare,
-  })
+
+  const groups: WillDocumentType[][] = hasDualWill
+    ? [
+        ['probate_will'],
+        ['non_probate_will'],
+        ['affidavit_execution_probate'],
+        ['affidavit_execution_non_probate'],
+      ]
+    : [['simple_will_short', 'single_will'], ['affidavit_execution']]
+  if (hasPoaProperty) groups.push(['poa_property'])
+  if (hasPoaPersonalCare) groups.push(['poa_personal_care'])
+  return groups
+}
+
+/** Default display type per requirement group (first member of each). */
+export function requiredDocTypesForDraft(
+  draft: Record<string, unknown>
+): WillDocumentType[] {
+  return requiredDocGroupsForDraft(draft).map((group) => group[0])
+}
+
+/**
+ * Which member of a requirement group to display, given the server's
+ * per-type generation/approval state. An approved member wins (it is the
+ * document that satisfies the queue), then a generated one, then the group
+ * default — so a STANDARD will approved in place of the short will doesn't
+ * leave the Documents screen claiming the short will is still pending.
+ */
+export function resolveDocTypeForGroup(
+  group: WillDocumentType[],
+  serverState: ReadonlyMap<
+    string,
+    { generated_at?: string | null; lawyer_approved_at?: string | null }
+  >
+): WillDocumentType {
+  return (
+    group.find((t) => serverState.get(t)?.lawyer_approved_at)
+    ?? group.find((t) => serverState.get(t)?.generated_at)
+    ?? group[0]
+  )
 }
 
 /** Determine which documents a client needs based on their will data */
