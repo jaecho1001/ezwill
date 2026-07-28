@@ -62,12 +62,26 @@ def test_overview_aggregates_across_clients(client):
                                "logged_only", provider_mode="stdout")
 
             # EXCLUSION CASES (from the feature's adversarial review):
-            # (a) submitted + fully handled (all generated docs approved)
-            #     must NOT sit in 'awaiting review' forever;
+            # (a) submitted + TRULY fully handled — every REQUIRED document
+            #     (will + affidavit here; no POA requested) generated and
+            #     approved — must NOT sit in 'awaiting review' forever;
             handled = track(db.create_draft("Fully", "Handled", language="en"))
             db.update_draft(handled, {"status": "submitted"})
-            db.update_document_generated(handled, "single_will", "db://y")
-            db.set_lawyer_approval(handled, "single_will", "Test Lawyer")
+            for doc_type in ("single_will", "affidavit_execution"):
+                db.update_document_generated(handled, doc_type, "db://y")
+                db.set_lawyer_approval(handled, doc_type, "Test Lawyer")
+            # (a2) the SECOND review's finding 1: will approved but a
+            #     REQUESTED POA never even generated — the file has work
+            #     outstanding and MUST STAY in the queue. Judging only
+            #     already-generated documents made this file vanish.
+            partial = track(db.create_draft("Half", "DoneOnly", language="en"))
+            db.update_draft(partial, {
+                "status": "submitted",
+                "poa_property": '{"hasAttorney": true}',
+            })
+            for doc_type in ("single_will", "affidavit_execution"):
+                db.update_document_generated(partial, doc_type, "db://z")
+                db.set_lawyer_approval(partial, doc_type, "Test Lawyer")
             # (b) a failure remediated by a LATER successful send must NOT
             #     appear as a live delivery problem.
             remediated = track(db.create_draft("Fixed", "Delivery", language="en"))
@@ -86,7 +100,11 @@ def test_overview_aggregates_across_clients(client):
         assert any(r["id"] == draft_ids[0] for r in review_rows)
         # (a) fully handled file must have LEFT the queue.
         assert not any(r["id"] == draft_ids[4] for r in review_rows)
-        assert body["awaiting_review"]["total"] >= 1
+        # (a2) will approved but requested-POA ungenerated must REMAIN.
+        assert any(r["id"] == draft_ids[5] for r in review_rows), (
+            "file with an outstanding required POA vanished from the queue"
+        )
+        assert body["awaiting_review"]["total"] >= 2
 
         question_rows = body["open_questions"]["rows"]
         probe = next(q for q in question_rows if q["draft_id"] == draft_ids[1])
@@ -103,7 +121,7 @@ def test_overview_aggregates_across_clients(client):
         fail_row = next(r for r in fail_rows if r["draft_id"] == draft_ids[3])
         assert fail_row["status"] == "logged_only"
         # (b) remediated failure must NOT be listed as a live problem.
-        assert not any(r["draft_id"] == draft_ids[5] for r in fail_rows)
+        assert not any(r["draft_id"] == draft_ids[6] for r in fail_rows)
 
         # ISO-8601 timestamps only (WebKit rejects str(datetime)).
         submitted_at = next(
@@ -124,3 +142,33 @@ def test_overview_aggregates_across_clients(client):
             with dbmod.EWDbWriter(schema) as db:
                 db.execute("DELETE FROM ew_will_drafts WHERE id = %s",
                            (draft_id,))
+
+
+def test_required_document_groups_mirror():
+    """Unit-pins the server mirror of determineRequiredDocuments."""
+    from services.db import required_document_groups
+
+    # Simple estate, no POAs: one will (either style) + its affidavit.
+    groups = required_document_groups({})
+    assert {"single_will", "simple_will_short"} in groups
+    assert {"affidavit_execution"} in groups
+    assert len(groups) == 2
+
+    # Dual-will with both POAs requested via the vault.
+    groups = required_document_groups({
+        "vault": {"goals": {"hasDualWill": True},
+                  "poa": {"property": {"requested": True},
+                          "personalCare": {"requested": True}}},
+    })
+    flat = [next(iter(g)) for g in groups if len(g) == 1]
+    assert {"probate_will", "non_probate_will",
+            "affidavit_execution_probate", "affidavit_execution_non_probate",
+            "poa_property", "poa_personal_care"} <= set(flat)
+
+    # Legacy questionnaire flags count too.
+    groups = required_document_groups({
+        "your_estate": {"includeDualWill": True},
+        "poa_personal_care": {"hasAttorney": True},
+    })
+    assert {"poa_personal_care"} in groups
+    assert {"probate_will"} in groups

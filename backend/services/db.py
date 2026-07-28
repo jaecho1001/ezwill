@@ -34,6 +34,53 @@ def validate_schema(schema: str) -> str:
         raise ValueError(f"Invalid schema: {schema}")
     return schema
 
+
+def required_document_groups(draft: dict) -> list[set]:
+    """Requirement groups for a draft — MIRROR of the frontend's
+    determineRequiredDocuments (frontend/src/lib/will-documents/index.ts).
+
+    Each group is satisfied by ANY member document being generated and
+    lawyer-approved. 'Fully handled' means every group is satisfied; a
+    client whose will is approved but whose requested POA was never even
+    generated is NOT handled, and must stay in the lawyer's queue —
+    checking only already-generated documents made unfinished files vanish
+    from every action queue (overview review, finding 1).
+    """
+    vault = draft.get("vault") or {}
+    goals = vault.get("goals") or {}
+    vault_poa = vault.get("poa") or {}
+    estate = draft.get("your_estate") or {}
+    legacy_prop = draft.get("poa_property") or {}
+    legacy_care = draft.get("poa_personal_care") or {}
+
+    dual = bool(estate.get("includeDualWill") or goals.get("hasDualWill"))
+    poa_property = bool(
+        legacy_prop.get("hasAttorney")
+        or (vault_poa.get("property") or {}).get("requested")
+        or goals.get("hasPoaProperty")
+    )
+    poa_care = bool(
+        legacy_care.get("hasAttorney")
+        or (vault_poa.get("personalCare") or {}).get("requested")
+        or goals.get("hasPoaPersonalCare")
+    )
+
+    if dual:
+        groups = [
+            {"probate_will"}, {"non_probate_will"},
+            {"affidavit_execution_probate"},
+            {"affidavit_execution_non_probate"},
+        ]
+    else:
+        # Either will style satisfies the will requirement.
+        groups = [{"single_will", "simple_will_short"}, {"affidavit_execution"}]
+    if poa_property:
+        groups.append({"poa_property"})
+    if poa_care:
+        groups.append({"poa_personal_care"})
+    return groups
+
+
 class EWDbWriter:
     """Tenant-aware database writer for ew_* tables."""
 
@@ -982,31 +1029,14 @@ class EWDbWriter:
         what needs a human.
 
         Truthfulness rules (from the feature's adversarial review):
-        - 'Awaiting review' excludes files the lawyer has FINISHED — drafts
-          whose enabled, generated documents are all approved. 'submitted'
-          alone is not the same as 'waiting on me'.
+        - 'Awaiting review' excludes only files the lawyer has FINISHED
+          against the REQUIRED document set — every required will, POA and
+          affidavit generated and approved. Judging only already-generated
+          documents made unfinished files vanish.
         - Delivery problems exclude failures remediated by a LATER
           successful send on the same draft/kind/channel.
         - Every queue returns rows (capped) AND the true total, so the
           badge can never silently understate the queue.
-        """
-        # Files still waiting on the lawyer: submitted, and NOT fully
-        # handled (fully handled = has generated docs and none unapproved).
-        _awaiting_review_where = """
-            status = 'submitted'
-            AND NOT (
-                EXISTS (
-                    SELECT 1 FROM ew_document_configs c
-                    WHERE c.draft_id = ew_will_drafts.id
-                      AND c.enabled AND c.generated_at IS NOT NULL
-                )
-                AND NOT EXISTS (
-                    SELECT 1 FROM ew_document_configs c
-                    WHERE c.draft_id = ew_will_drafts.id
-                      AND c.enabled AND c.generated_at IS NOT NULL
-                      AND c.lawyer_approved_at IS NULL
-                )
-            )
         """
         status_counts = {
             row["status"]: int(row["n"])
@@ -1014,17 +1044,48 @@ class EWDbWriter:
                 "SELECT status, COUNT(*) AS n FROM ew_will_drafts GROUP BY status"
             )
         }
-        awaiting_review = self.fetchall(f"""
+
+        # Files still waiting on the lawyer. 'Fully handled' is judged
+        # against the REQUIRED document set (required_document_groups),
+        # not merely against what happens to be generated: a client whose
+        # will is approved but whose requested POA was never generated has
+        # work outstanding and must stay in the queue (overview review,
+        # finding 1).
+        submitted_rows = self.fetchall("""
             SELECT id, client_first_name, client_last_name, language,
-                   submitted_at
+                   submitted_at, vault, your_estate,
+                   poa_property, poa_personal_care
             FROM ew_will_drafts
-            WHERE {_awaiting_review_where}
+            WHERE status = 'submitted'
             ORDER BY submitted_at ASC NULLS LAST
-            LIMIT 25
         """)
-        awaiting_review_total = int(self.fetchone(
-            f"SELECT COUNT(*) AS n FROM ew_will_drafts WHERE {_awaiting_review_where}"
-        )["n"])
+        approved_by_draft: dict = {}
+        if submitted_rows:
+            for row in self.fetchall("""
+                SELECT draft_id, document_type FROM ew_document_configs
+                WHERE enabled = true AND generated_at IS NOT NULL
+                  AND lawyer_approved_at IS NOT NULL
+                  AND draft_id = ANY(%s::uuid[])
+            """, ([str(r["id"]) for r in submitted_rows],)):
+                approved_by_draft.setdefault(
+                    str(row["draft_id"]), set()
+                ).add(row["document_type"])
+
+        def _fully_handled(draft_row: dict) -> bool:
+            approved = approved_by_draft.get(str(draft_row["id"]), set())
+            return all(
+                group & approved
+                for group in required_document_groups(dict(draft_row))
+            )
+
+        pending = [r for r in submitted_rows if not _fully_handled(r)]
+        awaiting_review = [
+            {k: row[k] for k in ("id", "client_first_name",
+                                 "client_last_name", "language",
+                                 "submitted_at")}
+            for row in pending[:25]
+        ]
+        awaiting_review_total = len(pending)
 
         open_questions = self.fetchall("""
             SELECT q.id, q.draft_id, q.question_text, q.required, q.status,
@@ -1086,7 +1147,7 @@ class EWDbWriter:
             "status_counts": status_counts,
             "awaiting_review": {
                 "total": awaiting_review_total,
-                "rows": [dict(r) for r in awaiting_review],
+                "rows": awaiting_review,
             },
             "open_questions": {
                 "total": open_questions_total,

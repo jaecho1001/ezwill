@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/dashboard/status-badge'
 import { listDrafts, type DraftListItem } from '@/lib/api/drafts'
 import { getAuthHeaders } from '@/lib/auth'
+import { statsFromCounts } from '@/lib/dashboard-stats'
 
 interface Queue<Row> {
   /** TRUE total in the database — rows is capped at 25 by the server. */
@@ -106,7 +107,7 @@ export default function DashboardPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const stats = computeStats(drafts)
+  const stats = overview ? statsFromCounts(overview.status_counts) : computeStats(drafts)
   const recent = [...drafts]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 5)
