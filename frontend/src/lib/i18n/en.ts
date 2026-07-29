@@ -1,3 +1,4 @@
+import { LEGAL_STATEMENTS } from '@/lib/legal-statements'
 export const en = {
   // Navigation
   back: 'Back',
@@ -157,9 +158,9 @@ export const en = {
   about_cityPlaceholder: "e.g. Toronto",
   // --- your-family ---
   family_commonlawDesc: "Living together 3+ years or with child",
-  family_separatedDesc: "SLRA s.17: gifts to ex may be void after 3 years",
+  family_separatedDesc: LEGAL_STATEMENTS.separatedSpouseGiftsShort.en,
   family_separationDate: "Date of Separation",
-  family_separationNote: "SLRA s.17: Gifts to a separated spouse may be void after 3+ years of separation.",
+  family_separationNote: LEGAL_STATEMENTS.separatedSpouseGiftsNote.en,
   family_child: "Child",
   family_minorLabel: "Currently a minor (under 18)",
   family_odspLabel: "Receives ODSP",
@@ -423,8 +424,8 @@ export const en = {
   review_flaggedIssuesAbove: "flagged issues above",
   review_itemsAbove: "items above",
   review_nextStep2B: ").",
-  review_nextStep3: "You will sign your Will in person with 2 witnesses. Ontario does NOT permit fully electronic Wills — physical signing is required (SLRA s.4).",
-  review_nextStep4: "Your POAs are signed separately in the presence of 2 witnesses. Ask your lawyer who may act as a witness.",
+  review_nextStep3: LEGAL_STATEMENTS.willSigningInPerson.en,
+  review_nextStep4: LEGAL_STATEMENTS.poaSigningWitnesses.en,
   review_submitting: "Submitting...",
   review_submitToLawyer: "Submit to My Lawyer",
   review_downloadSummaryPdf: "Download Summary PDF",

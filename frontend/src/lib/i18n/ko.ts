@@ -1,3 +1,4 @@
+import { LEGAL_STATEMENTS } from '@/lib/legal-statements'
 export const ko = {
   back: '이전',
   continue: '다음',
@@ -145,9 +146,9 @@ export const ko = {
   about_cityPlaceholder: "예: 토론토",
   // --- your-family ---
   family_commonlawDesc: "3년 이상 동거 또는 자녀가 있는 경우",
-  family_separatedDesc: "SLRA 제17조: 3년 후 전 배우자에 대한 증여는 무효가 될 수 있습니다",
+  family_separatedDesc: LEGAL_STATEMENTS.separatedSpouseGiftsShort.ko,
   family_separationDate: "별거 일자",
-  family_separationNote: "SLRA 제17조: 별거 중인 배우자에 대한 증여는 3년 이상 별거 후 무효가 될 수 있습니다.",
+  family_separationNote: LEGAL_STATEMENTS.separatedSpouseGiftsNote.ko,
   family_child: "자녀",
   family_minorLabel: "현재 미성년자 (18세 미만)",
   family_odspLabel: "ODSP 수급",
@@ -411,8 +412,8 @@ export const ko = {
   review_flaggedIssuesAbove: "개의 상기 표시된 문제를",
   review_itemsAbove: "위 항목을",
   review_nextStep2B: " 포함한 모든 사항을 논의하기 위해 연락드립니다.",
-  review_nextStep3: "귀하는 2명의 증인이 참석한 가운데 직접 유언장에 서명하게 됩니다. 온타리오주는 완전한 전자 유언장을 허용하지 않으며, 실물 서명이 필요합니다 (SLRA 제4조).",
-  review_nextStep4: "위임장은 별도로 2명의 증인이 참석한 가운데 서명합니다. 증인이 될 수 있는 사람은 변호사에게 확인하십시오.",
+  review_nextStep3: LEGAL_STATEMENTS.willSigningInPerson.ko,
+  review_nextStep4: LEGAL_STATEMENTS.poaSigningWitnesses.ko,
   review_submitting: "제출 중...",
   review_submitToLawyer: "변호사에게 제출",
   review_downloadSummaryPdf: "요약 PDF 다운로드",

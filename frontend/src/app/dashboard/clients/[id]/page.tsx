@@ -178,6 +178,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [resolveNotes, setResolveNotes] = useState<Record<string, string>>({})
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [resolveErrors, setResolveErrors] = useState<Record<string, string>>({})
+  // Questionnaire-link resend (#88)
+  const [resending, setResending] = useState(false)
+  const [resendStatus, setResendStatus] = useState<string | null>(null)
+
+  const handleResendLink = useCallback(async () => {
+    setResending(true)
+    setResendStatus(null)
+    try {
+      const res = await fetch(`/api/links/${id}/resend?send_email=true`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.email_delivery === 'sent') {
+        setResendStatus('Sent')
+      } else if (res.ok) {
+        // Honest statuses (#88): 'logged_only' means email is not
+        // configured on this server; never claim success.
+        setResendStatus(body?.email_delivery === 'logged_only'
+          ? 'Not sent — email is not configured on this server'
+          : 'Not sent — delivery failed')
+      } else {
+        setResendStatus(body?.detail?.message ?? 'Not sent — no active link')
+      }
+    } catch {
+      setResendStatus('Not sent — could not reach the server')
+    } finally {
+      setResending(false)
+    }
+  }, [id])
 
   const handleSendReviewLink = useCallback(async () => {
     setReviewLinkLoading(true)
@@ -566,6 +596,30 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </CardContent>
         </Card>
       )}
+
+      {/* Questionnaire link resend (#88): the backend endpoint existed but
+          nothing in the UI called it — the only fallback was copy-the-link. */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Questionnaire Link</p>
+            <p className="text-xs text-gray-500">
+              Re-sends the client&apos;s existing link by email — no new link is created.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {resendStatus && (
+              <span className={`text-xs ${resendStatus.startsWith('Sent') ? 'text-green-600' : 'text-red-700'}`}>
+                {resendStatus}
+              </span>
+            )}
+            <Button variant="outline" size="sm" disabled={!draft.client_email || resending}
+              onClick={handleResendLink}>
+              {resending ? 'Sending…' : draft.client_email ? 'Resend by email' : 'No client email'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Review Link Delivery Options */}
       <Card>

@@ -1,5 +1,6 @@
 'use client'
 
+import { LEGAL_STATEMENTS } from '@/lib/legal-statements'
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { resolveReviewToken, type ReviewData } from '@/lib/api/review'
@@ -10,15 +11,14 @@ const text = {
     allApproved: 'All documents have been approved.',
     nextSteps: 'Next Steps',
     step1: 'Your lawyer will contact you to arrange a signing appointment.',
-    step2:
-      'Under the Succession Law Reform Act (SLRA), your Will must be signed in the presence of two witnesses.',
+    step2: LEGAL_STATEMENTS.willTwoWitnesses.en,
     step3:
       'Please bring valid government-issued photo identification to the signing appointment.',
     signingTitle: 'SLRA Signing Requirements',
-    signingReq1: 'The testator (you) must sign in the presence of two witnesses.',
-    signingReq2: 'Both witnesses must sign in the presence of the testator and each other.',
-    signingReq3: 'Witnesses cannot be beneficiaries or spouses of beneficiaries under the Will.',
-    signingReq4: 'Remote video signing is available under SLRA s.21.1 (one witness must be an LSO licensee).',
+    signingReq1: LEGAL_STATEMENTS.signingTestatorPresence.en,
+    signingReq2: LEGAL_STATEMENTS.signingWitnessesPresence.en,
+    signingReq3: LEGAL_STATEMENTS.signingWitnessEligibility.en,
+    signingReq4: LEGAL_STATEMENTS.signingRemoteOption.en,
     contactTitle: 'Questions?',
     contactMsg: 'Contact your lawyer at Vaturi & Cho LLP if you have any questions about the signing process.',
     firmPhone: '(416) 505-5901',
@@ -30,15 +30,14 @@ const text = {
     allApproved: '\uBAA8\uB4E0 \uBB38\uC11C\uAC00 \uC2B9\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4.',
     nextSteps: '\uB2E4\uC74C \uB2E8\uACC4',
     step1: '\uB2F4\uB2F9 \uBCC0\uD638\uC0AC\uAC00 \uC11C\uBA85 \uC77C\uC815\uC744 \uC7A1\uAE30 \uC704\uD574 \uC5F0\uB77D\uB4DC\uB9B4 \uC608\uC815\uC785\uB2C8\uB2E4.',
-    step2:
-      '\uC720\uC5B8\uAC80\uC778\uBC95(SLRA)\uC5D0 \uB530\uB77C \uC720\uC5B8\uC7A5\uC740 \uB450 \uBA85\uC758 \uC99D\uC778 \uC55E\uC5D0\uC11C \uC11C\uBA85\uD574\uC57C \uD569\uB2C8\uB2E4.',
+    step2: LEGAL_STATEMENTS.willTwoWitnesses.ko,
     step3:
       '\uC11C\uBA85 \uC57D\uC18D\uC5D0 \uC720\uD6A8\uD55C \uC815\uBD80 \uBC1C\uD589 \uC0AC\uC9C4 \uC2E0\uBD84\uC99D\uC744 \uC9C0\uCC38\uD574 \uC8FC\uC138\uC694.',
     signingTitle: 'SLRA \uC11C\uBA85 \uC694\uAC74',
-    signingReq1: '\uC720\uC5B8\uC790(\uBCF8\uC778)\uB294 \uB450 \uBA85\uC758 \uC99D\uC778 \uC55E\uC5D0\uC11C \uC11C\uBA85\uD574\uC57C \uD569\uB2C8\uB2E4.',
-    signingReq2: '\uB450 \uC99D\uC778\uC740 \uC720\uC5B8\uC790\uC640 \uC11C\uB85C\uC758 \uBA74\uC804\uC5D0\uC11C \uC11C\uBA85\uD574\uC57C \uD569\uB2C8\uB2E4.',
-    signingReq3: '\uC99D\uC778\uC740 \uC720\uC5B8\uC758 \uC218\uC775\uC790\uB098 \uC218\uC775\uC790\uC758 \uBC30\uC6B0\uC790\uAC00 \uB420 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.',
-    signingReq4: 'SLRA s.21.1\uC5D0 \uB530\uB77C \uC6D0\uACA9 \uD654\uC0C1 \uC11C\uBA85\uC774 \uAC00\uB2A5\uD569\uB2C8\uB2E4 (\uC99D\uC778 \uC911 \uD55C \uBA85\uC740 LSO \uBA74\uD5C8 \uBCF4\uC720\uC790\uC5EC\uC57C \uD569\uB2C8\uB2E4).',
+    signingReq1: LEGAL_STATEMENTS.signingTestatorPresence.ko,
+    signingReq2: LEGAL_STATEMENTS.signingWitnessesPresence.ko,
+    signingReq3: LEGAL_STATEMENTS.signingWitnessEligibility.ko,
+    signingReq4: LEGAL_STATEMENTS.signingRemoteOption.ko,
     contactTitle: '\uBB38\uC758\uC0AC\uD56D\uC774 \uC788\uC73C\uC2E0\uAC00\uC694?',
     contactMsg: '\uC11C\uBA85 \uC808\uCC28\uC5D0 \uB300\uD574 \uAD81\uAE08\uD55C \uC810\uC774 \uC788\uC73C\uC2DC\uBA74 Vaturi & Cho LLP\uC5D0 \uBB38\uC758\uD574 \uC8FC\uC138\uC694.',
     firmPhone: '(416) 505-5901',

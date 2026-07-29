@@ -1,4 +1,6 @@
 'use client'
+
+import { LEGAL_STATEMENTS } from '@/lib/legal-statements'
 import Link from 'next/link'
 import { Bell, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -46,12 +48,12 @@ export default function SubmittedPage() {
               { icon: '📋', text: '변호사가 귀하의 답변을 검토합니다.' },
               { icon: '📞', text: '변호사가 추가 질문을 위해 연락할 수 있습니다.' },
               { icon: '📄', text: '유언장 및 위임장 서류를 준비합니다.' },
-              { icon: '✍️', text: '직접 방문하여 2명의 증인과 함께 서류에 서명합니다. (SLRA 제4조)' },
+              { icon: '✍️', text: LEGAL_STATEMENTS.documentsSignedInPerson.ko },
             ] : [
               { icon: '📋', text: 'Your lawyer will review your answers.' },
               { icon: '📞', text: 'They may contact you with follow-up questions.' },
               { icon: '📄', text: 'Your Will and Powers of Attorney will be prepared.' },
-              { icon: '✍️', text: 'You will sign your documents in person with 2 witnesses (SLRA s.4).' },
+              { icon: '✍️', text: LEGAL_STATEMENTS.documentsSignedInPerson.en },
             ]).map((step, i) => (
               <li key={i} className="flex items-start gap-3">
                 <span className="text-xl mt-0.5">{step.icon}</span>
