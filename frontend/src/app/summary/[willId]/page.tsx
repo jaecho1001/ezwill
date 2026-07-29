@@ -30,6 +30,10 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
   const errors = useMemo(() => intakeErrors(vault), [vault])
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
+  // Server draft id retained for the payment step (#81): the firm decided
+  // self-serve fees are collected online, so the funnel continues into
+  // checkout after submission instead of dead-ending here.
+  const [serverDraftId, setServerDraftId] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
 
@@ -89,6 +93,7 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
         setSendError('We could not submit this file. It may already have been sent; contact the firm if you are unsure.')
         return
       }
+      setServerDraftId(id)
       setSent(true)
     } finally {
       setSending(false)
@@ -212,6 +217,16 @@ export default function SummaryPage({ params }: { params: Promise<{ willId: stri
             <p className="mt-1 text-sm text-[#3d6650]">
               The firm will review the information and contact you at {vault.testator.email}. No final will has been created or filed.
             </p>
+            {serverDraftId && (
+              <div className="mt-4">
+                <p className="text-sm text-[#3d6650]">
+                  Next step: the service fee. Your documents are prepared after payment is received; the exact package and fee are confirmed on the next page.
+                </p>
+                <Button asChild className="mt-3 w-full sm:w-auto">
+                  <Link href={`/checkout/${serverDraftId}`}>Continue to payment</Link>
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <>
