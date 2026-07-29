@@ -56,7 +56,7 @@ def test_resolve_link_returns_vault_but_never_contact_fields(monkeypatch):
     app.include_router(links_route.router, prefix="/api/links")
     client = TestClient(app)
 
-    response = client.get("/api/links/valid/resolve")
+    response = client.post("/api/links/resolve", json={"token": "valid"})
 
     assert response.status_code == 200
     body = response.json()
@@ -83,11 +83,11 @@ def test_resolve_link_is_rate_limited(monkeypatch):
 
     # A bare token is the only credential, so probing must be throttled.
     for _ in range(5):
-        assert client.get("/api/links/nope/resolve").status_code == 404
-    assert client.get("/api/links/nope/resolve").status_code == 429
+        assert client.post("/api/links/resolve", json={"token": "nope"}).status_code == 404
+    assert client.post("/api/links/resolve", json={"token": "nope"}).status_code == 429
     # The limit must also cover valid tokens (enumeration doesn't announce
     # itself by failing).
-    assert client.get("/api/links/valid/resolve").status_code == 429
+    assert client.post("/api/links/resolve", json={"token": "valid"}).status_code == 429
     links_route._resolve_hits.clear()
 
 
@@ -138,7 +138,7 @@ def test_resolve_backfills_vault_from_legacy_answers(monkeypatch):
     app.include_router(links_route.router, prefix="/api/links")
     client = TestClient(app)
 
-    body = client.get("/api/links/legacy/resolve").json()
+    body = client.post("/api/links/resolve", json={"token": "legacy"}).json()
     assert body["vault"]["testator"]["fullName"] == "Old Wizard"
     assert body["vault"]["beneficiaries"][0]["sharePercent"] == 100
     assert body["vault"]["residueDistribution"] == "custom"
@@ -154,7 +154,7 @@ def test_resolve_leaves_vault_none_for_truly_empty_drafts(monkeypatch):
     app.include_router(links_route.router, prefix="/api/links")
     client = TestClient(app)
 
-    assert client.get("/api/links/legacy/resolve").json()["vault"] is None
+    assert client.post("/api/links/resolve", json={"token": "legacy"}).json()["vault"] is None
 
 
 def test_create_link_reports_logged_only_in_stdout_mode(monkeypatch):

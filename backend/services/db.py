@@ -496,12 +496,17 @@ class EWDbWriter:
     def resolve_link(self, token: str) -> dict:
         # client_email/client_phone are intentionally NOT selected: resolve
         # answers to a bare token and must never return contact PII (#77).
+        # link_type is enforced BOTH ways (review finding, #91): a review
+        # token must never open the questionnaire — it authenticates draft
+        # WRITES via verify_client_or_dashboard_access, far beyond the
+        # read-only document-review scope it was minted for.
         return self.fetchone("""
             SELECT l.*, d.status as draft_status, d.language, d.current_step,
                    d.completed_steps, d.vault, d.revision
             FROM ew_client_links l
             JOIN ew_will_drafts d ON d.id = l.draft_id
             WHERE l.token = %s
+              AND COALESCE(l.link_type, 'questionnaire') != 'review'
               AND l.revoked = false
               AND l.expires_at > now()
         """, (token,))

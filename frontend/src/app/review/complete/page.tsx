@@ -1,8 +1,8 @@
 'use client'
 
+import { useReviewToken } from '@/hooks/use-review-token'
 import { LEGAL_STATEMENTS } from '@/lib/legal-statements'
 import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { resolveReviewToken, type ReviewData } from '@/lib/api/review'
 
 const text = {
@@ -59,13 +59,13 @@ export default function ReviewCompletePage() {
 }
 
 function ReviewCompleteContent() {
-  const searchParams = useSearchParams()
-  const token = searchParams.get('t') || ''
+  const { token, ready } = useReviewToken()
 
   const [data, setData] = useState<ReviewData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!ready) return
     if (!token) {
       setLoading(false)
       return
@@ -74,7 +74,7 @@ function ReviewCompleteContent() {
       if (result) setData(result)
       setLoading(false)
     })
-  }, [token])
+  }, [token, ready])
 
   const lang = data?.language || 'en'
   const t = text[lang]

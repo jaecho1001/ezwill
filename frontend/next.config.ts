@@ -16,9 +16,13 @@ const nextConfig: NextConfig = {
     ]
   },
   async headers() {
-    // Next.js needs inline scripts/styles for hydration (no nonce infra
-    // here), and dev mode needs eval for source maps. Everything else is
-    // locked to same-origin; no external host is ever contacted (#91).
+    // HONEST SCOPE (#91 review): this CSP stops external exfiltration
+    // (connect/img/font/script sources are same-origin only) and framing,
+    // but 'unsafe-inline' means injected inline script CAN still run —
+    // Next.js hydration needs inline scripts and there is no nonce
+    // infrastructure here yet. Escaping of clause HTML remains the real
+    // XSS defence; a nonce-based CSP is the follow-up. Dev additionally
+    // needs eval for source maps.
     const csp = [
       "default-src 'self'",
       process.env.NODE_ENV === 'development'

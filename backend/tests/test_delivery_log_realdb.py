@@ -67,6 +67,20 @@ def test_delivery_attempts_are_persisted_and_resend_works(client, monkeypatch):
 
         log2 = client.get(f"/api/drafts/{draft_id}").json()["delivery_log"]
         assert len(log2) == 2
+
+        # Token scoping (#91 review): a review link created LATER must not
+        # hijack the questionnaire flows. Resend still mails the
+        # questionnaire token, and the review token does not resolve as a
+        # questionnaire credential (it would otherwise grant WRITE access
+        # far beyond its read-only document-review scope).
+        with dbmod.EWDbWriter(os.getenv("DEFAULT_SCHEMA", "firm_demo")) as db:
+            review_token = str(db.create_review_link(draft_id, "Del Log")["token"])
+        resent3 = client.post(f"/api/links/{draft_id}/resend")
+        assert resent3.status_code == 200
+        assert created["token"] in resent3.json()["link_url"]
+        assert review_token not in resent3.json()["link_url"]
+        scoped = client.post("/api/links/resolve", json={"token": review_token})
+        assert scoped.status_code == 404
     finally:
         if draft_id:
             for table in ("ew_delivery_log", "ew_client_links"):

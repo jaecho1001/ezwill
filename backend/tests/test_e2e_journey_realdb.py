@@ -114,7 +114,7 @@ def test_full_lawyer_led_journey(client):
         assert create.json()["email_delivery"] == "not_requested"
 
         # 2 — client resolves the link (public path, revision baseline).
-        resolved = client.get(f"/api/links/{magic_token}/resolve")
+        resolved = client.post("/api/links/resolve", json={"token": magic_token})
         assert resolved.status_code == 200
         revision = resolved.json()["revision"]
 

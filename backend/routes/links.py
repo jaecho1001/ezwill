@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from models import CreateLinkRequest, CreateLinkResponse
 from services.db import EWDbWriter
@@ -118,9 +119,19 @@ async def create_link(
     )
 
 
-@router.get("/{token}/resolve")
-async def resolve_link(token: str, request: Request, response: Response):
+class ResolveLinkRequest(BaseModel):
+    token: str
+
+
+@router.post("/resolve")
+async def resolve_link(body: ResolveLinkRequest, request: Request, response: Response):
     """Client-facing — resolves a magic link token (no auth).
+
+    The token travels in the request BODY, never the URL path (review
+    finding, #91): URL paths are written to server and proxy access logs,
+    and the questionnaire token is a WRITE credential over the client's
+    whole intake — strictly stronger than the review token that already
+    moved out of URLs.
 
     Scope discipline (issue #77): this endpoint answers to a bare token, so it
     returns only what resuming the questionnaire needs. The vault is required
@@ -128,6 +139,7 @@ async def resolve_link(token: str, request: Request, response: Response):
     summary flow collects contact details from the client directly, and a
     leaked link must not also hand out how to reach them.
     """
+    token = body.token
     _resolve_rate_limit(client_ip(request))
     response.headers["Cache-Control"] = "no-store"
     with EWDbWriter(DEFAULT_SCHEMA) as db:
@@ -204,9 +216,15 @@ async def resend_questionnaire_link(
         draft = db.get_draft(draft_id)
         if not draft:
             raise HTTPException(404, "Draft not found")
+        # Questionnaire links ONLY (review finding, #91/#88): review links
+        # live in the same table and are created later, so without the
+        # filter a resend embedded the client's REVIEW token in a
+        # questionnaire URL.
         link = db.fetchone("""
             SELECT token, expires_at FROM ew_client_links
-            WHERE draft_id = %s AND revoked = false AND expires_at > now()
+            WHERE draft_id = %s
+              AND COALESCE(link_type, 'questionnaire') != 'review'
+              AND revoked = false AND expires_at > now()
             ORDER BY created_at DESC LIMIT 1
         """, (draft_id,))
     if not link:

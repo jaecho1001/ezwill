@@ -112,10 +112,15 @@ export async function createSelfServeDraft(
   }
 }
 
-// Resolve a magic link token → get draft_id and prefill data
+// Resolve a magic link token → get draft_id and prefill data.
+// Token in the BODY, never the URL (#91): URLs land in access logs.
 export async function resolveLink(token: string): Promise<ResolvedLink | null> {
   try {
-    const res = await fetch(`/api/links/${token}/resolve`, { method: 'GET' })
+    const res = await fetch('/api/links/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
     if (!res.ok) return null
     return res.json()
   } catch {

@@ -1,7 +1,8 @@
 'use client'
 
+import { useReviewToken } from '@/hooks/use-review-token'
 import { Suspense, useEffect, useState, useCallback } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { use } from 'react'
 import {
   getDocumentPreview,
@@ -78,9 +79,8 @@ export default function DocumentReviewPage({
 }
 
 function DocumentReviewContent({ documentType }: { documentType: string }) {
-  const searchParams = useSearchParams()
   const router = useRouter()
-  const token = searchParams.get('t') || ''
+  const { token, ready } = useReviewToken()
 
   const [reviewData, setReviewData] = useState<ReviewData | null>(null)
   const [preview, setPreview] = useState<DocumentPreview | null>(null)
@@ -94,6 +94,7 @@ function DocumentReviewContent({ documentType }: { documentType: string }) {
   const [approveState, setApproveState] = useState<'idle' | 'approving' | 'approved'>('idle')
 
   useEffect(() => {
+    if (!ready) return
     if (!token) {
       setError(true)
       setLoading(false)
@@ -124,7 +125,7 @@ function DocumentReviewContent({ documentType }: { documentType: string }) {
         setLoading(false)
       }
     })
-  }, [token, documentType])
+  }, [token, ready, documentType])
 
   const lang = reviewData?.language || 'en'
   const t = labels[lang]
@@ -184,7 +185,7 @@ function DocumentReviewContent({ documentType }: { documentType: string }) {
         <h2 className="text-lg font-semibold text-stone-800">{labels.en.error}</h2>
         <p className="mt-1 text-sm text-stone-500">{labels.en.errorSub}</p>
         <button
-          onClick={() => router.push(`/review?t=${token}`)}
+          onClick={() => router.push('/review')}
           className="mt-6 rounded-lg bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700"
         >
           {labels.en.backToList}
@@ -205,7 +206,7 @@ function DocumentReviewContent({ documentType }: { documentType: string }) {
         <h2 className="text-lg font-semibold text-stone-800">{t.approved}</h2>
         <p className="mt-1 text-sm text-stone-500">{t.approvedMsg}</p>
         <button
-          onClick={() => router.push(`/review?t=${token}`)}
+          onClick={() => router.push('/review')}
           className="mt-6 rounded-lg bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700"
         >
           {t.backAfterApprove}
@@ -219,7 +220,7 @@ function DocumentReviewContent({ documentType }: { documentType: string }) {
       {/* Back button + title */}
       <div>
         <button
-          onClick={() => router.push(`/review?t=${token}`)}
+          onClick={() => router.push('/review')}
           className="mb-4 inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700 transition-colors"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">

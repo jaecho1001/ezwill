@@ -81,7 +81,8 @@ class TestRouteRegistration:
     def test_links_routes_registered(self):
         paths = [r['path'] for r in get_routes()]
         assert '/api/links/create' in paths
-        assert '/api/links/{token}/resolve' in paths
+        # Token in the BODY, not the URL path (#91): paths hit access logs.
+        assert '/api/links/resolve' in paths
         assert '/api/links/{token}/revoke' in paths
 
     def test_agents_route_registered(self):
@@ -150,8 +151,10 @@ class TestRouteHTTPMethods:
     def test_create_link_is_post(self):
         assert 'POST' in self._methods_for_path('/api/links/create')
 
-    def test_resolve_link_is_get(self):
-        assert 'GET' in self._methods_for_path('/api/links/{token}/resolve')
+    def test_resolve_link_is_post_with_body_token(self):
+        # POST with the token in the body (#91) — a GET path carried the
+        # live credential into server and proxy access logs.
+        assert 'POST' in self._methods_for_path('/api/links/resolve')
 
     def test_revoke_link_is_post(self):
         assert 'POST' in self._methods_for_path('/api/links/{token}/revoke')

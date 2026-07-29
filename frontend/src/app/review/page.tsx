@@ -1,7 +1,8 @@
 'use client'
 
+import { useReviewToken } from '@/hooks/use-review-token'
 import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { resolveReviewToken, type ReviewData, type ReviewDocument } from '@/lib/api/review'
 
 const DOCUMENT_ICONS: Record<string, string> = {
@@ -91,15 +92,15 @@ export default function ReviewLandingPage() {
 }
 
 function ReviewLandingContent() {
-  const searchParams = useSearchParams()
   const router = useRouter()
-  const token = searchParams.get('t') || ''
+  const { token, ready } = useReviewToken()
 
   const [data, setData] = useState<ReviewData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    if (!ready) return
     if (!token) {
       setError(true)
       setLoading(false)
@@ -113,7 +114,7 @@ function ReviewLandingContent() {
       }
       setLoading(false)
     })
-  }, [token])
+  }, [token, ready])
 
   const lang = data?.language || 'en'
   const labels = t[lang]
@@ -147,7 +148,7 @@ function ReviewLandingContent() {
   const progressPercent = totalCount > 0 ? Math.round((approvedCount / totalCount) * 100) : 0
 
   if (data.all_approved) {
-    router.push(`/review/complete?t=${token}`)
+    router.push('/review/complete')
     return null
   }
 
@@ -238,7 +239,7 @@ function DocumentCard({
 
       <button
         disabled={doc.status === 'blocked'}
-        onClick={() => router.push(`/review/${doc.document_type}?t=${token}`)}
+        onClick={() => router.push(`/review/${doc.document_type}`)}
         className={`flex-shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
           doc.status === 'blocked'
             ? 'cursor-not-allowed bg-stone-100 text-stone-400'
