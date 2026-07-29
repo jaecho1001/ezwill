@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useDraft } from '@/providers/draft-provider'
-import { saveDraftToServer } from '@/lib/api/drafts'
+import { resolveLink, saveDraftToServer } from '@/lib/api/drafts'
 import type { WillDocument } from '@/lib/types/will'
 
 // Extracts people array from the will document for server sync
@@ -47,50 +47,84 @@ export function useDraftSync(): { conflict: boolean } {
   const { draftId, token } = useDraft()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSyncedRef = useRef<string>('')
-  // Optimistic concurrency (#92): the first save is unconditional (this
-  // wizard hydrates locally, not from the server), but every save after it
-  // is conditional on the revision the previous save returned — so two
-  // devices editing the same draft can no longer silently overwrite each
-  // other for the rest of the session.
+  // Optimistic concurrency (#92): every save after the baseline is
+  // conditional on the last revision this device saw, so two devices
+  // editing the same draft cannot silently overwrite each other.
   const revisionRef = useRef<number | null>(null)
   const conflictRef = useRef(false)
   const [conflict, setConflict] = useState(false)
+  // In-flight serialization (review finding): a second save dispatched
+  // while the first is still on the wire would present the same revision
+  // and 409 against our own predecessor, latching a phantom conflict.
+  const inFlightRef = useRef(false)
+  const pendingRef = useRef(false)
+  const latestWillRef = useRef<WillDocument>(will)
+  latestWillRef.current = will
 
-  const sync = useCallback(async (w: WillDocument) => {
+  // Seed the revision baseline from the server BEFORE the first save
+  // (review finding): a magic-link device that saved unconditionally
+  // could clobber another device's answers on its first write. Self-serve
+  // drafts (no token) have no other writers to protect against.
+  useEffect(() => {
+    if (!token || revisionRef.current !== null) return
+    let cancelled = false
+    void resolveLink(token).then((resolved) => {
+      if (!cancelled && resolved?.revision != null && revisionRef.current === null) {
+        revisionRef.current = resolved.revision
+      }
+    })
+    return () => { cancelled = true }
+  }, [token])
+
+  const sync = useCallback(async () => {
     if (!draftId || conflictRef.current) return
+    if (inFlightRef.current) {
+      pendingRef.current = true
+      return
+    }
+    const w = latestWillRef.current
     const snapshot = buildDraftSyncSnapshot(w)
     if (snapshot === lastSyncedRef.current) return
     lastSyncedRef.current = snapshot
 
-    const result = await saveDraftToServer(draftId, {
-      aboutYou: w.aboutYou as unknown as Record<string, unknown>,
-      yourFamily: w.yourFamily as unknown as Record<string, unknown>,
-      yourEstate: w.yourEstate as unknown as Record<string, unknown>,
-      yourArrangements: w.yourArrangements as unknown as Record<string, unknown>,
-      poaProperty: w.poaProperty as unknown as Record<string, unknown>,
-      poaPersonalCare: w.poaPersonalCare as unknown as Record<string, unknown>,
-      assets: w.assets,
-      liabilities: w.liabilities,
-      people: extractPeople(w),
-      aiFlags: w.aiFlags,
-      currentStep: w.currentStep,
-      completedSteps: w.completedSteps,
-      language: w.language,
-    }, token ?? undefined, revisionRef.current ?? undefined)
-    if (result.ok) {
-      if (result.revision != null) revisionRef.current = result.revision
-    } else if (result.conflict) {
-      // Another device wrote since we did. STOP autosaving — retrying
-      // would overwrite the other device's answers — and surface it.
-      conflictRef.current = true
-      setConflict(true)
+    inFlightRef.current = true
+    try {
+      const result = await saveDraftToServer(draftId, {
+        aboutYou: w.aboutYou as unknown as Record<string, unknown>,
+        yourFamily: w.yourFamily as unknown as Record<string, unknown>,
+        yourEstate: w.yourEstate as unknown as Record<string, unknown>,
+        yourArrangements: w.yourArrangements as unknown as Record<string, unknown>,
+        poaProperty: w.poaProperty as unknown as Record<string, unknown>,
+        poaPersonalCare: w.poaPersonalCare as unknown as Record<string, unknown>,
+        assets: w.assets,
+        liabilities: w.liabilities,
+        people: extractPeople(w),
+        aiFlags: w.aiFlags,
+        currentStep: w.currentStep,
+        completedSteps: w.completedSteps,
+        language: w.language,
+      }, token ?? undefined, revisionRef.current ?? undefined)
+      if (result.ok) {
+        if (result.revision != null) revisionRef.current = result.revision
+      } else if (result.conflict) {
+        // Another writer got there first. STOP autosaving — retrying
+        // would overwrite their answers — and surface it.
+        conflictRef.current = true
+        setConflict(true)
+      }
+    } finally {
+      inFlightRef.current = false
+      if (pendingRef.current) {
+        pendingRef.current = false
+        void sync()
+      }
     }
   }, [draftId, token])
 
   useEffect(() => {
     if (!draftId) return
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => sync(will), 1500)
+    timerRef.current = setTimeout(() => { void sync() }, 1500)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [will, draftId, sync])
 

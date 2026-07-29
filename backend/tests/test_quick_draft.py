@@ -41,7 +41,9 @@ class TestVaultVisibility:
                 "testator": {"fullName": "Vault Only",
                              "address": "1 King St, Toronto, ON"},
                 "spouse": {"included": True, "fullName": "Grace Kim"},
-                "children": [{"fullName": "Min Cho", "isMinor": True}],
+                # Vault children carry dob, NOT the legacy isMinor flag
+                # (review finding) — a 2020 child must count as a minor.
+                "children": [{"fullName": "Min Cho", "dob": "2020-03-15"}],
                 "executors": [{"fullName": "Pat Lee", "isBackup": False}],
                 "residueDistribution": "percentages",
                 "beneficiaries": [{"fullName": "Grace Kim", "sharePercent": 100}],
@@ -66,6 +68,39 @@ class TestVaultVisibility:
             "client_first_name": "Legacy", "client_last_name": "Client",
         })
         assert "Unified intake" not in summary
+
+    def test_adult_children_by_dob_are_not_minors(self):
+        summary = _build_client_summary({
+            "vault": {"children": [{"fullName": "Adult Cho", "dob": "1990-01-01"}]},
+        })
+        assert "Minor children" not in summary
+
+
+class TestQuickDraftConsentGate:
+    """#90 review finding: the OpenAI path sends estate details to an
+    external provider — it must refuse without recorded express consent."""
+
+    def _invoke(self, monkeypatch, vault):
+        import asyncio
+        from routes.agents import _capability_quick_draft
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        payload = {"client_data": {"vault": vault, "about_you": {"city": "Toronto"}}}
+        return asyncio.run(_capability_quick_draft(payload, "test-correlation"))
+
+    def test_refuses_without_consent(self, monkeypatch):
+        import pytest
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            self._invoke(monkeypatch, {"aiConsent": {"accepted": False}})
+        assert exc.value.status_code == 403
+        assert exc.value.detail["error"] == "ai_consent_required"
+
+    def test_refuses_with_no_consent_recorded(self, monkeypatch):
+        import pytest
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            self._invoke(monkeypatch, {})
+        assert exc.value.status_code == 403
 
 
 class TestHasBusinessAssets:
@@ -350,6 +385,8 @@ async def test_capability_quick_draft_mocked(monkeypatch):
             "children": [{"firstName": "Alice", "lastName": "Doe", "isMinor": True}],
         },
         "your_estate": {"hasBusinessAssets": True, "survivalDays": 30},
+        # The external-AI path now requires recorded consent (#90).
+        "vault": {"aiConsent": {"accepted": True}},
         "assets": [
             {"assetType": "business", "description": "Private Corp", "estimatedValue": 500000},
             {"assetType": "real_estate", "description": "Home", "estimatedValue": 900000},
@@ -385,6 +422,8 @@ async def test_capability_quick_draft_single_will(monkeypatch):
         "firstName": "Jane",
         "lastName": "Smith",
         "assets": [{"assetType": "real_estate", "description": "Home", "estimatedValue": 600000}],
+        # The external-AI path now requires recorded consent (#90).
+        "vault": {"aiConsent": {"accepted": True}},
     }
 
     single_will_response = {

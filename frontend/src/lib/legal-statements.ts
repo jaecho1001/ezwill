@@ -10,6 +10,11 @@
  * correct if the law or the firm's practice changes.
  *
  * Do not edit wording without lawyer sign-off.
+ *
+ * FOR THE REVIEWING LAWYER (#93): the Korean rendering of "SLRA" below is
+ * currently "유언검인법" (carried over verbatim from the earlier screens).
+ * Please confirm or correct the Korean statute name — it is used wherever
+ * the Act is named to clients in Korean.
  */
 
 export interface LegalStatement {
@@ -61,6 +66,30 @@ export const LEGAL_STATEMENTS = {
     en: 'Remote video signing is available under SLRA s.21.1 (one witness must be an LSO licensee).',
     ko: 'SLRA s.21.1에 따라 원격 화상 서명이 가능합니다 (증인 중 한 명은 LSO 면허 보유자여야 합니다).',
     statute: 'SLRA s.21.1',
+  },
+  /** Post-submission signing-requirements notice (submitted screen). */
+  inPersonSigningNotice: {
+    en: 'In Ontario, Wills must be signed in person. Electronic signing is not permitted (SLRA s.4). Your lawyer will schedule a signing appointment.',
+    ko: '온타리오에서 유언장은 반드시 직접 서명해야 합니다. 전자 서명은 허용되지 않습니다 (SLRA 제4조). 변호사가 서명 약속을 잡을 것입니다.',
+    statute: 'SLRA s.4',
+  },
+  /** Landing-page "how it works" signing step. */
+  landingSigningStep: {
+    en: 'Get signing instructions for Ontario requirements, including two witnesses and in-person execution.',
+    ko: '온타리오 요건(증인 2명, 직접 서명 포함)에 따른 서명 안내를 받게 됩니다.',
+    statute: 'SLRA s.4',
+  },
+  /** Landing-page footer validity sentence. */
+  footerValidityNotice: {
+    en: 'A will is only valid when signed according to the Succession Law Reform Act, including the required witnesses.',
+    ko: '유언장은 유언검인법(SLRA)에 따라, 요구되는 증인과 함께 서명되어야만 유효합니다.',
+    statute: 'SLRA s.4',
+  },
+  /** AI review flag for separated-spouse gifts (client-facing text). */
+  separatedSpouseGiftsFlag: {
+    en: 'Under SLRA s.17, gifts to a separated spouse are void after 3+ years of separation. Your Will should reflect your current intentions.',
+    ko: 'SLRA 제17조에 따라 3년 이상 별거 후 배우자에 대한 증여는 무효가 될 수 있습니다.',
+    statute: 'SLRA s.17',
   },
   /** Separated-spouse consequences shown during the questionnaire. */
   separatedSpouseGiftsShort: {

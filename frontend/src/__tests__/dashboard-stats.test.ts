@@ -26,4 +26,11 @@ describe('statsFromCounts', () => {
       total: 0, submitted: 0, inProgress: 0, completed: 0,
     })
   })
+
+  it('in_review counts as awaiting in the raw fallback (#99)', () => {
+    const stats = statsFromCounts({ submitted: 10, in_review: 7 })
+    expect(stats.submitted).toBe(17)
+    // The queue override still wins when the caller has it.
+    expect(statsFromCounts({ submitted: 10, in_review: 7 }, { awaitingReview: 12 }).submitted).toBe(12)
+  })
 })

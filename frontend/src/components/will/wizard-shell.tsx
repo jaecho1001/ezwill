@@ -25,15 +25,15 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#2D2D2D]">
-      {/* Another device edited this draft: autosave is stopped so we don't
-          overwrite those answers (#92). Reloading picks up the latest. */}
+      {/* Another writer edited this draft: autosave stops so we don't
+          overwrite them (#92). NO reload button — this wizard hydrates from
+          this device's local copy, so a reload would show the SAME answers
+          while quietly re-arming the overwrite (review finding). */}
       {conflict && (
         <div className="sticky top-0 z-50 border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">
-          These answers were updated on another device. Saving here is paused so nothing is overwritten —{' '}
-          <button type="button" className="font-semibold underline" onClick={() => window.location.reload()}>
-            reload to continue from the latest version
-          </button>
-          . <span className="text-amber-800">다른 기기에서 답변이 변경되었습니다. 새로고침 후 계속해 주세요.</span>
+          These answers were changed on another device or by your lawyer. Saving here is paused so nothing is overwritten —
+          continue on the device with your newest answers, or ask your lawyer to send a fresh link.{' '}
+          <span className="text-amber-800">다른 기기 또는 변호사가 답변을 변경했습니다. 덮어쓰기를 막기 위해 이 기기의 저장이 일시 중지되었습니다. 최신 답변이 있는 기기에서 계속하시거나 변호사에게 새 링크를 요청해 주세요.</span>
         </div>
       )}
       {/* Top bar */}

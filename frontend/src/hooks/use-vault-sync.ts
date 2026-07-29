@@ -28,6 +28,14 @@ export function useVaultSync(
   const lastSaved = useRef('')
   const revisionRef = useRef<number | undefined>(undefined)
   const conflicted = useRef(false)
+  // In-flight serialization (review finding, #92): an overlapping save
+  // would present the revision its predecessor is about to consume and
+  // 409 against OUR OWN write, latching a phantom "another device"
+  // conflict on a single device.
+  const inFlight = useRef(false)
+  const pending = useRef(false)
+  const latestVault = useRef(vault)
+  latestVault.current = vault
 
   /** The page sets this after hydration (and again after conflict re-hydration). */
   const acceptRevision = useCallback((revision: number | undefined) => {
@@ -36,35 +44,49 @@ export function useVaultSync(
     setStatus('idle')
   }, [])
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<boolean> => {
     if (!enabled || !draftId || conflicted.current) return false
     if (expectedDraftId && draftId !== expectedDraftId) return false
-    const snapshot = JSON.stringify(vault)
-    if (snapshot === lastSaved.current) return true
-    setStatus('saving')
-    const result = await saveVaultToServer(
-      draftId,
-      vault as unknown as Record<string, unknown>,
-      undefined,
-      token ?? undefined,
-      false,
-      revisionRef.current,
-    )
-    if (result.ok) {
-      lastSaved.current = snapshot
-      revisionRef.current = result.revision ?? revisionRef.current
-      setStatus('saved')
+    if (inFlight.current) {
+      pending.current = true
       return true
     }
-    if (result.conflict) {
-      conflicted.current = true
-      setStatus('conflict')
-      onConflict?.()
+    const current = latestVault.current
+    const snapshot = JSON.stringify(current)
+    if (snapshot === lastSaved.current) return true
+    inFlight.current = true
+    setStatus('saving')
+    try {
+      const result = await saveVaultToServer(
+        draftId,
+        current as unknown as Record<string, unknown>,
+        undefined,
+        token ?? undefined,
+        false,
+        revisionRef.current,
+      )
+      if (result.ok) {
+        lastSaved.current = snapshot
+        revisionRef.current = result.revision ?? revisionRef.current
+        setStatus('saved')
+        return true
+      }
+      if (result.conflict) {
+        conflicted.current = true
+        setStatus('conflict')
+        onConflict?.()
+        return false
+      }
+      setStatus('error')
       return false
+    } finally {
+      inFlight.current = false
+      if (pending.current) {
+        pending.current = false
+        void save()
+      }
     }
-    setStatus('error')
-    return false
-  }, [draftId, enabled, expectedDraftId, onConflict, token, vault])
+  }, [draftId, enabled, expectedDraftId, onConflict, token])
 
   useEffect(() => {
     if (!enabled || !draftId || (expectedDraftId && draftId !== expectedDraftId)) return

@@ -69,8 +69,8 @@ export default function SubmittedPage() {
           </p>
           <p>
             {lang === 'ko'
-              ? '온타리오에서 유언장은 반드시 직접 서명해야 합니다. 전자 서명은 허용되지 않습니다 (SLRA 제4조). 변호사가 서명 약속을 잡을 것입니다.'
-              : 'In Ontario, Wills must be signed in person. Electronic signing is not permitted (SLRA s.4). Your lawyer will schedule a signing appointment.'}
+              ? LEGAL_STATEMENTS.inPersonSigningNotice.ko
+              : LEGAL_STATEMENTS.inPersonSigningNotice.en}
           </p>
         </div>
 

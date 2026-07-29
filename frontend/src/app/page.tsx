@@ -1,4 +1,6 @@
 'use client'
+
+import { LEGAL_STATEMENTS } from '@/lib/legal-statements'
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -391,7 +393,7 @@ function HomePageInner() {
               { step: '01', title: 'Answer Questions', desc: 'Simple questions about your life, family, and wishes — like a conversation with a trusted advisor. No credit card. Save and come back with your private link whenever.', time: 'Your pace' },
               { step: '02', title: 'Review Your Plan', desc: 'See a clear summary of every choice, with Ontario-specific alerts surfaced for lawyer review.', time: 'Your review' },
               { step: '03', title: 'Lawyer Drafting', desc: 'Your lawyer reviews the answers, selects clauses, and generates the Will and Powers of Attorney.', time: 'Firm-led' },
-              { step: '04', title: 'Sign Properly', desc: 'Get signing instructions for Ontario requirements, including two witnesses and in-person execution.', time: 'Guided' },
+              { step: '04', title: 'Sign Properly', desc: LEGAL_STATEMENTS.landingSigningStep.en, time: 'Guided' },
             ].map((item, i) => (
               <motion.div key={i} variants={fadeUp} className="group relative">
                 <div className="h-full rounded-xl border border-[#E8E4DF] bg-[#FAF8F5] p-6 transition-all duration-300 hover:border-[#C9A84C]/30 hover:shadow-lg hover:shadow-[#C9A84C]/5">
@@ -784,7 +786,7 @@ function HomePageInner() {
           </div>
           <div className="gold-line mt-10 mb-6 opacity-30" />
           <p className="text-center text-xs text-white/30">
-            © 2026 Vaturi &amp; Cho LLP. This tool is not a substitute for personalized legal advice. A will is only valid when signed according to the Succession Law Reform Act, including the required witnesses.
+            © 2026 Vaturi &amp; Cho LLP. This tool is not a substitute for personalized legal advice. {LEGAL_STATEMENTS.footerValidityNotice.en}
           </p>
         </div>
       </footer>

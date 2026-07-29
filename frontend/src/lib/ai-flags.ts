@@ -1,3 +1,4 @@
+import { LEGAL_STATEMENTS } from '@/lib/legal-statements'
 import type { WillDocument, AIFlag } from './types/will'
 
 interface FlagRule {
@@ -38,8 +39,8 @@ const FLAG_RULES: FlagRule[] = [
     severity: 'critical',
     title: 'Gift to Separated Spouse May Be Void',
     titleKo: '별거 배우자에 대한 증여 무효 위험',
-    description: 'Under SLRA s.17, gifts to a separated spouse are void after 3+ years of separation. Your Will should reflect your current intentions.',
-    descriptionKo: 'SLRA 제17조에 따라 3년 이상 별거 후 배우자에 대한 증여는 무효가 될 수 있습니다.',
+    description: LEGAL_STATEMENTS.separatedSpouseGiftsFlag.en,
+    descriptionKo: LEGAL_STATEMENTS.separatedSpouseGiftsFlag.ko,
     statute: 'SLRA s.17',
     check: (will) => {
       if (will.yourFamily.maritalStatus !== 'separated') return false

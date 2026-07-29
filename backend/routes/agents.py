@@ -250,6 +250,21 @@ def _has_business_assets(client_data: dict) -> bool:
     return False
 
 
+def _is_minor_dob(dob) -> bool:
+    """True when a YYYY-MM-DD date of birth is under 18 — the vault stores
+    children's dates of birth, not the legacy isMinor flag."""
+    try:
+        from datetime import date
+        born = date.fromisoformat(str(dob)[:10])
+        today = date.today()
+        age = today.year - born.year - (
+            (today.month, today.day) < (born.month, born.day)
+        )
+        return age < 18
+    except (TypeError, ValueError):
+        return False
+
+
 def _build_client_summary(client_data: dict) -> str:
     """Build a human-readable summary of client data for the AI prompt."""
     parts = []
@@ -342,7 +357,12 @@ def _build_client_summary(client_data: dict) -> str:
         names = [c.get("fullName") for c in children if c.get("fullName")]
         if names:
             parts.append(f"  Children: {', '.join(names)}")
-        minors = [c for c in children if c.get("isMinor")]
+        # Vault children carry a date of birth, not the legacy isMinor flag
+        # (review finding) — accept either so no minor goes unmentioned.
+        minors = [
+            c for c in children
+            if c.get("isMinor") or _is_minor_dob(c.get("dob"))
+        ]
         if minors:
             parts.append(f"  Minor children: {len(minors)}")
         odsp = [c for c in children if c.get("receivesODSP")]
@@ -576,6 +596,27 @@ async def _capability_quick_draft(payload: dict, correlation_id: str) -> AgentIn
     # rules so the flow works without an API key. (Read at call time so it's
     # runtime-configurable and testable.)
     if os.getenv("OPENAI_API_KEY"):
+        # Privacy by default (#90, review finding): this path sends the
+        # client's estate details to an EXTERNAL AI provider, so it needs
+        # the same recorded express consent the chat intake enforces. The
+        # deterministic-rules fallback below sends nothing anywhere and
+        # stays consent-free.
+        vault = client_data.get("vault") or {}
+        if draft_id and not vault:
+            with EWDbWriter(DEFAULT_SCHEMA) as db:
+                stored = db.get_draft(draft_id)
+            vault = (dict(stored).get("vault") or {}) if stored else {}
+        consent = vault.get("aiConsent") if isinstance(vault, dict) else None
+        if not (isinstance(consent, dict) and consent.get("accepted") is True):
+            raise HTTPException(403, {
+                "error": "ai_consent_required",
+                "message": (
+                    "This client has not recorded consent to AI processing "
+                    "of their estate information. Ask them to complete the "
+                    "consent step in their intake link, or select clauses "
+                    "manually in the Will Editor."
+                ),
+            })
         ai_result = await _call_openai_quick_draft(
             client_summary,
             draft_id=draft_id,
