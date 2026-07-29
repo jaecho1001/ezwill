@@ -10,6 +10,7 @@ import { PeopleRolesGrid } from '@/components/dashboard/people-roles-grid'
 import { AssetSummary } from '@/components/dashboard/asset-summary'
 import { DistributionChart } from '@/components/dashboard/distribution-chart'
 import { requiredDocTypesForDraft, getDocumentTypeConfig } from '@/lib/will-documents/index'
+import { vaultBeneficiariesForChart, vaultGiftRows } from '@/lib/dashboard/estate-vault-fallback'
 import { getAuthHeaders } from '@/lib/auth'
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -91,6 +92,8 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
   const arrangements = (draft.your_arrangements ?? {}) as Record<string, unknown>
   const assets = (draft.assets ?? []) as Array<Record<string, unknown>>
   const people = (draft.people ?? []) as Array<Record<string, unknown>>
+  // Canonical vault (#87): AI-intake clients have no legacy your_estate.
+  const vault = ((draft as unknown as { vault?: Record<string, unknown> }).vault ?? {})
 
   const isDualWill = Boolean(estate.includeDualWill)
 
@@ -117,12 +120,15 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
         }))
       }
     }
-    return []
-  }, [estate.beneficiaries, estate.residueDistribution, family.children])
+    // Canonical vault (#87): named residue beneficiaries from the AI intake.
+    return vaultBeneficiariesForChart(vault)
+  }, [estate.beneficiaries, estate.residueDistribution, family.children, vault])
 
   // ── Gifts ──
   const gifts = useMemo(() => {
     const raw = (estate.gifts ?? []) as Array<Record<string, unknown>>
+    // Canonical vault (#87): AI-intake gifts carry their recipient inline.
+    if (raw.length === 0) return vaultGiftRows(vault)
     return raw.map((g) => {
       // Try to resolve recipient name
       let recipientName: string | undefined
@@ -141,7 +147,7 @@ export function EstateOverview({ draft, onNavigate }: EstateOverviewProps) {
         amount: typeof g.amount === 'number' ? g.amount : undefined,
       }
     })
-  }, [estate.gifts, people])
+  }, [estate.gifts, people, vault])
 
   const donations = useMemo(() => {
     const raw = (estate.donations ?? []) as Array<Record<string, unknown>>

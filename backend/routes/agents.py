@@ -235,6 +235,18 @@ def _has_business_assets(client_data: dict) -> bool:
     if estate.get("hasBusinessAssets") or estate.get("has_business_assets"):
         return True
 
+    # Canonical vault (#87): AI-intake clients have no legacy asset rows,
+    # so business interests must be read from the vault too.
+    vault_assets = (client_data.get("vault") or {}).get("assets") or {}
+    if vault_assets.get("privateCompanyShares"):
+        return True
+    for item in vault_assets.get("items") or []:
+        if (item.get("type") or "").lower() == "business":
+            return True
+        description = (item.get("description") or "").lower()
+        if any(kw in description for kw in _PRIVATE_ASSET_KEYWORDS):
+            return True
+
     return False
 
 
@@ -308,6 +320,112 @@ def _build_client_summary(client_data: dict) -> str:
     poa_pc = client_data.get("poa_personal_care") or {}
     if poa_pc:
         parts.append(f"POA Personal Care preferences: {json.dumps(poa_pc, default=str)}")
+
+    # Canonical vault (#87): AI-intake clients answer the nine-section
+    # unified questionnaire, which lives in the vault — without this block
+    # the proposer saw an empty client and proposed from nothing.
+    vault = client_data.get("vault") or {}
+    if vault:
+        parts.append("Unified intake answers (canonical):")
+        testator = vault.get("testator") or {}
+        if testator.get("fullName"):
+            parts.append(f"  Testator: {testator['fullName']}")
+        if testator.get("address"):
+            parts.append(f"  Address: {testator['address']}")
+        if testator.get("maritalStatus"):
+            parts.append(f"  Marital status: {testator['maritalStatus']}")
+        spouse = vault.get("spouse") or {}
+        if spouse.get("included") and spouse.get("fullName"):
+            suffix = " (separated)" if spouse.get("separated") else ""
+            parts.append(f"  Spouse: {spouse['fullName']}{suffix}")
+        children = vault.get("children") or []
+        names = [c.get("fullName") for c in children if c.get("fullName")]
+        if names:
+            parts.append(f"  Children: {', '.join(names)}")
+        minors = [c for c in children if c.get("isMinor")]
+        if minors:
+            parts.append(f"  Minor children: {len(minors)}")
+        odsp = [c for c in children if c.get("receivesODSP")]
+        if odsp:
+            parts.append(
+                f"  Beneficiaries on ODSP/means-tested benefits: {len(odsp)}"
+            )
+        residue = vault.get("residueDistribution")
+        if residue:
+            parts.append(f"  Residue distribution: {residue}")
+        beneficiaries = vault.get("beneficiaries") or []
+        for b in beneficiaries:
+            if b.get("fullName"):
+                share = (
+                    f" — {b['sharePercent']}%"
+                    if b.get("sharePercent") is not None else ""
+                )
+                parts.append(f"  Beneficiary: {b['fullName']}{share}")
+        executors = vault.get("executors") or []
+        for e in executors:
+            if e.get("fullName"):
+                kind = "Backup executor" if e.get("isBackup") else "Executor"
+                parts.append(f"  {kind}: {e['fullName']}")
+        guardians = vault.get("guardians") or []
+        for g in guardians:
+            if g.get("fullName"):
+                kind = "Backup guardian" if g.get("isBackup") else "Guardian"
+                parts.append(f"  {kind}: {g['fullName']}")
+        gifts = vault.get("gifts") or []
+        if gifts:
+            parts.append(f"  Specific gifts ({len(gifts)}):")
+            for gift in gifts:
+                target = gift.get("charityName") or gift.get("recipientName") or ""
+                amount = (
+                    f" ${gift['amount']:,}" if gift.get("amount") is not None else ""
+                )
+                parts.append(
+                    f"    - {gift.get('type', 'gift')}: "
+                    f"{gift.get('description', '')} -> {target}{amount}".rstrip()
+                )
+        vault_assets = vault.get("assets") or {}
+        if vault_assets.get("estimatedNetWorth") is not None:
+            parts.append(
+                f"  Estimated net estate: ${vault_assets['estimatedNetWorth']:,}"
+            )
+        if vault_assets.get("privateCompanyShares"):
+            parts.append("  Owns private-company shares (dual-will territory)")
+        for item in vault_assets.get("items") or []:
+            if item.get("description") or item.get("type"):
+                parts.append(
+                    f"  Asset: {item.get('type', 'other')} — "
+                    f"{item.get('description', '')}".rstrip(" —")
+                )
+        poa = vault.get("poa") or {}
+        for branch_key, label in (
+            ("property", "Property POA"), ("personalCare", "Personal-care POA"),
+        ):
+            branch = poa.get(branch_key) or {}
+            if branch.get("requested"):
+                attorneys = ", ".join(
+                    a.get("fullName", "") for a in branch.get("attorneys") or []
+                    if a.get("fullName")
+                )
+                parts.append(f"  {label} requested. Attorneys: {attorneys or 'TBD'}")
+                if branch.get("restrictions"):
+                    parts.append(
+                        f"  {label} restrictions (lawyer to draft): "
+                        f"{branch['restrictions']}"
+                    )
+        goals = vault.get("goals") or {}
+        goal_labels = {
+            "minorChildrenTrust": "wants a minor-children trust",
+            "henson": "Henson-trust review flagged",
+            "spousalTrust": "spousal-trust discussion requested",
+            "dualWillReviewRequested": "dual-will review requested",
+        }
+        active_goals = [label for key, label in goal_labels.items() if goals.get(key)]
+        if active_goals:
+            parts.append(f"  Planning goals: {'; '.join(active_goals)}")
+        if vault.get("trustDistributionAge"):
+            parts.append(
+                f"  Trust distribution age: {vault['trustDistributionAge']}"
+            )
 
     return "\n".join(parts)
 

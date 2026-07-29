@@ -16,6 +16,58 @@ from routes.agents import _has_business_assets, _build_client_summary
 # ── _has_business_assets tests ────────────────────────────────────────────────
 
 
+class TestVaultVisibility:
+    """#87: the proposer must see vault-only intakes — AI-intake clients
+    have no legacy rows at all."""
+
+    def test_vault_private_company_shares_flag(self):
+        data = {"vault": {"assets": {"privateCompanyShares": True}}}
+        assert _has_business_assets(data) is True
+
+    def test_vault_business_asset_item(self):
+        data = {"vault": {"assets": {"items": [
+            {"type": "business", "description": "Bakery Inc."}]}}}
+        assert _has_business_assets(data) is True
+
+    def test_vault_without_business_signals(self):
+        data = {"vault": {"assets": {"items": [
+            {"type": "real_estate", "description": "Family home"}]}}}
+        assert _has_business_assets(data) is False
+
+    def test_summary_includes_vault_answers(self):
+        summary = _build_client_summary({
+            "client_first_name": "Vault", "client_last_name": "Only",
+            "vault": {
+                "testator": {"fullName": "Vault Only",
+                             "address": "1 King St, Toronto, ON"},
+                "spouse": {"included": True, "fullName": "Grace Kim"},
+                "children": [{"fullName": "Min Cho", "isMinor": True}],
+                "executors": [{"fullName": "Pat Lee", "isBackup": False}],
+                "residueDistribution": "percentages",
+                "beneficiaries": [{"fullName": "Grace Kim", "sharePercent": 100}],
+                "poa": {"property": {
+                    "requested": True,
+                    "attorneys": [{"fullName": "Pat Lee"}],
+                    "restrictions": "Do not sell the cottage.",
+                }},
+                "goals": {"henson": True},
+            },
+        })
+        for expected in (
+            "Spouse: Grace Kim", "Children: Min Cho", "Minor children: 1",
+            "Executor: Pat Lee", "Beneficiary: Grace Kim — 100%",
+            "Property POA requested", "Do not sell the cottage.",
+            "Henson-trust review flagged",
+        ):
+            assert expected in summary, expected
+
+    def test_summary_without_vault_unchanged(self):
+        summary = _build_client_summary({
+            "client_first_name": "Legacy", "client_last_name": "Client",
+        })
+        assert "Unified intake" not in summary
+
+
 class TestHasBusinessAssets:
     def test_no_assets_at_all(self):
         assert _has_business_assets({}) is False
