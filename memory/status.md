@@ -229,3 +229,16 @@
   legacy wizard hydrates from localStorage only (conflict banner is
   honest about it); charity clause requires lawyer drafting by design;
   quick-draft external-AI path requires recorded client consent.
+
+## 2026-07-29 (later) — Issues closed; owner decisions made; Stripe wired
+
+- Closed with evidence: #76 77 78 79 80 82 84 87 88 89 91 92 98 99, and
+  #81 after wiring. #86 stays open (AI-clause confirmation sub-item).
+- Owner decisions (recorded on #95): payment = STRIPE online (checkout
+  now linked from the self-serve submit confirmation, 46a01bd, CI
+  green); dual-will = keep ask-and-flag (no change); deploy = owner
+  will book the #100 session (runbook ready: Resend SMTP + Stripe
+  secrets).
+- #96 (checkout package wording) is now the pilot-blocking content
+  review on the payment path. Next engineering after lawyer input:
+  #83 residue lists (3-5 days once wording approved), #86 sub-item.
