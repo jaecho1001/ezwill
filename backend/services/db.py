@@ -483,9 +483,13 @@ class EWDbWriter:
     # ── Client Links ─────────────────────────────────────────────────────────
 
     def create_link(self, draft_id: str, client_email: str = None, client_name: str = None) -> dict:
+        # Explicit 30-day expiry for questionnaire links (#91): clients
+        # legitimately fill a will over weeks; don't rely on the table
+        # default staying in sync with this intent.
         return self.fetchone("""
-            INSERT INTO ew_client_links (draft_id, client_email, client_name)
-            VALUES (%s, %s, %s)
+            INSERT INTO ew_client_links (draft_id, client_email, client_name,
+                                         expires_at)
+            VALUES (%s, %s, %s, now() + interval '30 days')
             RETURNING *
         """, (draft_id, client_email, client_name))
 
@@ -964,10 +968,18 @@ class EWDbWriter:
     # ── Review Links ───────────────────────────────────────────────────────
 
     def create_review_link(self, draft_id: str, client_name: str, language: str = 'en') -> dict:
-        """Create a review portal magic link (link_type='review')."""
+        """Create a review portal magic link (link_type='review').
+
+        14-day expiry (#91), deliberately shorter than questionnaire links:
+        a review link opens finished legal documents, so the exposure
+        window if an email is forwarded or a mailbox is compromised should
+        be as small as the workflow allows. The lawyer can send a fresh
+        link in one click if it lapses.
+        """
         return self.fetchone("""
-            INSERT INTO ew_client_links (draft_id, client_name, link_type)
-            VALUES (%s, %s, 'review')
+            INSERT INTO ew_client_links (draft_id, client_name, link_type,
+                                         expires_at)
+            VALUES (%s, %s, 'review', now() + interval '14 days')
             RETURNING *
         """, (draft_id, client_name))
 

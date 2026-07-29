@@ -79,6 +79,11 @@ async def security_headers(request, call_next):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
+    # This server renders no HTML — JSON and file downloads only — so the
+    # strictest possible CSP is safe and neutralizes any reflected markup.
+    response.headers.setdefault(
+        "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
+    )
     response.headers.setdefault(
         "Cache-Control", response.headers.get("Cache-Control", "no-store")
     )

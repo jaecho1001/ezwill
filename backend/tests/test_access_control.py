@@ -359,7 +359,7 @@ def _review_client(monkeypatch) -> TestClient:
 def test_review_status_route_rejects_cross_draft_token(monkeypatch):
     client = _review_client(monkeypatch)
 
-    res = client.get("/api/review/draft-b/status", params={"token": "token-a"})
+    res = client.get("/api/review/draft-b/status", headers={"X-Review-Token": "token-a"})
 
     assert res.status_code == 403
 
@@ -368,7 +368,8 @@ def test_review_preview_route_rejects_cross_draft_token(monkeypatch):
     client = _review_client(monkeypatch)
 
     res = client.get(
-        "/api/review/draft-b/preview/single_will", params={"token": "token-a"}
+        "/api/review/draft-b/preview/single_will",
+        headers={"X-Review-Token": "token-a"},
     )
 
     assert res.status_code == 403
@@ -453,13 +454,13 @@ def test_review_preview_and_approval_block_instruction_mismatch(monkeypatch):
 
     preview = client.get(
         "/api/review/draft-a/preview/single_will",
-        params={"token": "token-a"},
+        headers={"X-Review-Token": "token-a"},
     )
     approval = client.post(
         "/api/review/draft-a/approve/single_will",
         json={"token": "token-a"},
     )
-    listing = client.post("/api/review/token/token-a/resolve")
+    listing = client.post("/api/review/resolve", json={"token": "token-a"})
 
     assert preview.status_code == 422
     assert approval.status_code == 422

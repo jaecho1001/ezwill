@@ -16,6 +16,23 @@ const nextConfig: NextConfig = {
     ]
   },
   async headers() {
+    // Next.js needs inline scripts/styles for hydration (no nonce infra
+    // here), and dev mode needs eval for source maps. Everything else is
+    // locked to same-origin; no external host is ever contacted (#91).
+    const csp = [
+      "default-src 'self'",
+      process.env.NODE_ENV === 'development'
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; ')
     return [
       {
         source: '/:path*',
@@ -26,6 +43,7 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'no-referrer' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: csp },
         ],
       },
     ]

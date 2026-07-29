@@ -215,7 +215,7 @@ def test_full_lawyer_led_journey(client):
         review_token = review_link.json()["token"]
 
         # 9 — the client's review portal shows the released document only.
-        portal = client.post(f"/api/review/token/{review_token}/resolve")
+        portal = client.post("/api/review/resolve", json={"token": review_token})
         assert portal.status_code == 200
         docs = portal.json()["documents"]
         assert [d["document_type"] for d in docs] == ["single_will"]
@@ -223,7 +223,7 @@ def test_full_lawyer_led_journey(client):
 
         preview = client.get(
             f"/api/review/{created_draft}/preview/single_will",
-            params={"token": review_token},
+            headers={"X-Review-Token": review_token},
         )
         assert preview.status_code == 200, preview.text
         assert "Grace Kim" in preview.text
@@ -263,7 +263,7 @@ def test_full_lawyer_led_journey(client):
         assert will_row["lawyer_approved_at"] is None, (
             "clause edit did not revoke the lawyer approval"
         )
-        relist = client.post(f"/api/review/token/{review_token}/resolve")
+        relist = client.post("/api/review/resolve", json={"token": review_token})
         assert relist.json()["documents"] == [], (
             "client can still see a document whose approval was revoked"
         )

@@ -10,7 +10,7 @@ import logging
 import re
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 
 from routes.auth import verify_dashboard_token
@@ -406,12 +406,20 @@ async def create_review_link(
     }
 
 
-@router.post("/token/{token}/resolve")
-async def resolve_review_token(token: str):
+class ResolveReviewRequest(BaseModel):
+    token: str
+
+
+@router.post("/resolve")
+async def resolve_review_token(body: ResolveReviewRequest):
     """
     Resolve a review magic-link token.
-    Returns client info and list of documents available for review.
+
+    The token travels in the request BODY, not the URL path or query
+    string — URLs are written to server/proxy access logs, and a logged
+    live credential defeats the token's purpose (#91).
     """
+    token = body.token
     link = _validate_review_token(token)
     draft_id = str(link["draft_id"])
 
@@ -435,8 +443,15 @@ async def resolve_review_token(token: str):
 
 
 @router.get("/{draft_id}/status")
-async def get_review_status(draft_id: str, token: str = Query(...)):
-    """Get review status for all documents in a draft."""
+async def get_review_status(
+    draft_id: str,
+    token: str = Header(..., alias="X-Review-Token"),
+):
+    """Get review status for all documents in a draft.
+
+    Token in the X-Review-Token header, never the query string (#91):
+    query strings land in access logs.
+    """
     _validate_review_token_for_draft(token, draft_id)
 
     documents = _get_review_documents(draft_id)
@@ -452,11 +467,16 @@ async def get_review_status(draft_id: str, token: str = Query(...)):
 
 
 @router.get("/{draft_id}/preview/{document_type}")
-async def get_review_preview(draft_id: str, document_type: str, token: str = Query(...)):
+async def get_review_preview(
+    draft_id: str,
+    document_type: str,
+    token: str = Header(..., alias="X-Review-Token"),
+):
     """
     Get clause-level preview of a document for client review.
     Returns structured clauses (not just raw HTML) so the frontend
     can render clause-by-clause review UI.
+    Token in the X-Review-Token header, never the query string (#91).
     """
     link = _validate_review_token_for_draft(token, draft_id)
 

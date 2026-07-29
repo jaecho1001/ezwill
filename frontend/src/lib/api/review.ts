@@ -49,10 +49,16 @@ export interface PreviewClause {
   statute?: string
 }
 
-// Resolve a review magic link token -> get draft info and documents
+// Resolve a review magic link token -> get draft info and documents.
+// The token travels in the request body / X-Review-Token header, never the
+// URL (#91): URLs are written to server and proxy access logs.
 export async function resolveReviewToken(token: string): Promise<ReviewData | null> {
   try {
-    const res = await fetch(`/api/review/token/${token}/resolve`, { method: 'POST' })
+    const res = await fetch('/api/review/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -67,9 +73,9 @@ export async function getDocumentPreview(
   token: string
 ): Promise<DocumentPreview | null> {
   try {
-    const res = await fetch(
-      `/api/review/${draftId}/preview/${documentType}?token=${encodeURIComponent(token)}`
-    )
+    const res = await fetch(`/api/review/${draftId}/preview/${documentType}`, {
+      headers: { 'X-Review-Token': token },
+    })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -126,9 +132,9 @@ export async function getReviewStatus(
   token: string
 ): Promise<ReviewStatus | null> {
   try {
-    const res = await fetch(
-      `/api/review/${draftId}/status?token=${encodeURIComponent(token)}`
-    )
+    const res = await fetch(`/api/review/${draftId}/status`, {
+      headers: { 'X-Review-Token': token },
+    })
     if (!res.ok) return null
     return res.json()
   } catch {
