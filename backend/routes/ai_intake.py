@@ -572,7 +572,14 @@ async def _stream_with_mock(
 def _persist_vault_snapshot(draft_id: str, vault: dict) -> None:
     """Save the client's vault snapshot onto the draft so the document
     generator can read it. Best-effort: intake chat must not fail if the draft
-    doesn't exist yet or the DB write errors."""
+    doesn't exist yet or the DB write errors.
+
+    Deliberately does NOT bump the draft revision (review finding, #92):
+    this snapshot is the same vault the client's device already holds, so
+    bumping would make the device's own next conditional save 409 as a
+    phantom "another device" conflict. Revision moves only on client saves.
+    The pre-submission edit gate lives in the /chat route.
+    """
     if not vault:
         return
     try:
@@ -582,7 +589,12 @@ def _persist_vault_snapshot(draft_id: str, vault: dict) -> None:
 
         schema = os.getenv("DEFAULT_SCHEMA", "firm_demo")
         with EWDbWriter(schema) as db:
-            db.update_draft(draft_id, {"vault": _json.dumps(vault)})
+            db.execute(
+                "UPDATE ew_will_drafts SET vault = %s, updated_at = now() "
+                "WHERE id = %s AND status IN "
+                "('link_sent', 'opened', 'in_progress')",
+                (_json.dumps(vault), draft_id),
+            )
     except Exception:  # noqa: BLE001 — never break the chat on persistence
         logger.exception("failed to persist intake vault for draft %s", draft_id)
 
@@ -605,6 +617,30 @@ async def intake_chat(
 
     ctx = verify_client_or_dashboard_access(request, authorization, x_magic_token)
     assert_auth_context_can_access_draft(ctx, body.draft_id)
+
+    # Same edit gate as the questionnaire PUT (review finding, #99): once a
+    # file is submitted, a client's chat turns must not silently rewrite the
+    # vault — after submission an approved file would otherwise drift from
+    # its approvals with no way back into the lawyer's queue. Post-submission
+    # changes go through the lawyer Q&A workflow (#98).
+    try:
+        from services.db import EWDbWriter as _Writer
+        import os as _os
+        with _Writer(_os.getenv("DEFAULT_SCHEMA", "firm_demo")) as _db:
+            _draft = _db.get_draft(body.draft_id)
+    except Exception:  # noqa: BLE001 — DB down: let the stream fail later
+        _draft = None
+    if _draft and dict(_draft).get("status") not in (
+        "link_sent", "opened", "in_progress",
+    ):
+        raise HTTPException(409, {
+            "error": "questionnaire_locked",
+            "message": (
+                "This questionnaire has already been submitted and can no "
+                "longer be changed. Ask your lawyer if something needs "
+                "updating."
+            ),
+        })
 
     # Rate limit per draft to prevent runaway costs if a client loops or a
     # token leaks. Raises 429 — frontend already surfaces errors inline.

@@ -617,6 +617,11 @@ async def _capability_quick_draft(payload: dict, correlation_id: str) -> AgentIn
                 if not needs_dual:
                     db.save_document_config(draft_id, "non_probate_will", False)
 
+                # Every clause save above revoked lawyer approvals; without a
+                # recompute an 'approved' draft kept its status and vanished
+                # from every queue (review finding, #99).
+                db.recompute_pipeline_status(draft_id)
+
             ai_result["saved_document_types"] = saved_types
             ai_result["draft_id"] = draft_id
             ai_result["saved"] = True

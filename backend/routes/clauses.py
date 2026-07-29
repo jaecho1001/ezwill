@@ -69,6 +69,13 @@ async def reset_clause_selections(draft_id: str, document_type: str, _token: str
         if not success:
             raise HTTPException(500, "Failed to reset clause selections")
 
+        # Resetting selections destroys the text the lawyer approved: the
+        # approval must not survive it, and the file's status must reflect
+        # the reopened work (review finding, #99) — same invariant the
+        # save path enforces.
+        db.revoke_lawyer_approval(draft_id, document_type)
+        db.recompute_pipeline_status(draft_id)
+
         return {"reset": True, "document_type": document_type}
 
 
@@ -95,5 +102,10 @@ async def update_document_config(draft_id: str, document_type: str, body: Docume
         success = db.save_document_config(draft_id, document_type, body.enabled)
         if not success:
             raise HTTPException(500, "Failed to update document config")
+
+        # Enabling/disabling a document changes what counts as approval
+        # evidence — recompute so the file's status and the lawyer's
+        # queues stay truthful (review finding, #99).
+        db.recompute_pipeline_status(draft_id)
 
         return {"document_type": document_type, "enabled": body.enabled}

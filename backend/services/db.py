@@ -768,14 +768,22 @@ class EWDbWriter:
         current = draft["status"]
         if current not in ("submitted", "in_review", "approved"):
             return current
+        # enabled = true matches the overview queue's definition of
+        # approval evidence (review finding): a document the lawyer
+        # DISABLED after approving must stop satisfying its group, or the
+        # two 'fully handled' definitions diverge and the file leaves one
+        # queue while the other still shows work outstanding.
         configs = self.fetchall("""
-            SELECT document_type, generated_at, lawyer_approved_at
+            SELECT document_type, enabled, generated_at, lawyer_approved_at
             FROM ew_document_configs WHERE draft_id = %s
         """, (draft_id,))
-        generated = {c["document_type"] for c in configs if c["generated_at"]}
+        generated = {
+            c["document_type"] for c in configs
+            if c["generated_at"] and c["enabled"]
+        }
         approved = {
             c["document_type"] for c in configs
-            if c["generated_at"] and c["lawyer_approved_at"]
+            if c["generated_at"] and c["lawyer_approved_at"] and c["enabled"]
         }
         groups = required_document_groups(dict(draft))
         if groups and all(group & approved for group in groups):
