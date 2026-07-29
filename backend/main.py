@@ -47,6 +47,24 @@ async def lifespan(app: FastAPI):
         if (os.getenv("NOTIFICATION_STRICT") or "").strip().lower() in {"1", "true", "yes"}:
             raise RuntimeError(message)
         logging.getLogger(__name__).critical(message)
+    # A real SMTP provider with the placeholder From address fails just as
+    # silently (Codex re-review): Resend refuses senders outside the
+    # verified domain with a 403 domain mismatch, so every send would
+    # error while the app looks configured.
+    from_email = (os.getenv("FROM_EMAIL") or "").strip().lower()
+    if mode == "smtp" and looks_production and (
+        not from_email or from_email.endswith("@ezwill.app")
+    ):
+        message = (
+            "FROM_EMAIL is unset or still the placeholder ezwill.app "
+            "address: the SMTP provider will refuse senders outside the "
+            "firm's verified domain (e.g. Resend's 403 domain mismatch). "
+            "Set FROM_EMAIL to an address on the verified domain, e.g. "
+            "noreply@vclawyers.ca."
+        )
+        if (os.getenv("NOTIFICATION_STRICT") or "").strip().lower() in {"1", "true", "yes"}:
+            raise RuntimeError(message)
+        logging.getLogger(__name__).critical(message)
     yield
     close_pool()
 

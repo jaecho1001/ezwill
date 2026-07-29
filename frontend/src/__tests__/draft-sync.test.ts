@@ -19,7 +19,10 @@ describe('saveDraftToServer optimistic concurrency (#92)', () => {
     expect(body.revision).toBe(6)
   })
 
-  it('omits revision on the first save (unconditional, like before)', async () => {
+  // SELF-SERVE drafts only: they have no other writers. A magic-link
+  // session never reaches this path — useDraftSync awaits the server
+  // revision baseline before its first save (Codex re-review of #92).
+  it('omits revision only when none is known (self-serve first save)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response('{}', { status: 200 })
     )

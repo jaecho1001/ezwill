@@ -42,7 +42,7 @@ export function buildDraftSyncSnapshot(will: WillDocument): string {
   })
 }
 
-export function useDraftSync(): { conflict: boolean } {
+export function useDraftSync(): { conflict: boolean; saveFailed: boolean } {
   const { will } = useWillForm()
   const { draftId, token } = useDraft()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -65,16 +65,26 @@ export function useDraftSync(): { conflict: boolean } {
   // (review finding): a magic-link device that saved unconditionally
   // could clobber another device's answers on its first write. Self-serve
   // drafts (no token) have no other writers to protect against.
+  // The promise is kept so sync() can AWAIT it — the seed used to race
+  // the first debounce, and a save dispatched before it resolved omitted
+  // the revision, re-opening the exact overwrite (Codex re-review).
+  const seedRef = useRef<Promise<void> | null>(null)
   useEffect(() => {
-    if (!token || revisionRef.current !== null) return
-    let cancelled = false
-    void resolveLink(token).then((resolved) => {
-      if (!cancelled && resolved?.revision != null && revisionRef.current === null) {
-        revisionRef.current = resolved.revision
-      }
-    })
-    return () => { cancelled = true }
+    if (!token || revisionRef.current !== null || seedRef.current) return
+    seedRef.current = resolveLink(token)
+      .then((resolved) => {
+        if (resolved?.revision != null && revisionRef.current === null) {
+          revisionRef.current = resolved.revision
+        }
+      })
+      .catch(() => {
+        // Baseline unavailable (offline / dead link): proceed unconditional
+        // — the PUT's own token auth is still the gate.
+      })
   }, [token])
+
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [saveFailed, setSaveFailed] = useState(false)
 
   const sync = useCallback(async () => {
     if (!draftId || conflictRef.current) return
@@ -82,13 +92,15 @@ export function useDraftSync(): { conflict: boolean } {
       pendingRef.current = true
       return
     }
-    const w = latestWillRef.current
-    const snapshot = buildDraftSyncSnapshot(w)
-    if (snapshot === lastSyncedRef.current) return
-    lastSyncedRef.current = snapshot
-
     inFlightRef.current = true
     try {
+      // A magic-link session must know the server's revision before its
+      // FIRST write, or that write is an unconditional overwrite.
+      if (seedRef.current) await seedRef.current
+      const w = latestWillRef.current
+      const snapshot = buildDraftSyncSnapshot(w)
+      if (snapshot === lastSyncedRef.current) return
+
       const result = await saveDraftToServer(draftId, {
         aboutYou: w.aboutYou as unknown as Record<string, unknown>,
         yourFamily: w.yourFamily as unknown as Record<string, unknown>,
@@ -105,12 +117,23 @@ export function useDraftSync(): { conflict: boolean } {
         language: w.language,
       }, token ?? undefined, revisionRef.current ?? undefined)
       if (result.ok) {
+        // Claim the snapshot only AFTER the server confirmed (Codex
+        // re-review): claiming it up front meant a transient failure was
+        // never retried — the data looked synced and silently wasn't.
+        lastSyncedRef.current = snapshot
         if (result.revision != null) revisionRef.current = result.revision
+        setSaveFailed(false)
       } else if (result.conflict) {
         // Another writer got there first. STOP autosaving — retrying
         // would overwrite their answers — and surface it.
         conflictRef.current = true
         setConflict(true)
+      } else {
+        // Transient failure: surface it and retry on a timer even if the
+        // client types nothing further.
+        setSaveFailed(true)
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = setTimeout(() => { void sync() }, 10000)
       }
     } finally {
       inFlightRef.current = false
@@ -128,5 +151,9 @@ export function useDraftSync(): { conflict: boolean } {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [will, draftId, sync])
 
-  return { conflict }
+  useEffect(() => () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+  }, [])
+
+  return { conflict, saveFailed }
 }

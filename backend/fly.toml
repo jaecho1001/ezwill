@@ -9,9 +9,16 @@
 #     AUTH_SESSION_SECRET=... DASHBOARD_PASSWORD=... \
 #     ANTHROPIC_API_KEY=... STRIPE_SECRET_KEY=... STRIPE_WEBHOOK_SECRET=... \
 #     BASE_URL=https://<vercel-domain> FRONTEND_URL=https://<vercel-domain> \
-#     NOTIFICATION_MODE=smtp SMTP_HOST=... SMTP_PORT=587 \
-#     SMTP_USERNAME=... SMTP_PASSWORD=...
+#     NOTIFICATION_MODE=smtp SMTP_HOST=smtp.resend.com SMTP_PORT=587 \
+#     SMTP_USERNAME=resend SMTP_PASSWORD=<resend-api-key> \
+#     FROM_EMAIL=noreply@vclawyers.ca FROM_NAME="EzWill — Vaturi & Cho LLP"
 #   fly deploy
+#
+# FROM_EMAIL must be on the firm's verified sending domain — Resend
+# refuses other senders with a 403 domain mismatch, and the app hard-stops
+# at boot (NOTIFICATION_STRICT) if it is unset or still the placeholder.
+# After deploy, run a REAL email smoke test (create a test client with a
+# firm-owned address, send the link, confirm receipt) before client data.
 #
 # Migrations run in the release machine BEFORE new code takes traffic; a
 # failed migration aborts the deploy and the old version keeps serving.

@@ -66,6 +66,9 @@ deploy while the old version keeps serving.
      BASE_URL="https://<your-vercel-domain>" \
      FRONTEND_URL="https://<your-vercel-domain>" \
      NOTIFICATION_MODE=smtp NOTIFICATION_STRICT=true \
+     SMTP_HOST=smtp.resend.com SMTP_PORT=587 \
+     SMTP_USERNAME=resend SMTP_PASSWORD="<resend-api-key>" \
+     FROM_EMAIL=noreply@vclawyers.ca FROM_NAME="EzWill — Vaturi & Cho LLP" \
      TRUST_PROXY=true \
      SESSION_COOKIE_SECURE=true
    ```
@@ -78,6 +81,16 @@ deploy while the old version keeps serving.
      written to the server log and DISCARDED while the API reports success.
      `NOTIFICATION_STRICT=true` makes the backend refuse to start in that
      state instead of degrading silently (#88).
+   - `FROM_EMAIL` — must be an address on the firm's VERIFIED sending
+     domain (vclawyers.ca). Resend refuses any other sender with a 403
+     domain mismatch, so the default placeholder (`noreply@ezwill.app`)
+     means every send errors while the app looks configured. The strict
+     boot gate also catches this.
+   - After the first deploy, run a REAL email smoke test before touching
+     client data: create a test client with a firm-owned address, send the
+     questionnaire link, and confirm the email actually arrives (check the
+     dashboard delivery status shows `sent`, and the Resend dashboard
+     shows the delivery).
    - `STRIPE_WEBHOOK_SECRET` — the webhook rejects deliveries outright when
      this is unset (#91); without it real payments never mark drafts paid.
    - `TRUST_PROXY=true` — behind Fly/Vercel the client IP arrives in

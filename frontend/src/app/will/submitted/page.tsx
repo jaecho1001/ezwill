@@ -11,12 +11,13 @@ import { useDraft } from '@/providers/draft-provider'
 export default function SubmittedPage() {
   const { will } = useWillForm()
   const { lang } = useTranslation()
-  const { draftId, token } = useDraft()
+  const { draftId } = useDraft()
 
   const firstName = will.aboutYou.legalFirstName || (lang === 'ko' ? '안녕하세요' : 'Hello')
-  const remindersHref = draftId
-    ? `/reminders/${draftId}${token ? `?t=${encodeURIComponent(token)}` : ''}`
-    : null
+  // No ?t= on internal navigation (#91): the reminders page reads the
+  // stored token from the draft provider, so the credential never
+  // re-enters the address bar.
+  const remindersHref = draftId ? `/reminders/${draftId}` : null
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center px-4">

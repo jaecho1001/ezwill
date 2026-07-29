@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, use, useEffect } from 'react'
+import { useCallback, useMemo, useRef, useState, use, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useWillVault } from '@/stores/will-vault-store'
@@ -34,11 +34,33 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   const language = store((s) => s.language)
   const setLanguage = store((s) => s.setLanguage)
   const replaceVault = store((s) => s.replaceVault)
-  const { setDraftId, setToken } = useDraft()
+  const { token: storedToken, draftId: storedDraftId, setDraftId, setToken } = useDraft()
   const [linkError, setLinkError] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const [clientQuestions, setClientQuestions] = useState<ClientQuestion[]>([])
-  const hasMagicToken = Boolean(searchParams.get('t'))
+
+  // Credential hygiene (#91, Codex re-review): the emailed link necessarily
+  // arrives with ?t=..., but the token must not LIVE in the address bar —
+  // it lands in browser history and page-load logs. Capture it once, stash
+  // it in the draft provider, and strip it from the URL; a post-strip
+  // refresh recovers it from the stash (bound to THIS draft — self-serve
+  // drafts store a different server id, so they never match).
+  const urlToken = searchParams.get('t')
+  const arrivalTokenRef = useRef<string | null>(null)
+  if (urlToken) arrivalTokenRef.current = urlToken
+  const magicToken = arrivalTokenRef.current
+    ?? (storedDraftId === willId ? storedToken : null)
+  const hasMagicToken = Boolean(magicToken)
+
+  useEffect(() => {
+    if (!urlToken) return
+    setToken(urlToken)
+    setDraftId(willId)
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('t')
+    const qs = params.toString()
+    router.replace(`/intake/${willId}${qs ? `?${qs}` : ''}`, { scroll: false })
+  }, [urlToken, router, searchParams, setDraftId, setToken, willId])
 
   // On a 409 the server has a newer copy (another device, or the lawyer).
   // Re-hydrate from it rather than fighting over the draft (issue #92).
@@ -52,7 +74,6 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   // A lawyer-created link is resolved again here so a bookmarked intake URL
   // can restore its server copy on another device.
   useEffect(() => {
-    const magicToken = searchParams.get('t')
     if (!magicToken || hydrated) return
     void resolveLink(magicToken).then((result) => {
       if (!result || result.draft_id !== willId) {
@@ -80,27 +101,25 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
       acceptRevision(result.revision)
       setHydrated(true)
     })
-  }, [acceptRevision, hydrated, replaceVault, searchParams, setDraftId, setLanguage, setToken, vault, willId])
+  }, [acceptRevision, hydrated, magicToken, replaceVault, setDraftId, setLanguage, setToken, vault, willId])
 
   // Follow-up questions from the lawyer (#98): loaded once the magic-link
   // session is hydrated (the token has been validated against this draft).
   // Self-serve sessions without a token have no lawyer yet, so nothing loads.
   useEffect(() => {
-    const magicToken = searchParams.get('t')
     if (!magicToken || !hydrated) return
     void listClientQuestions(willId, magicToken).then((loaded) => {
       if (loaded) setClientQuestions(loaded)
     })
-  }, [hydrated, searchParams, willId])
+  }, [hydrated, magicToken, willId])
 
   const handleAnswerQuestion = useCallback(async (questionId: string, answerText: string) => {
-    const magicToken = searchParams.get('t')
     if (!magicToken) return false
     const updated = await answerClientQuestion(willId, questionId, answerText, magicToken)
     if (!updated) return false
     setClientQuestions((prev) => prev.map((q) => (q.id === questionId ? updated : q)))
     return true
-  }, [searchParams, willId])
+  }, [magicToken, willId])
 
   // Seed the active chapter from ?chapter=N so deep-links from the summary
   // page / facts panel / external bookmarks land on the right step.

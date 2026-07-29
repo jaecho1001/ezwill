@@ -19,7 +19,7 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   // so their answers persist and the lawyer sees them fill in live.
   useEnsureSelfServeDraft()
   // Auto-sync draft to server (debounced 1.5s). No-op if no draftId in context.
-  const { conflict } = useDraftSync()
+  const { conflict, saveFailed } = useDraftSync()
 
   const progressPct = ((will.completedSteps.length) / WILL_STEPS.length) * 100
 
@@ -34,6 +34,14 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
           These answers were changed on another device or by your lawyer. Saving here is paused so nothing is overwritten —
           continue on the device with your newest answers, or ask your lawyer to send a fresh link.{' '}
           <span className="text-amber-800">다른 기기 또는 변호사가 답변을 변경했습니다. 덮어쓰기를 막기 위해 이 기기의 저장이 일시 중지되었습니다. 최신 답변이 있는 기기에서 계속하시거나 변호사에게 새 링크를 요청해 주세요.</span>
+        </div>
+      )}
+      {/* A failed save previously looked identical to a successful one
+          (Codex re-review) — the client kept typing into a void. */}
+      {!conflict && saveFailed && (
+        <div className="sticky top-0 z-50 border-b border-red-300 bg-red-50 px-4 py-2 text-center text-sm text-red-800">
+          Your answers are not reaching the server right now — we keep retrying automatically. Check your connection before closing this page.{' '}
+          <span className="text-red-700">현재 답변이 서버에 저장되지 않고 있습니다. 자동으로 다시 시도합니다. 페이지를 닫기 전에 연결 상태를 확인해 주세요.</span>
         </div>
       )}
       {/* Top bar */}
