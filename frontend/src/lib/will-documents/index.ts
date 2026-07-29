@@ -237,10 +237,17 @@ export function affirmedPersonalCareClauseIds(
  * with no gift, a Henson trust with no ODSP facts, an RESP power with no
  * RESP. Default-on was the reason "a complete intake could not deliver
  * 7 of 9 document types".
+ *
+ * poa-prop-restrictions is here because its {{restrictionConsentPerson}}
+ * has NO intake data source at all — the intake captures the client's
+ * restriction wishes as free text, which a lawyer must turn into clause
+ * terms. Default-on meant every default POA-property generation 422'd.
+ * It is never auto-supported; a lawyer's explicit stored row still wins.
  */
 export const DATA_CONDITIONAL_CLAUSES: ReadonlySet<string> = new Set([
   'gifts-item', 'gifts-cash', 'gifts-charity',
   'trust-henson', 'trust-spousal', 'powers-resp',
+  'poa-prop-restrictions',
 ])
 
 /** Which data-conditional clauses this draft's answers can actually fill. */

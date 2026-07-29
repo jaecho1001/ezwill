@@ -231,6 +231,35 @@ def test_v2_vault_projects_gifts_poa_and_trust_data():
     assert v["trustDistributionAge"] == "30"
 
 
+def test_gift_amounts_carry_no_currency_symbol_and_pet_charity_project():
+    """#84: clause templates supply the "$" literally ("the sum of
+    ${{cashAmount}}"), so amount variables must not add one — the old
+    formatting printed "$$5,000.00" in generated wills. Charity variables
+    must come from the charity row even when another gift sits first, and a
+    structured pet gift must fill the pet clause."""
+    vault = {
+        "gifts": [
+            {"type": "cash", "description": "Cash to niece",
+             "recipientName": "Mina Cho", "amount": 5000},
+            {"type": "charity", "description": "donation",
+             "charityName": "Maple Grove Food Bank",
+             "charityNumber": "123456789RR0001", "amount": 2500},
+            {"type": "pet", "description": "pet care",
+             "recipientName": "Sarah Lee", "petName": "Bruno",
+             "petType": "dog", "amount": 3000},
+        ],
+    }
+    v = vault_to_variables(vault)
+    assert v["cashAmount"] == "5,000.00"
+    assert v["charityName"] == "Maple Grove Food Bank"
+    assert v["charityNumber"] == "123456789RR0001"
+    assert v["charityAmount"] == "2,500.00"
+    assert v["petName"] == "Bruno"
+    assert v["petType"] == "dog"
+    assert v["petCaregiverName"] == "Sarah Lee"
+    assert v["petCareAmount"] == "3,000.00"
+
+
 def test_vault_to_variables_empty_is_noop():
     assert vault_to_variables({}) == {}
     assert vault_to_variables(None) == {}

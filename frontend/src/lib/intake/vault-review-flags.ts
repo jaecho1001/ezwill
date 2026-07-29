@@ -74,5 +74,14 @@ export function getVaultReviewFlags(vault: WillVault): VaultReviewFlag[] {
       statute: 'SDA',
     })
   }
+  if (vault.poa.property.restrictions?.trim()) {
+    flags.push({
+      id: 'vault-poa-restrictions',
+      severity: 'warning',
+      title: 'Property-POA restrictions requested',
+      description: 'The client asked to limit the property attorney’s authority. The restrictions clause is OFF by default because its terms (including any consent person) must be drafted by the lawyer from the client’s wording.',
+      statute: 'SDA',
+    })
+  }
   return flags
 }

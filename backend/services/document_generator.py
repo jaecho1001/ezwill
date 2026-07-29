@@ -218,11 +218,14 @@ def vault_to_variables(vault: dict) -> dict:
         (gift for gift in gifts if gift.get("description") or gift.get("charityName")),
         None,
     )
+    # Amounts render WITHOUT a currency symbol: every clause template already
+    # carries a literal "$" before the placeholder ("the sum of
+    # ${{cashAmount}}"), so a symbol here printed "$$5,000.00" in wills.
     if first_gift:
         if first_gift.get("description"):
             v["giftDescription"] = first_gift["description"]
         if first_gift.get("amount") is not None:
-            v["cashAmount"] = "${:,.2f}".format(first_gift["amount"])
+            v["cashAmount"] = "{:,.2f}".format(first_gift["amount"])
         if first_gift.get("charityName"):
             v["charityName"] = first_gift["charityName"]
         if first_gift.get("charityNumber"):
@@ -234,6 +237,35 @@ def vault_to_variables(vault: dict) -> dict:
         if recipient:
             v["recipientFullName"] = recipient
             v["recipientFirstName"] = recipient.split()[0]
+
+    # Charity variables come from an actual charity gift, not whichever gift
+    # happens to be first — a cash gift ahead of the charity row must not
+    # leave {{charityName}} unfilled (#84). Mirror of vault-to-variables.ts.
+    charity_gift = next(
+        (g for g in gifts if g.get("type") == "charity" and g.get("charityName")),
+        None,
+    )
+    if charity_gift:
+        v["charityName"] = charity_gift["charityName"]
+        if charity_gift.get("charityNumber"):
+            v["charityNumber"] = charity_gift["charityNumber"]
+        if charity_gift.get("amount") is not None:
+            v["charityAmount"] = "{:,.2f}".format(charity_gift["amount"])
+
+    # Pet-care gift fills the pet clause (#84). Mirror of vault-to-variables.ts.
+    pet_gift = next((g for g in gifts if g.get("type") == "pet"), None)
+    if pet_gift:
+        pet_name = str(pet_gift.get("petName") or "").strip()
+        pet_type = str(pet_gift.get("petType") or "").strip()
+        caregiver = str(pet_gift.get("recipientName") or "").strip()
+        if pet_name:
+            v["petName"] = pet_name
+        if pet_type:
+            v["petType"] = pet_type
+        if caregiver:
+            v["petCaregiverName"] = caregiver
+        if pet_gift.get("amount") is not None:
+            v["petCareAmount"] = "{:,.2f}".format(pet_gift["amount"])
 
     poa = vault.get("poa") or {}
     property_attorneys = (poa.get("property") or {}).get("attorneys") or []

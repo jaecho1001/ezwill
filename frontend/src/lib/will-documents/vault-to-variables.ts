@@ -44,7 +44,7 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
   const firstGift = vault.gifts.find((gift) => gift.description || gift.charityName)
   if (firstGift) {
     if (firstGift.description) v.giftDescription = firstGift.description
-    if (firstGift.amount != null) v.cashAmount = formatCurrency(firstGift.amount)
+    if (firstGift.amount != null) v.cashAmount = formatAmount(firstGift.amount)
     if (firstGift.charityName) v.charityName = firstGift.charityName
     if (firstGift.charityNumber) v.charityNumber = firstGift.charityNumber
     // Mirror of the Python guard (issue #80): whitespace-only names are
@@ -54,6 +54,26 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
       v.recipientFullName = recipient
       v.recipientFirstName = recipient.split(/\s+/)[0]
     }
+  }
+
+  // Charity variables come from an actual charity gift, not whichever gift
+  // happens to be first — a cash gift ahead of the charity row must not
+  // leave {{charityName}} unfilled (#84).
+  const charityGift = vault.gifts.find((gift) => gift.type === 'charity' && gift.charityName)
+  if (charityGift) {
+    v.charityName = charityGift.charityName as string
+    if (charityGift.charityNumber) v.charityNumber = charityGift.charityNumber
+    if (charityGift.amount != null) v.charityAmount = formatAmount(charityGift.amount)
+  }
+
+  // Pet-care gift → {{petName}}/{{petType}}/{{petCaregiverName}}/{{petCareAmount}} (#84).
+  const petGift = vault.gifts.find((gift) => gift.type === 'pet')
+  if (petGift) {
+    if (petGift.petName?.trim()) v.petName = petGift.petName.trim()
+    if (petGift.petType?.trim()) v.petType = petGift.petType.trim()
+    const caregiver = (petGift.recipientName ?? '').trim()
+    if (caregiver) v.petCaregiverName = caregiver
+    if (petGift.amount != null) v.petCareAmount = formatAmount(petGift.amount)
   }
 
   // ── Powers of attorney ─────────────────────────────────────
@@ -75,8 +95,13 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
   return v
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(value)
+/**
+ * Amounts render WITHOUT a currency symbol: every clause template already
+ * carries a literal "$" before the placeholder ("the sum of ${{cashAmount}}"),
+ * so a symbol here printed "$$5,000.00" in generated wills.
+ */
+function formatAmount(value: number): string {
+  return new Intl.NumberFormat('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 }
 
 function extractCity(addr: string): string {

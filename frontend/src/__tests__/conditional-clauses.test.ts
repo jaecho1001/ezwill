@@ -35,9 +35,12 @@ describe('supportedConditionalClauseIds', () => {
   })
 
   it('supports each clause exactly when its data exists', () => {
+    // poa-prop-restrictions is the one conditional clause NO intake data can
+    // support: its consent person must be drafted by the lawyer (#84).
+    const NEVER_SUPPORTED = new Set(['poa-prop-restrictions'])
     const supported = supportedConditionalClauseIds(RICH_DRAFT)
     for (const id of DATA_CONDITIONAL_CLAUSES) {
-      expect(supported.has(id), id).toBe(true)
+      expect(supported.has(id), id).toBe(!NEVER_SUPPORTED.has(id))
     }
   })
 
@@ -97,5 +100,32 @@ describe('mergeSelectionsWithDefaults with data support', () => {
     const merged = mergeSelectionsWithDefaults('single_will', [], new Set(), null)
     const byId = new Map(merged.map((clause) => [clause.clauseId, clause]))
     expect(byId.get('gifts-item')?.included).toBe(true)
+  })
+})
+
+describe('poa-prop-restrictions is never on by default (#84)', () => {
+  it('defaults OFF for poa_property regardless of the draft data', () => {
+    for (const draft of [EMPTY_DRAFT, RICH_DRAFT]) {
+      const merged = mergeSelectionsWithDefaults(
+        'poa_property', [], new Set(), supportedConditionalClauseIds(draft),
+      )
+      const byId = new Map(merged.map((clause) => [clause.clauseId, clause]))
+      // {{restrictionConsentPerson}} has no intake source: default-on meant
+      // every default POA-property generation 422'd on day one.
+      expect(byId.get('poa-prop-restrictions')?.included).toBe(false)
+      expect(byId.get('poa-prop-appt')?.included).toBe(true)
+      expect(byId.get('poa-prop-effective')?.included).toBe(true)
+    }
+  })
+
+  it("a lawyer's stored row still turns it on", () => {
+    const merged = mergeSelectionsWithDefaults(
+      'poa_property',
+      [{ clauseId: 'poa-prop-restrictions', included: true, sortOrder: 4, section: 'POA', aiGenerated: false }],
+      new Set(),
+      supportedConditionalClauseIds(EMPTY_DRAFT),
+    )
+    const byId = new Map(merged.map((clause) => [clause.clauseId, clause]))
+    expect(byId.get('poa-prop-restrictions')?.included).toBe(true)
   })
 })

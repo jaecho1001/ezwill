@@ -366,13 +366,27 @@ function GiftListEditor({
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
             <Input value={gift.type === 'charity' ? gift.charityName ?? '' : gift.recipientName ?? ''}
-              placeholder={gift.type === 'charity' ? L(language, 'Charity name', '자선단체명') : L(language, 'Recipient', '수령인')}
+              placeholder={gift.type === 'charity' ? L(language, 'Charity name', '자선단체명')
+                : gift.type === 'pet' ? L(language, 'Caregiver', '돌봄인')
+                : L(language, 'Recipient', '수령인')}
               onChange={(e) => update(idx, gift.type === 'charity' ? { charityName: e.target.value } : { recipientName: e.target.value })} />
             <Input type="number" min={0} value={gift.amount ?? ''} placeholder={L(language, 'Amount, if applicable', '금액 (해당 시)')}
               onChange={(e) => update(idx, { amount: e.target.value === '' ? undefined : Number(e.target.value) })} />
             <Input value={gift.condition ?? ''} placeholder={L(language, 'Condition (optional)', '조건 (선택 사항)')}
               onChange={(e) => update(idx, { condition: e.target.value })} />
           </div>
+          {gift.type === 'pet' && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input value={gift.petName ?? ''} placeholder={L(language, "Pet's name", '반려동물 이름')}
+                onChange={(e) => update(idx, { petName: e.target.value })} />
+              <Input value={gift.petType ?? ''} placeholder={L(language, 'Type of pet (dog, cat, ...)', '반려동물 종류 (개, 고양이 등)')}
+                onChange={(e) => update(idx, { petType: e.target.value })} />
+            </div>
+          )}
+          {gift.type === 'charity' && (
+            <Input value={gift.charityNumber ?? ''} placeholder={L(language, 'CRA registration number (optional)', 'CRA 등록번호 (선택 사항)')}
+              onChange={(e) => update(idx, { charityNumber: e.target.value })} />
+          )}
         </div>
       ))}
       <Button type="button" variant="outline" size="sm"

@@ -121,6 +121,39 @@ describe('unified intake', () => {
     expect(variables.recipientFullName).not.toBe('Alex Kim')
   })
 
+  it('projects charity and pet gifts, and never doubles the dollar sign (#84)', () => {
+    const variables = vaultToVariables(vault({
+      gifts: [
+        { id: 'g1', type: 'cash', description: 'Cash to niece', recipientName: 'Mina Cho', amount: 5000 },
+        { id: 'g2', type: 'charity', description: 'donation', charityName: 'Maple Grove Food Bank', charityNumber: '123456789RR0001', amount: 2500 },
+        { id: 'g3', type: 'pet', description: 'pet care', recipientName: 'Sarah Lee', petName: 'Bruno', petType: 'dog', amount: 3000 },
+      ],
+    }))
+    // Templates carry the "$" literally ("the sum of ${{cashAmount}}"), so
+    // the variable must NOT include a currency symbol.
+    expect(variables.cashAmount).toBe('5,000.00')
+    // Charity variables come from the charity row, not the first gift.
+    expect(variables).toMatchObject({
+      charityName: 'Maple Grove Food Bank',
+      charityNumber: '123456789RR0001',
+      charityAmount: '2,500.00',
+      petName: 'Bruno',
+      petType: 'dog',
+      petCaregiverName: 'Sarah Lee',
+      petCareAmount: '3,000.00',
+    })
+  })
+
+  it('flags client-requested property-POA restrictions for lawyer drafting (#84)', () => {
+    const flags = getVaultReviewFlags(vault({
+      poa: {
+        property: { requested: true, attorneys: [], restrictions: 'Do not sell the cottage.' },
+        personalCare: { attorneys: [] },
+      },
+    }))
+    expect(flags.some((flag) => flag.id === 'vault-poa-restrictions')).toBe(true)
+  })
+
   it('requires a recipient for each non-charitable specific gift', () => {
     const question = willIntakeChapters
       .find((item) => item.id === 'gifts')!

@@ -63,6 +63,9 @@ export interface VaultGift {
   charityName?: string
   charityNumber?: string
   condition?: string
+  /** Pet-care gifts only: fills {{petName}} / {{petType}} in the pet clause. */
+  petName?: string
+  petType?: string
 }
 
 export type VaultAssetType =
