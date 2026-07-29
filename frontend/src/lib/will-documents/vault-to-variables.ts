@@ -41,19 +41,32 @@ export function vaultToVariables(vault: WillVault): Record<string, string> {
   if (vault.corporateTrusteeName) v.corporateTrusteeName = vault.corporateTrusteeName
 
   // ── Beneficiaries / gifts ─────────────────────────────────
-  const firstGift = vault.gifts.find((gift) => gift.description || gift.charityName)
-  if (firstGift) {
-    if (firstGift.description) v.giftDescription = firstGift.description
-    if (firstGift.amount != null) v.cashAmount = formatAmount(firstGift.amount)
-    if (firstGift.charityName) v.charityName = firstGift.charityName
-    if (firstGift.charityNumber) v.charityNumber = firstGift.charityNumber
-    // Mirror of the Python guard (issue #80): whitespace-only names are
-    // truthy but have no first token.
-    const recipient = (firstGift.recipientName ?? '').trim()
-    if (recipient) {
-      v.recipientFullName = recipient
-      v.recipientFirstName = recipient.split(/\s+/)[0]
-    }
+  // Every gift variable binds to a gift OF ITS CLAUSE'S TYPE — the old
+  // untyped "first gift" binding rendered a pet gift's caregiver and care
+  // fund into the CASH clause whenever a non-cash gift sat first in the
+  // list (review finding, #84). Mirror of document_generator.py.
+  const cashGift = vault.gifts.find((gift) => gift.type === 'cash')
+  const itemGift = vault.gifts.find(
+    (gift) => gift.type !== 'cash' && gift.type !== 'charity' && gift.type !== 'pet'
+      && Boolean(gift.description)
+  )
+  if (cashGift?.amount != null) v.cashAmount = formatAmount(cashGift.amount)
+  // Mirror of the Python guard (issue #80): whitespace-only names are
+  // truthy but have no first token.
+  const cashRecipient = (cashGift?.recipientName ?? '').trim()
+  const itemRecipient = (itemGift?.recipientName ?? '').trim()
+  const recipient = cashRecipient || itemRecipient
+  if (recipient) {
+    v.recipientFullName = recipient
+    v.recipientFirstName = recipient.split(/\s+/)[0]
+  }
+  // {{recipientFullName}} is shared by the cash and item clauses; when the
+  // two gifts name DIFFERENT people the item description is withheld so
+  // generation fails loudly instead of attributing the item to the wrong
+  // person (#83 covers proper gift lists).
+  if (itemGift?.description
+    && (!cashRecipient || !itemRecipient || cashRecipient === itemRecipient)) {
+    v.giftDescription = itemGift.description
   }
 
   // Charity variables come from an actual charity gift, not whichever gift

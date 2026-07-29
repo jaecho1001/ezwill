@@ -19,8 +19,11 @@ const EMPTY_DRAFT = { vault: {} }
 const RICH_DRAFT = {
   vault: {
     gifts: [
+      // Same recipient for the item and cash gifts: the two clauses share
+      // one recipient placeholder, and differing recipients deliberately
+      // un-support the item clause (see the clash test below).
       { id: 'g1', type: 'personal_item', description: "mother's ring", recipientName: 'Grace Kim' },
-      { id: 'g2', type: 'cash', amount: 5000, recipientName: 'Min Cho' },
+      { id: 'g2', type: 'cash', amount: 5000, recipientName: 'Grace Kim' },
       { id: 'g3', type: 'charity', description: 'gift', charityName: 'SickKids' },
     ],
     goals: { henson: true, spousalTrust: true },
@@ -37,7 +40,7 @@ describe('supportedConditionalClauseIds', () => {
   it('supports each clause exactly when its data exists', () => {
     // poa-prop-restrictions is the one conditional clause NO intake data can
     // support: its consent person must be drafted by the lawyer (#84).
-    const NEVER_SUPPORTED = new Set(['poa-prop-restrictions'])
+    const NEVER_SUPPORTED = new Set(['poa-prop-restrictions', 'gifts-charity'])
     const supported = supportedConditionalClauseIds(RICH_DRAFT)
     for (const id of DATA_CONDITIONAL_CLAUSES) {
       expect(supported.has(id), id).toBe(!NEVER_SUPPORTED.has(id))
@@ -58,7 +61,9 @@ describe('supportedConditionalClauseIds', () => {
       assets: [{ asset_type: 'resp', description: 'RESP acct' }],
     })
     expect(supported.has('trust-henson')).toBe(true)
-    expect(supported.has('gifts-charity')).toBe(true)
+    // gifts-charity is never auto-supported (lawyer must strike the
+    // sum-or-percentage alternative) — legacy donations included.
+    expect(supported.has('gifts-charity')).toBe(false)
     expect(supported.has('powers-resp')).toBe(true)
   })
 })
@@ -82,7 +87,28 @@ describe('mergeSelectionsWithDefaults with data support', () => {
     )
     const byId = new Map(merged.map((clause) => [clause.clauseId, clause]))
     expect(byId.get('gifts-item')?.included).toBe(true)
-    expect(byId.get('gifts-charity')?.included).toBe(true)
+    // Charity stays lawyer-drafted even with a charity gift present.
+    expect(byId.get('gifts-charity')?.included).toBe(false)
+  })
+
+  it('a pet gift does NOT trigger the generic item clause (#84 review)', () => {
+    const supported = supportedConditionalClauseIds({
+      vault: { gifts: [{ id: 'g', type: 'pet', description: 'my dog Rex', recipientName: 'Jane Doe', amount: 2000 }] },
+    })
+    expect(supported.has('gifts-item')).toBe(false)
+    expect(supported.has('gifts-cash')).toBe(false)
+  })
+
+  it('cash and item gifts to DIFFERENT people support only the cash clause', () => {
+    const supported = supportedConditionalClauseIds({
+      vault: { gifts: [
+        { id: 'g1', type: 'cash', amount: 5000, recipientName: 'Bob Smith' },
+        { id: 'g2', type: 'personal_item', description: 'ring', recipientName: 'Jane Doe' },
+      ] },
+    })
+    expect(supported.has('gifts-cash')).toBe(true)
+    // The shared recipient placeholder cannot serve two people truthfully.
+    expect(supported.has('gifts-item')).toBe(false)
   })
 
   it("a stored row — the lawyer's explicit choice — always wins", () => {

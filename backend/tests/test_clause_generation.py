@@ -237,20 +237,25 @@ def test_gift_amounts_carry_no_currency_symbol_and_pet_charity_project():
     formatting printed "$$5,000.00" in generated wills. Charity variables
     must come from the charity row even when another gift sits first, and a
     structured pet gift must fill the pet clause."""
+    # ADVERSARIAL ordering: the pet gift sits FIRST. The old untyped
+    # "first gift" binding rendered the pet caregiver and care fund into
+    # the cash clause ("the sum of $3,000.00 to Sarah Lee").
     vault = {
         "gifts": [
-            {"type": "cash", "description": "Cash to niece",
-             "recipientName": "Mina Cho", "amount": 5000},
-            {"type": "charity", "description": "donation",
-             "charityName": "Maple Grove Food Bank",
-             "charityNumber": "123456789RR0001", "amount": 2500},
             {"type": "pet", "description": "pet care",
              "recipientName": "Sarah Lee", "petName": "Bruno",
              "petType": "dog", "amount": 3000},
+            {"type": "charity", "description": "donation",
+             "charityName": "Maple Grove Food Bank",
+             "charityNumber": "123456789RR0001", "amount": 2500},
+            {"type": "cash", "description": "Cash to niece",
+             "recipientName": "Mina Cho", "amount": 5000},
         ],
     }
     v = vault_to_variables(vault)
     assert v["cashAmount"] == "5,000.00"
+    assert v["recipientFullName"] == "Mina Cho"
+    assert v["recipientFirstName"] == "Mina"
     assert v["charityName"] == "Maple Grove Food Bank"
     assert v["charityNumber"] == "123456789RR0001"
     assert v["charityAmount"] == "2,500.00"
@@ -258,6 +263,35 @@ def test_gift_amounts_carry_no_currency_symbol_and_pet_charity_project():
     assert v["petType"] == "dog"
     assert v["petCaregiverName"] == "Sarah Lee"
     assert v["petCareAmount"] == "3,000.00"
+
+
+def test_conflicting_cash_and_item_recipients_withhold_the_item_description():
+    """Review finding (#84): {{recipientFullName}} is shared by the cash and
+    item clauses. When the two gifts name different people, the item
+    description must be withheld so generation fails LOUDLY on the
+    unresolved placeholder instead of giving the ring to the wrong person."""
+    v = vault_to_variables({
+        "gifts": [
+            {"type": "personal_item", "description": "mother's ring",
+             "recipientName": "Jane Doe"},
+            {"type": "cash", "description": "cash",
+             "recipientName": "Bob Smith", "amount": 5000},
+        ],
+    })
+    assert v["cashAmount"] == "5,000.00"
+    assert v["recipientFullName"] == "Bob Smith"
+    assert "giftDescription" not in v
+
+    # Same recipient: both render.
+    v = vault_to_variables({
+        "gifts": [
+            {"type": "personal_item", "description": "mother's ring",
+             "recipientName": "Bob Smith"},
+            {"type": "cash", "description": "cash",
+             "recipientName": "Bob Smith", "amount": 5000},
+        ],
+    })
+    assert v["giftDescription"] == "mother's ring"
 
 
 def test_vault_to_variables_empty_is_noop():

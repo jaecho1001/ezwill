@@ -214,29 +214,37 @@ def vault_to_variables(vault: dict) -> dict:
         v["corporateTrusteeName"] = vault["corporateTrusteeName"]
 
     gifts = vault.get("gifts") or []
-    first_gift = next(
-        (gift for gift in gifts if gift.get("description") or gift.get("charityName")),
+    # Every gift variable binds to a gift OF ITS CLAUSE'S TYPE — the old
+    # untyped "first gift" binding rendered a pet gift's caregiver and care
+    # fund into the CASH clause ("I give the sum of $2,000.00 to Jane Doe")
+    # whenever a non-cash gift sat first in the list (review finding, #84).
+    # Amounts render WITHOUT a currency symbol: templates carry the "$".
+    cash_gift = next((g for g in gifts if g.get("type") == "cash"), None)
+    item_gift = next(
+        (g for g in gifts
+         if g.get("type") not in ("cash", "charity", "pet")
+         and g.get("description")),
         None,
     )
-    # Amounts render WITHOUT a currency symbol: every clause template already
-    # carries a literal "$" before the placeholder ("the sum of
-    # ${{cashAmount}}"), so a symbol here printed "$$5,000.00" in wills.
-    if first_gift:
-        if first_gift.get("description"):
-            v["giftDescription"] = first_gift["description"]
-        if first_gift.get("amount") is not None:
-            v["cashAmount"] = "{:,.2f}".format(first_gift["amount"])
-        if first_gift.get("charityName"):
-            v["charityName"] = first_gift["charityName"]
-        if first_gift.get("charityNumber"):
-            v["charityNumber"] = first_gift["charityNumber"]
-        # The vault is client-supplied JSON: a whitespace-only name is truthy
-        # but has no first token, and split()[0] on it would 500 the lawyer's
-        # generate call (issue #80).
-        recipient = str(first_gift.get("recipientName") or "").strip()
-        if recipient:
-            v["recipientFullName"] = recipient
-            v["recipientFirstName"] = recipient.split()[0]
+    if cash_gift and cash_gift.get("amount") is not None:
+        v["cashAmount"] = "{:,.2f}".format(cash_gift["amount"])
+    # The vault is client-supplied JSON: a whitespace-only name is truthy
+    # but has no first token, and split()[0] on it would 500 the lawyer's
+    # generate call (issue #80).
+    cash_recipient = str((cash_gift or {}).get("recipientName") or "").strip()
+    item_recipient = str((item_gift or {}).get("recipientName") or "").strip()
+    recipient = cash_recipient or item_recipient
+    if recipient:
+        v["recipientFullName"] = recipient
+        v["recipientFirstName"] = recipient.split()[0]
+    # {{recipientFullName}} is shared by the cash and item clauses; when the
+    # two gifts name DIFFERENT people we cannot render both truthfully, so
+    # the item description is withheld — generation then fails loudly on the
+    # unresolved placeholder instead of attributing the item to the wrong
+    # person. The lawyer drafts the second gift by hand (#83 covers lists).
+    if item_gift and item_gift.get("description"):
+        if not cash_recipient or not item_recipient or cash_recipient == item_recipient:
+            v["giftDescription"] = item_gift["description"]
 
     # Charity variables come from an actual charity gift, not whichever gift
     # happens to be first — a cash gift ahead of the charity row must not

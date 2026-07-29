@@ -238,11 +238,11 @@ export function affirmedPersonalCareClauseIds(
  * RESP. Default-on was the reason "a complete intake could not deliver
  * 7 of 9 document types".
  *
- * poa-prop-restrictions is here because its {{restrictionConsentPerson}}
- * has NO intake data source at all — the intake captures the client's
- * restriction wishes as free text, which a lawyer must turn into clause
- * terms. Default-on meant every default POA-property generation 422'd.
- * It is never auto-supported; a lawyer's explicit stored row still wins.
+ * Two members are NEVER auto-supported (a lawyer's explicit stored row
+ * still wins): poa-prop-restrictions, whose {{restrictionConsentPerson}}
+ * has no intake data source, and gifts-charity, whose template offers a
+ * fixed sum OR a percentage of residue — an either/or only a lawyer can
+ * strike. Both are surfaced to the lawyer via vault review flags.
  */
 export const DATA_CONDITIONAL_CLAUSES: ReadonlySet<string> = new Set([
   'gifts-item', 'gifts-cash', 'gifts-charity',
@@ -258,7 +258,6 @@ export function supportedConditionalClauseIds(
   const gifts = Array.isArray(vault.gifts) ? (vault.gifts as unknown[]).map(asRecord) : []
   const estate = asRecord(draft.your_estate ?? draft.yourEstate)
   const legacyGifts = Array.isArray(estate.gifts) ? (estate.gifts as unknown[]).map(asRecord) : []
-  const legacyDonations = Array.isArray(estate.donations) ? (estate.donations as unknown[]).map(asRecord) : []
   const goals = asRecord(vault.goals)
   const children = Array.isArray(vault.children) ? (vault.children as unknown[]).map(asRecord) : []
   const assets = asRecord(vault.assets)
@@ -266,21 +265,38 @@ export function supportedConditionalClauseIds(
   const legacyAssets = Array.isArray(draft.assets) ? (draft.assets as unknown[]).map(asRecord) : []
 
   const supported = new Set<string>()
-  const nonMoneyGift = (g: Record<string, unknown>) =>
-    g.type !== 'charity' && g.type !== 'cash' && Boolean(g.description)
+  // Pet gifts are NOT item gifts: rendering one through the generic item
+  // clause silently drops the care fund; the pet clause is lawyer-added
+  // and a review flag points at it (review finding, #84).
+  const itemGift = (g: Record<string, unknown>) =>
+    g.type !== 'charity' && g.type !== 'cash' && g.type !== 'pet'
+    && Boolean(g.description)
+  const trimmed = (value: unknown) => String(value ?? '').trim()
+  const vaultCash = gifts.find((g) => g.type === 'cash')
+  const vaultItem = gifts.find(itemGift)
+  // {{recipientFullName}} is shared by the cash and item clauses: when both
+  // gifts exist naming DIFFERENT people, only the cash clause can render
+  // truthfully — the item clause is not auto-supported (its placeholder
+  // stays unresolved, so generation refuses loudly).
+  const recipientsClash = Boolean(
+    vaultCash && vaultItem
+    && trimmed(vaultCash.recipientName)
+    && trimmed(vaultItem.recipientName)
+    && trimmed(vaultCash.recipientName) !== trimmed(vaultItem.recipientName)
+  )
   if (
-    gifts.some((g) => nonMoneyGift(g) && Boolean(g.recipientName))
-    || legacyGifts.some(nonMoneyGift)
+    (vaultItem && Boolean(trimmed(vaultItem.recipientName)) && !recipientsClash)
+    || legacyGifts.some(itemGift)
   ) supported.add('gifts-item')
   if (
-    gifts.some((g) => g.type === 'cash' && g.amount != null && Boolean(g.recipientName))
+    (vaultCash && vaultCash.amount != null && Boolean(trimmed(vaultCash.recipientName)))
     || legacyGifts.some((g) => g.type === 'cash' && g.amount != null)
   ) supported.add('gifts-cash')
-  if (
-    gifts.some((g) => Boolean(g.charityName))
-    || legacyDonations.some((g) => Boolean(g.charityName))
-    || legacyGifts.some((g) => Boolean(g.charityName))
-  ) supported.add('gifts-charity')
+  // gifts-charity is NEVER auto-supported: its template offers a fixed sum
+  // OR a percentage of residue ({{charityPercentage}} has no data source),
+  // an either/or only a lawyer can strike. Auto-including it made every
+  // charity intake un-generatable (review finding, #84). A review flag
+  // tells the lawyer a charitable gift needs drafting.
   if (goals.henson === true || children.some((c) => c.receivesODSP === true)) {
     supported.add('trust-henson')
   }

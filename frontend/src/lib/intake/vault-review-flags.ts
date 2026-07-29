@@ -74,6 +74,22 @@ export function getVaultReviewFlags(vault: WillVault): VaultReviewFlag[] {
       statute: 'SDA',
     })
   }
+  if (vault.gifts.some((gift) => gift.type === 'charity')) {
+    flags.push({
+      id: 'vault-charity-gift',
+      severity: 'warning',
+      title: 'Charitable gift needs lawyer drafting',
+      description: 'The charity clause offers a fixed sum OR a percentage of residue — the lawyer must choose the form, confirm the CRA registration, and include the clause. It is off by default.',
+    })
+  }
+  if (vault.gifts.some((gift) => gift.type === 'pet')) {
+    flags.push({
+      id: 'vault-pet-gift',
+      severity: 'warning',
+      title: 'Pet-care gift needs the pet clause',
+      description: 'Pet-care gifts are not rendered by the generic gift clause (the care fund would be dropped). Add the pet-care clause in the Will Editor; the pet name, caregiver, and amount are pre-filled from the intake.',
+    })
+  }
   if (vault.poa.property.restrictions?.trim()) {
     flags.push({
       id: 'vault-poa-restrictions',
