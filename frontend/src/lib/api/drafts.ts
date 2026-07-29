@@ -123,12 +123,17 @@ export async function resolveLink(token: string): Promise<ResolvedLink | null> {
   }
 }
 
+export type SaveDraftResult =
+  | { ok: true; revision?: number }
+  | { ok: false; conflict?: boolean }
+
 // Save draft progress to server (debounced by caller)
 export async function saveDraftToServer(
   draftId: string,
   payload: DraftSyncPayload,
   magicToken?: string,
-): Promise<boolean> {
+  revision?: number,
+): Promise<SaveDraftResult> {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...getAuthHeaders() }
     if (magicToken) {
@@ -151,11 +156,19 @@ export async function saveDraftToServer(
         current_step: payload.currentStep,
         completed_steps: payload.completedSteps,
         language: payload.language,
+        // Optimistic concurrency (#92): once this device has read a
+        // revision, later writes are conditional on it.
+        ...(revision != null ? { revision } : {}),
       }),
     })
-    return res.ok
+    if (res.ok) {
+      const updated = await res.json().catch(() => null)
+      const fresh = (updated as { revision?: unknown } | null)?.revision
+      return { ok: true, revision: typeof fresh === 'number' ? fresh : undefined }
+    }
+    return { ok: false, conflict: res.status === 409 }
   } catch {
-    return false
+    return { ok: false }
   }
 }
 

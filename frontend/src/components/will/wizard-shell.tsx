@@ -19,12 +19,23 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   // so their answers persist and the lawyer sees them fill in live.
   useEnsureSelfServeDraft()
   // Auto-sync draft to server (debounced 1.5s). No-op if no draftId in context.
-  useDraftSync()
+  const { conflict } = useDraftSync()
 
   const progressPct = ((will.completedSteps.length) / WILL_STEPS.length) * 100
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#2D2D2D]">
+      {/* Another device edited this draft: autosave is stopped so we don't
+          overwrite those answers (#92). Reloading picks up the latest. */}
+      {conflict && (
+        <div className="sticky top-0 z-50 border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">
+          These answers were updated on another device. Saving here is paused so nothing is overwritten —{' '}
+          <button type="button" className="font-semibold underline" onClick={() => window.location.reload()}>
+            reload to continue from the latest version
+          </button>
+          . <span className="text-amber-800">다른 기기에서 답변이 변경되었습니다. 새로고침 후 계속해 주세요.</span>
+        </div>
+      )}
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-[#E8E4DF] bg-[#FAF8F5]/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4">

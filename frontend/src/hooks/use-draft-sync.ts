@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useDraft } from '@/providers/draft-provider'
 import { saveDraftToServer } from '@/lib/api/drafts'
@@ -42,19 +42,27 @@ export function buildDraftSyncSnapshot(will: WillDocument): string {
   })
 }
 
-export function useDraftSync() {
+export function useDraftSync(): { conflict: boolean } {
   const { will } = useWillForm()
   const { draftId, token } = useDraft()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSyncedRef = useRef<string>('')
+  // Optimistic concurrency (#92): the first save is unconditional (this
+  // wizard hydrates locally, not from the server), but every save after it
+  // is conditional on the revision the previous save returned — so two
+  // devices editing the same draft can no longer silently overwrite each
+  // other for the rest of the session.
+  const revisionRef = useRef<number | null>(null)
+  const conflictRef = useRef(false)
+  const [conflict, setConflict] = useState(false)
 
   const sync = useCallback(async (w: WillDocument) => {
-    if (!draftId) return
+    if (!draftId || conflictRef.current) return
     const snapshot = buildDraftSyncSnapshot(w)
     if (snapshot === lastSyncedRef.current) return
     lastSyncedRef.current = snapshot
 
-    await saveDraftToServer(draftId, {
+    const result = await saveDraftToServer(draftId, {
       aboutYou: w.aboutYou as unknown as Record<string, unknown>,
       yourFamily: w.yourFamily as unknown as Record<string, unknown>,
       yourEstate: w.yourEstate as unknown as Record<string, unknown>,
@@ -68,7 +76,15 @@ export function useDraftSync() {
       currentStep: w.currentStep,
       completedSteps: w.completedSteps,
       language: w.language,
-    }, token ?? undefined)
+    }, token ?? undefined, revisionRef.current ?? undefined)
+    if (result.ok) {
+      if (result.revision != null) revisionRef.current = result.revision
+    } else if (result.conflict) {
+      // Another device wrote since we did. STOP autosaving — retrying
+      // would overwrite the other device's answers — and surface it.
+      conflictRef.current = true
+      setConflict(true)
+    }
   }, [draftId, token])
 
   useEffect(() => {
@@ -77,4 +93,6 @@ export function useDraftSync() {
     timerRef.current = setTimeout(() => sync(will), 1500)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [will, draftId, sync])
+
+  return { conflict }
 }

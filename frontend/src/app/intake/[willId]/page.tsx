@@ -247,6 +247,11 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
             {saveStatus === 'saving' && L(language, 'Saving…', '저장 중…')}
             {saveStatus === 'saved' && L(language, 'Saved', '저장됨')}
             {saveStatus === 'error' && L(language, 'Save failed — retry', '저장 실패 — 다시 시도')}
+            {saveStatus === 'conflict' && (
+              <span className="font-medium text-amber-700">
+                {L(language, 'Updated on another device — reload to continue', '다른 기기에서 변경됨 — 새로고침해 주세요')}
+              </span>
+            )}
             {saveStatus === 'idle' && L(language, 'Answers save automatically', '답변은 자동 저장됩니다')}
           </button>
         </div>

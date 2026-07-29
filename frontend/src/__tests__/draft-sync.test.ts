@@ -1,6 +1,42 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import { buildDraftSyncSnapshot, extractPeople } from '@/hooks/use-draft-sync'
+import { saveDraftToServer, type DraftSyncPayload } from '@/lib/api/drafts'
 import { INITIAL_WILL, type WillDocument } from '@/lib/types/will'
+
+describe('saveDraftToServer optimistic concurrency (#92)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const payload = {} as DraftSyncPayload
+
+  it('sends the known revision and adopts the fresh one on success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ revision: 7 }), { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await saveDraftToServer('d1', payload, undefined, 6)
+    expect(result).toEqual({ ok: true, revision: 7 })
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.revision).toBe(6)
+  })
+
+  it('omits revision on the first save (unconditional, like before)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('{}', { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await saveDraftToServer('d1', payload)
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    expect('revision' in body).toBe(false)
+  })
+
+  it('reports a conflict on 409 so the caller stops overwriting', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('{}', { status: 409 })
+    ))
+    expect(await saveDraftToServer('d1', payload, undefined, 3))
+      .toEqual({ ok: false, conflict: true })
+  })
+})
 
 function cloneInitialWill(): WillDocument {
   return JSON.parse(JSON.stringify(INITIAL_WILL)) as WillDocument
