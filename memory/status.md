@@ -242,3 +242,25 @@
 - #96 (checkout package wording) is now the pilot-blocking content
   review on the payment path. Next engineering after lawyer input:
   #83 residue lists (3-5 days once wording approved), #86 sub-item.
+
+## 2026-07-29 (Codex re-review of main) — three real defects, fixed at 8c4063b
+
+- Codex re-checked merged main and was right three times: (1) the wizard's
+  revision-baseline fetch raced the first debounced save (unconditional
+  overwrite still reachable) AND failed saves never retried because the
+  snapshot was claimed pre-confirmation; (2) the intake page kept the
+  magic token in the address bar all session (review portal pattern not
+  applied) and the reminders link re-embedded it; (3) the Resend recipe
+  omitted FROM_EMAIL — the placeholder noreply@ezwill.app would 403
+  (domain mismatch) on every send.
+- Fixes: sync() awaits the seed promise before any write; snapshot
+  claimed only on confirmed success + 10s auto-retry + bilingual
+  save-failure banner; intake stash-and-strip bound to the draft id
+  (self-serve ids never match); reminders link clean; FROM_EMAIL boot
+  gate (strict hard-stop on placeholder) + corrected docs/fly.toml +
+  mandatory post-deploy email smoke test on #100.
+- #91/#92 reopened then re-closed with evidence. Backend 372 / frontend
+  152, zero skips, CI green at 8c4063b.
+- Lesson reinforced: 'closes on merge' claims about MY OWN fixes need the
+  same adversarial re-read as everyone else's — both misses were fixes
+  that were directionally right but incomplete at the last hop.
