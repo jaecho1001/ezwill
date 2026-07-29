@@ -13,8 +13,8 @@ checked against the code, not merely reformatted.
 | `glossary.md` | domain terms, `ew_*` tables, Ontario statutes | 2026-07-14 |
 | `conventions.md` | standing rules, code/workflow gotchas, testing expectations | 2026-07-27 |
 | `roadmap.md` | Now / Next / Later / Done by platform pillar | 2026-07-27 |
-| `status.md` | concise current state and next action | 2026-07-27 |
-| `learnings.md` | append-only self-improvement journal | 2026-07-27 |
+| `status.md` | concise current state and next action | 2026-07-29 |
+| `learnings.md` | append-only self-improvement journal | 2026-07-29 |
 | `MEMORY.md` | pointer to the global spec-patch / verification-ledger workflow | 2026-07-19 |
 
 Supporting context:

@@ -201,3 +201,31 @@
 - Frontend 133 tests / typecheck / build; CI green (backend, containers,
   frontend). Backend untouched. Codex's convergence condition ("one small
   engineering consistency pass") addressed.
+
+## 2026-07-29 — MERGED TO MAIN + engineering tail + adversarial review round
+
+- The four-PR stack (#72 -> #73 -> #74 -> #97) is MERGED; main carries all
+  launch engineering. Email decision resolved: Resend, vclawyers.ca domain
+  already verified (sending enabled) — deploy needs only SMTP_* secrets
+  (smtp.resend.com / user 'resend' / password = API key).
+- Engineering tail landed (one commit per concern): #84 typed gift
+  projection + restrictions/charity lawyer-gated; #99 evidence-based
+  lifecycle (submitted->in_review->approved, recompute on every
+  evidence-changing path incl. reset/config-toggle/quick-draft, chat
+  locked after submission); #87 vault-aware AI proposer + estate panels;
+  #92 wizard revision ratchet + serialized saves + honest conflict
+  banners; #91 tokens out of URLs everywhere (links resolve POST body,
+  review sessionStorage), link_type scoping both directions, expiries
+  30d/14d, CSP on both servers (+/docs exemption); #85 single
+  legal-statements source (Korean SLRA rendering flagged for lawyer);
+  #88 resend button (questionnaire links only) + strict-startup test.
+- A 30-agent adversarial review of the tail confirmed 25 defects
+  (incl. HIGH: cash clause rendering another gift's recipient/amount;
+  approved files vanishing from queues; review tokens doubling as
+  questionnaire write credentials). All fixed in review commits A-D
+  (f6f85da, bb9da58, 780e501, cb065bd). Backend 371 / frontend 152,
+  zero skips, CI green on main.
+- Known limitations recorded: no nonce CSP (inline scripts allowed);
+  legacy wizard hydrates from localStorage only (conflict banner is
+  honest about it); charity clause requires lawyer drafting by design;
+  quick-draft external-AI path requires recorded client consent.

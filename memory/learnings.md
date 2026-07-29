@@ -70,3 +70,18 @@ became a rule) where you wrote it down.
   correctly failed the DOM rendering test. Lesson: every test environment must be an
   explicit dependency, and new frontend tests should be verified after a clean lockfile
   install before publication.
+
+## 2026-07-29 — Review your own fresh work adversarially before pushing
+
+An adversarial multi-agent review of six same-day commits (four reviewer
+lenses, every finding independently challenged) confirmed 25 real defects
+before they reached main — including a legal-document corruption bug
+(untyped "first gift" variable binding rendered a pet gift's caregiver
+and care fund into the cash bequest clause) that all 360+ existing tests
+passed over because the only test used the one gift ordering that hid it.
+Lessons: (1) variables shared across clauses must bind to data OF THAT
+CLAUSE'S TYPE, and ambiguity must fail loudly, never resolve arbitrarily;
+(2) when adding a lifecycle recompute, grep EVERY path that mutates its
+evidence (reset/config/agent paths were missed, only save/generate were
+wired); (3) token scoping must be enforced in both directions when two
+credential types share a table.
