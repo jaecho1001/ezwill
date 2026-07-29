@@ -64,6 +64,13 @@ GENERATION_ROWS = [{
 
 
 class FakeDb:
+    def recompute_pipeline_status(self, draft_id):
+        # #99 wiring pin: routes must recompute after generate/approve/
+        # revoke/clause-save. Tests can assert on status_recomputes.
+        self.status_recomputes = getattr(self, 'status_recomputes', [])
+        self.status_recomputes.append(draft_id)
+        return 'in_review'
+
     recorded: list = []
     config_updates: list = []
     clause_selections: list = []

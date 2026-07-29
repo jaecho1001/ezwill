@@ -24,6 +24,13 @@ from services.document_generator import DOCUMENT_TITLES
 
 
 class FakeDb:
+    def recompute_pipeline_status(self, draft_id):
+        # #99 wiring pin: routes must recompute after generate/approve/
+        # revoke/clause-save. Tests can assert on status_recomputes.
+        self.status_recomputes = getattr(self, 'status_recomputes', [])
+        self.status_recomputes.append(draft_id)
+        return 'in_review'
+
     events: list = []
 
     def get_signing_events(self, draft_id):

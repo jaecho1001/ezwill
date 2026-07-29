@@ -46,6 +46,13 @@ CLAUSES = [{
 
 
 class FakeDb:
+    def recompute_pipeline_status(self, draft_id):
+        # #99 wiring pin: routes must recompute after generate/approve/
+        # revoke/clause-save. Tests can assert on status_recomputes.
+        self.status_recomputes = getattr(self, 'status_recomputes', [])
+        self.status_recomputes.append(draft_id)
+        return 'in_review'
+
     configs: list = []
     approvals: list = []
     approval_calls: list = []
@@ -138,6 +145,21 @@ def test_approve_records_actor_and_time(docs_client):
     # The actor dependency composes over the overridden verify_dashboard_token,
     # so the test override's token string surfaces as the recorded actor (#52).
     assert FakeDb.approval_calls == [("draft-1", "single_will", "test-token")]
+
+
+def test_approve_and_revoke_recompute_draft_status(docs_client):
+    """#99 wiring: approval and revocation must both trigger the lifecycle
+    recompute — without it a fully-approved file never reaches 'approved'
+    and a revoked one never returns to 'in_review'."""
+    FakeDb.configs = [{"document_type": "single_will", "enabled": True,
+                       "generated_at": "2026-07-27"}]
+    res = docs_client.post("/api/documents/draft-1/single_will/approve")
+    assert res.status_code == 200
+    assert res.json()["draft_status"] == "in_review"
+
+    res = docs_client.delete("/api/documents/draft-1/single_will/approve")
+    assert res.status_code == 200
+    assert res.json()["draft_status"] == "in_review"
 
 
 def test_approval_blocked_by_instruction_gaps(docs_client, monkeypatch):

@@ -62,7 +62,7 @@ interface Stats {
 function computeStats(drafts: DraftListItem[]): Stats {
   return {
     total: drafts.length,
-    submitted: drafts.filter((d) => d.status === 'submitted').length,
+    submitted: drafts.filter((d) => d.status === 'submitted' || d.status === 'in_review').length,
     inProgress: drafts.filter((d) => d.status === 'in_progress' || d.status === 'opened').length,
     completed: drafts.filter((d) => d.status === 'approved' || d.status === 'signed').length,
   }

@@ -17,11 +17,10 @@ export function statsFromCounts(
   const n = (key: string) => counts[key] ?? 0
   return {
     total: Object.values(counts).reduce((sum, v) => sum + v, 0),
-    // Raw status 'submitted' includes fully-handled files (#99's lifecycle
-    // gap keeps them at that status until signing), so the card labelled
-    // "awaiting review" must use the queue's requirement-aware total when
-    // the caller has it — not the raw status count.
-    submitted: opts?.awaitingReview ?? n('submitted'),
+    // The "awaiting review" card prefers the queue's requirement-aware
+    // total. The raw fallback counts submitted AND in_review (#99): both
+    // are files whose documents the lawyer has not finished approving.
+    submitted: opts?.awaitingReview ?? n('submitted') + n('in_review'),
     inProgress: n('in_progress') + n('opened') + n('link_sent'),
     completed: n('approved') + n('signed'),
   }

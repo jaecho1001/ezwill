@@ -49,6 +49,10 @@ async def save_clause_selections(draft_id: str, document_type: str, body: SaveCl
         if not success:
             raise HTTPException(500, "Failed to save clause selections")
 
+        # Clause edits revoke any approval, so an 'approved' file comes
+        # back into review (#99).
+        db.recompute_pipeline_status(draft_id)
+
         saved = db.get_clause_selections(draft_id, document_type)
         return {"document_type": document_type, "clauses": [dict(c) for c in saved]}
 

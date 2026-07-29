@@ -740,6 +740,54 @@ class EWDbWriter:
         """, (draft_id, document_type, file_path))
         return True
 
+    def recompute_pipeline_status(self, draft_id: str) -> str:
+        """Single source of the submitted → in_review → approved lifecycle (#99).
+
+        Recomputed from evidence rather than event order, so it is idempotent
+        and self-healing:
+        - every required document group lawyer-approved  -> 'approved'
+        - anything generated (incl. after a revoked approval) -> 'in_review'
+        - nothing generated yet                          -> 'submitted'
+        Only drafts already in the lawyer pipeline (submitted / in_review /
+        approved) move. Pre-submission statuses are never touched — flipping
+        a 'link_sent' draft would lock the client out of their own
+        questionnaire (the magic-link edit gate keys off status) — and
+        'signed' is terminal.
+        """
+        draft = self.fetchone("""
+            SELECT id, status, vault, your_estate, poa_property,
+                   poa_personal_care
+            FROM ew_will_drafts WHERE id = %s
+        """, (draft_id,))
+        if not draft:
+            return None
+        current = draft["status"]
+        if current not in ("submitted", "in_review", "approved"):
+            return current
+        configs = self.fetchall("""
+            SELECT document_type, generated_at, lawyer_approved_at
+            FROM ew_document_configs WHERE draft_id = %s
+        """, (draft_id,))
+        generated = {c["document_type"] for c in configs if c["generated_at"]}
+        approved = {
+            c["document_type"] for c in configs
+            if c["generated_at"] and c["lawyer_approved_at"]
+        }
+        groups = required_document_groups(dict(draft))
+        if groups and all(group & approved for group in groups):
+            new_status = "approved"
+        elif generated:
+            new_status = "in_review"
+        else:
+            new_status = "submitted"
+        if new_status != current:
+            self.execute(
+                "UPDATE ew_will_drafts SET status = %s, updated_at = now() "
+                "WHERE id = %s",
+                (new_status, draft_id),
+            )
+        return new_status
+
     # ── Document generations (audit trail) ────────────────────────────────────
 
     def record_document_generation(
@@ -1051,12 +1099,14 @@ class EWDbWriter:
         # will is approved but whose requested POA was never generated has
         # work outstanding and must stay in the queue (overview review,
         # finding 1).
+        # in_review counts as awaiting too (#99): generation started but the
+        # lawyer has not approved everything the client needs.
         submitted_rows = self.fetchall("""
             SELECT id, client_first_name, client_last_name, language,
                    submitted_at, vault, your_estate,
                    poa_property, poa_personal_care
             FROM ew_will_drafts
-            WHERE status = 'submitted'
+            WHERE status IN ('submitted', 'in_review')
             ORDER BY submitted_at ASC NULLS LAST
         """)
         approved_by_draft: dict = {}

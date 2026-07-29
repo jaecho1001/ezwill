@@ -355,6 +355,9 @@ async def generate_document(
             },
         )
         db.update_document_generated(draft_id, document_type, record["storage_path"])
+        # First generation moves a submitted file into review; regeneration
+        # of an approved file pulls it back (#99).
+        db.recompute_pipeline_status(draft_id)
 
     return StreamingResponse(
         io.BytesIO(content),
@@ -484,6 +487,9 @@ async def generate_all_documents(
                 },
             )
             db.update_document_generated(draft_id, doc_type, record["storage_path"])
+        # One recompute after the batch: generation moves the file into
+        # review / pulls an approved file back (#99).
+        db.recompute_pipeline_status(draft_id)
 
     # Build ZIP
     zip_buf = io.BytesIO()
@@ -697,12 +703,15 @@ async def approve_document(
         )
         if row is None:
             raise HTTPException(409, "Generate the document before approving it")
+        # Approving the last required document completes review (#99).
+        draft_status = db.recompute_pipeline_status(draft_id)
 
     return {
         "approved": True,
         "document_type": document_type,
         "approved_at": str(row["lawyer_approved_at"]),
         "approved_by": row["lawyer_approved_by"],
+        "draft_status": draft_status,
     }
 
 
@@ -717,7 +726,13 @@ async def revoke_document_approval(
         raise HTTPException(400, "Invalid document_type")
     with EWDbWriter(DEFAULT_SCHEMA) as db:
         db.revoke_lawyer_approval(draft_id, document_type)
-    return {"approved": False, "document_type": document_type}
+        # An approved file with a withdrawn approval is back in review (#99).
+        draft_status = db.recompute_pipeline_status(draft_id)
+    return {
+        "approved": False,
+        "document_type": document_type,
+        "draft_status": draft_status,
+    }
 
 
 @router.get("/{draft_id}/generations")

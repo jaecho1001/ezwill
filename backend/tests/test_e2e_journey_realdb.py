@@ -189,6 +189,11 @@ def test_full_lawyer_led_journey(client):
         assert generated.status_code == 200, generated.text
         assert generated.content[:2] == b"PK"  # a real DOCX zip container
 
+        # Generation moved the file from 'submitted' into review (#99).
+        assert client.get(
+            f"/api/drafts/{created_draft}"
+        ).json()["status"] == "in_review"
+
         # The audit trail recorded the exact delivery (#73).
         trail = client.get(f"/api/documents/{created_draft}/generations")
         assert trail.status_code == 200
