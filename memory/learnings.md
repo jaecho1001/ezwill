@@ -85,3 +85,14 @@ CLAUSE'S TYPE, and ambiguity must fail loudly, never resolve arbitrarily;
 evidence (reset/config/agent paths were missed, only save/generate were
 wired); (3) token scoping must be enforced in both directions when two
 credential types share a table.
+
+## 2026-07-29 — Verify test teeth by reverting the fix
+
+Three consecutive review rounds caught incomplete fixes of mine that CI
+called green, because the new behaviour had no test. The habit that ends
+this: after writing a regression test, TEMPORARILY restore the old
+behaviour and confirm the test goes red. It costs one minute and it is
+the only proof that a test protects anything. Corollary for async guards:
+check whether the failure path THROWS or returns null — a .catch() on a
+function that returns null instead of throwing is dead code, and a guard
+whose failure path is dead fails open.

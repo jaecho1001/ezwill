@@ -264,3 +264,29 @@
 - Lesson reinforced: 'closes on merge' claims about MY OWN fixes need the
   same adversarial re-read as everyone else's — both misses were fixes
   that were directionally right but incomplete at the last hop.
+
+## 2026-07-29 (Codex round 3) — four more defects in MY fixes; now tested (5306be1)
+
+- Codex re-reviewed the #91/#92 fixes and was right four times:
+  (1) the revision baseline failed OPEN — resolveLink returns null, not a
+  throw, so the catch never ran and a failed lookup produced an
+  unconditional first write; (2) submit never flushed the 1.5s debounce,
+  so a client could permanently submit stale server data and the later
+  save was refused as already-submitted; (3) the intake page stripped ?t
+  on arrival but chapter-sync and mode-toggle rebuilt the query from a
+  snapshot still holding it; (4) tokens lived in ONE global localStorage
+  slot, so opening draft B destroyed draft A's refresh recovery.
+- Fixes: ensureBaseline fail-CLOSED (no revision -> no save, banner,
+  retry); flush() exposed via DraftSyncProvider and awaited by
+  /will/review before submitDraft; ALL intake navigation routed through
+  lib/intake/url-params.ts cleanUrl; DraftProvider stores tokens per
+  draft (ew_draft_tokens) with legacy migration.
+- 13 new tests, and I VERIFIED THEIR TEETH by reverting the fix and
+  watching them go red. Frontend 165 / backend 372, CI green.
+- #100 BODY (not just a comment) now carries FROM_EMAIL/FROM_NAME, the
+  Resend + Stripe decisions, and a mandatory pre-client email smoke test.
+- STANDING LESSON (third occurrence): a fix is not done until a test
+  fails without it. Twice now I shipped directionally-correct fixes whose
+  last hop was wrong, with green CI proving nothing because no test
+  touched the new path. Write the failing test FIRST, or at minimum
+  revert-and-watch-it-go-red before claiming a fix.
