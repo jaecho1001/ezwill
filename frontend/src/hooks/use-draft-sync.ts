@@ -42,7 +42,16 @@ export function buildDraftSyncSnapshot(will: WillDocument): string {
   })
 }
 
-export function useDraftSync(): { conflict: boolean; saveFailed: boolean } {
+export interface DraftSyncState {
+  conflict: boolean
+  saveFailed: boolean
+  /** Write any pending answers NOW and report whether the server has them.
+   *  Callers that end the client's editing session (submit) must await this
+   *  — otherwise the debounce can lose the last edits permanently (#92). */
+  flush: () => Promise<boolean>
+}
+
+export function useDraftSync(): DraftSyncState {
   const { will } = useWillForm()
   const { draftId, token } = useDraft()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -61,45 +70,56 @@ export function useDraftSync(): { conflict: boolean; saveFailed: boolean } {
   const latestWillRef = useRef<WillDocument>(will)
   latestWillRef.current = will
 
-  // Seed the revision baseline from the server BEFORE the first save
-  // (review finding): a magic-link device that saved unconditionally
-  // could clobber another device's answers on its first write. Self-serve
-  // drafts (no token) have no other writers to protect against.
-  // The promise is kept so sync() can AWAIT it — the seed used to race
-  // the first debounce, and a save dispatched before it resolved omitted
-  // the revision, re-opening the exact overwrite (Codex re-review).
-  const seedRef = useRef<Promise<void> | null>(null)
-  useEffect(() => {
-    if (!token || revisionRef.current !== null || seedRef.current) return
-    seedRef.current = resolveLink(token)
-      .then((resolved) => {
-        if (resolved?.revision != null && revisionRef.current === null) {
-          revisionRef.current = resolved.revision
-        }
-      })
-      .catch(() => {
-        // Baseline unavailable (offline / dead link): proceed unconditional
-        // — the PUT's own token auth is still the gate.
-      })
-  }, [token])
-
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [saveFailed, setSaveFailed] = useState(false)
 
-  const sync = useCallback(async () => {
-    if (!draftId || conflictRef.current) return
+  // Revision baseline for a magic-link session. FAIL-CLOSED (Codex
+  // re-review): resolveLink returns null rather than throwing, so the old
+  // catch never ran and a failed lookup silently produced an
+  // unconditional first write — the exact overwrite this guards against.
+  // No baseline means NO save; the answers stay in local storage, the
+  // banner says so, and the lookup is retried.
+  const seedRef = useRef<Promise<number | null> | null>(null)
+
+  const ensureBaseline = useCallback(async (): Promise<boolean> => {
+    // Self-serve drafts have no token and no other writer to protect.
+    if (!token) return true
+    if (revisionRef.current !== null) return true
+    if (!seedRef.current) {
+      seedRef.current = resolveLink(token)
+        .then((resolved) => (resolved && typeof resolved.revision === 'number'
+          ? resolved.revision
+          : null))
+        .catch(() => null)
+    }
+    const revision = await seedRef.current
+    if (revision === null) {
+      seedRef.current = null // allow a fresh attempt on the next try
+      return false
+    }
+    if (revisionRef.current === null) revisionRef.current = revision
+    return true
+  }, [token])
+
+  const sync = useCallback(async (): Promise<boolean> => {
+    if (!draftId || conflictRef.current) return false
     if (inFlightRef.current) {
       pendingRef.current = true
-      return
+      return false
     }
     inFlightRef.current = true
     try {
       // A magic-link session must know the server's revision before its
       // FIRST write, or that write is an unconditional overwrite.
-      if (seedRef.current) await seedRef.current
+      if (!(await ensureBaseline())) {
+        setSaveFailed(true)
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = setTimeout(() => { void sync() }, 10000)
+        return false
+      }
       const w = latestWillRef.current
       const snapshot = buildDraftSyncSnapshot(w)
-      if (snapshot === lastSyncedRef.current) return
+      if (snapshot === lastSyncedRef.current) return true
 
       const result = await saveDraftToServer(draftId, {
         aboutYou: w.aboutYou as unknown as Record<string, unknown>,
@@ -123,18 +143,21 @@ export function useDraftSync(): { conflict: boolean; saveFailed: boolean } {
         lastSyncedRef.current = snapshot
         if (result.revision != null) revisionRef.current = result.revision
         setSaveFailed(false)
-      } else if (result.conflict) {
+        return true
+      }
+      if (result.conflict) {
         // Another writer got there first. STOP autosaving — retrying
         // would overwrite their answers — and surface it.
         conflictRef.current = true
         setConflict(true)
-      } else {
-        // Transient failure: surface it and retry on a timer even if the
-        // client types nothing further.
-        setSaveFailed(true)
-        if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
-        retryTimerRef.current = setTimeout(() => { void sync() }, 10000)
+        return false
       }
+      // Transient failure: surface it and retry on a timer even if the
+      // client types nothing further.
+      setSaveFailed(true)
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = setTimeout(() => { void sync() }, 10000)
+      return false
     } finally {
       inFlightRef.current = false
       if (pendingRef.current) {
@@ -142,7 +165,7 @@ export function useDraftSync(): { conflict: boolean; saveFailed: boolean } {
         void sync()
       }
     }
-  }, [draftId, token])
+  }, [draftId, ensureBaseline, token])
 
   useEffect(() => {
     if (!draftId) return
@@ -155,5 +178,22 @@ export function useDraftSync(): { conflict: boolean; saveFailed: boolean } {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
   }, [])
 
-  return { conflict, saveFailed }
+  /** Cancel the debounce and write now. Awaited by submit (#92): a client
+   *  who finishes and submits inside the debounce window would otherwise
+   *  submit STALE server data, and the later save is refused because the
+   *  questionnaire is already submitted. */
+  const flush = useCallback(async (): Promise<boolean> => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    // If a save is already on the wire, wait it out and write again: the
+    // in-flight one may predate the client's last keystrokes.
+    while (inFlightRef.current) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return sync()
+  }, [sync])
+
+  return { conflict, saveFailed, flush }
 }

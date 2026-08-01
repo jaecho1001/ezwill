@@ -5,6 +5,7 @@ import { Check, X } from 'lucide-react'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
 import { useDraftSync } from '@/hooks/use-draft-sync'
+import { DraftSyncProvider } from '@/providers/draft-sync-provider'
 import { useEnsureSelfServeDraft } from '@/hooks/use-ensure-draft'
 import { WILL_STEPS } from '@/lib/constants/steps'
 import { BrandLockup } from '@/components/ui/brand'
@@ -19,7 +20,8 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   // so their answers persist and the lawyer sees them fill in live.
   useEnsureSelfServeDraft()
   // Auto-sync draft to server (debounced 1.5s). No-op if no draftId in context.
-  const { conflict, saveFailed } = useDraftSync()
+  const draftSync = useDraftSync()
+  const { conflict, saveFailed } = draftSync
 
   const progressPct = ((will.completedSteps.length) / WILL_STEPS.length) * 100
 
@@ -114,9 +116,10 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Main content */}
+      {/* Main content. The submit page needs flush() from the autosave
+          hook (#92), so the whole wizard shares its state. */}
       <main className="mx-auto max-w-2xl px-4 py-10 md:py-14">
-        {children}
+        <DraftSyncProvider value={draftSync}>{children}</DraftSyncProvider>
       </main>
     </div>
   )

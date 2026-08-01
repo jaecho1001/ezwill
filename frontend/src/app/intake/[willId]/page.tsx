@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState, use, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useWillVault } from '@/stores/will-vault-store'
+import { cleanUrl } from '@/lib/intake/url-params'
 import {
   willIntakeChapters,
   shouldAsk,
@@ -52,15 +53,16 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
     ?? (storedDraftId === willId ? storedToken : null)
   const hasMagicToken = Boolean(magicToken)
 
+  // Every internal navigation on this page is built through cleanUrl so
+  // the credential can never be re-attached (#91).
+  const basePath = `/intake/${willId}`
+
   useEffect(() => {
     if (!urlToken) return
-    setToken(urlToken)
+    setToken(urlToken, willId)
     setDraftId(willId)
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete('t')
-    const qs = params.toString()
-    router.replace(`/intake/${willId}${qs ? `?${qs}` : ''}`, { scroll: false })
-  }, [urlToken, router, searchParams, setDraftId, setToken, willId])
+    router.replace(cleanUrl(basePath, searchParams.toString()), { scroll: false })
+  }, [urlToken, basePath, router, searchParams, setDraftId, setToken, willId])
 
   // On a 409 the server has a newer copy (another device, or the lawyer).
   // Re-hydrate from it rather than fighting over the draft (issue #92).
@@ -138,10 +140,10 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   const modeParam = searchParams.get('mode')
   const mode: 'form' | 'chat' = modeParam === 'chat' ? 'chat' : 'form'
   const setMode = (next: 'form' | 'chat') => {
-    const params = new URLSearchParams(searchParams.toString())
-    if (next === 'chat') params.set('mode', 'chat')
-    else params.delete('mode')
-    router.replace(`?${params.toString()}`, { scroll: false })
+    router.replace(
+      cleanUrl(basePath, searchParams.toString(), { mode: next === 'chat' ? 'chat' : null }),
+      { scroll: false }
+    )
   }
 
   // Keep the URL in sync when the user navigates internally so browser
@@ -150,10 +152,14 @@ export default function IntakePage({ params }: { params: Promise<{ willId: strin
   useEffect(() => {
     const current = searchParams.get('chapter')
     if (current === String(chapterIdx)) return
-    const next = new URLSearchParams(searchParams.toString())
-    next.set('chapter', String(chapterIdx))
-    router.replace(`?${next.toString()}`, { scroll: false })
-  }, [chapterIdx, router, searchParams])
+    // cleanUrl — never rebuild the query from a snapshot that may still
+    // hold the credential, or this navigation puts ?t= straight back into
+    // the address bar and the logs (#91, Codex re-review).
+    router.replace(
+      cleanUrl(basePath, searchParams.toString(), { chapter: String(chapterIdx) }),
+      { scroll: false }
+    )
+  }, [chapterIdx, basePath, router, searchParams])
 
   // Only render questions whose skipIf doesn't kick in under the live vault.
   const visibleQuestions = useMemo(

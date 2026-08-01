@@ -11,6 +11,7 @@ import { AIFlagBanner } from '@/components/will/ai-flag-banner'
 import { useWillForm } from '@/providers/will-form-provider'
 import { useTranslation } from '@/providers/i18n-provider'
 import { useDraft } from '@/providers/draft-provider'
+import { useDraftSyncState } from '@/providers/draft-sync-provider'
 import { submitDraft } from '@/lib/api/drafts'
 import { WILL_STEPS } from '@/lib/constants/steps'
 
@@ -44,6 +45,7 @@ export default function ReviewPage() {
   const { will } = useWillForm()
   const { t } = useTranslation()
   const { draftId, token } = useDraft()
+  const { flush } = useDraftSyncState()
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const router = useRouter()
@@ -58,6 +60,17 @@ export default function ReviewPage() {
       return
     }
     setSubmitting(true)
+    // Autosave is debounced (#92): a client who finishes an answer and
+    // submits within the window would submit the server's STALE copy, and
+    // the save that lands afterwards is refused because the questionnaire
+    // is already submitted. Write the latest answers FIRST and refuse to
+    // submit if they did not reach the server.
+    const flushed = await flush()
+    if (!flushed) {
+      setSubmitting(false)
+      setSubmitError(t.review_errorSubmitFailed)
+      return
+    }
     // Pass the client magic token so the draft-bound submit endpoint accepts
     // the request; on /will/* the token is the only auth available.
     const result = await submitDraft(draftId, token ?? undefined)
